@@ -27,13 +27,26 @@ ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 try:
     df_all = cargar_datos(ID_SHEET)
     
-    # Procesar Fechas
+    # Procesar Fechas indicando que el día va primero (Formato Latino)
     for h in df_all:
         col = 'Fecha Corte' if 'Fecha Corte' in df_all[h].columns else 'Fecha'
+        # Agregamos dayfirst=True para que entienda que el 23 es el día
         df_all[h]['Fecha_dt'] = pd.to_datetime(df_all[h][col], dayfirst=True).dt.date
 
     fechas = sorted(df_all['CALENDARIO']['Fecha_dt'].unique(), reverse=True)
     f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
+
+    # Variables de tiempo
+    c_r = df_all['CALENDARIO'][df_all['CALENDARIO']['Fecha_dt'] == f_sel].iloc[0]
+    d_t, d_h = int(c_r['Días Transcurridos']), int(c_r['Días Hábiles Mes'])
+    mes_num = pd.to_datetime(f_sel).month
+    meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+
+    # --- PORTADA ---
+    st.markdown(f"""<div class="portada-container">
+        <h1>Autociel - Posventa</h1>
+        <p>Mes: {meses[mes_num]} | Avance: {d_t}/{d_h} días ({(d_t/d_h):.1%})</p>
+    </div>""", unsafe_allow_html=True)
 
     # Variables de tiempo
     c_r = df_all['CALENDARIO'][df_all['CALENDARIO']['Fecha_dt'] == f_sel].iloc[0]
