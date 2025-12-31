@@ -1,14 +1,3 @@
-Ese error de "unexpected indent" ocurre porque hay unos espacios "fantasma" antes del st.markdown. En Python, si una línea está un milímetro más adentro o más afuera de lo que corresponde, el programa se detiene.
-
-He limpiado completamente el código, corregido las sangrías y verificado que todas las variables (como meses_es) estén en el lugar correcto para que no vuelvan a fallar.
-
-Instrucciones para que funcione ahora:
-Ve a GitHub y borra absolutamente todo lo que hay en autociel.py.
-
-Pega este código exacto (asegúrate de que la primera línea import streamlit... no tenga ningún espacio antes):
-
-Python
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
