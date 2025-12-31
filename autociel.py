@@ -50,7 +50,9 @@ try:
 
     # Variables de tiempo
     c_r = df_all['CALENDARIO'][df_all['CALENDARIO']['Fecha_dt'] == f_sel].iloc[0]
-    d_t, d_h = int(c_r['Días Transcurridos']), int(c_r['Días Hábiles Mes'])
+    # Convertimos a string, cambiamos coma por punto y pasamos a float
+    d_t = float(str(c_r['Días Transcurridos']).replace(',', '.'))
+    d_h = float(str(c_r['Días Hábiles Mes']).replace(',', '.'))
     mes_num = pd.to_datetime(f_sel).month
     meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
 
