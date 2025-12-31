@@ -49,7 +49,7 @@ try:
     f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
     
         # --- PORTADA ---
-        st.markdown(f"""
+    st.markdown(f"""
             <div class="portada-container">
                 <div style="letter-spacing: 3px; opacity: 0.8; text-transform: uppercase;">Grupo CENOA</div>
                 <div class="titulo-portada">Resumen General de Objetivos de Posventa</div>
