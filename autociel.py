@@ -4,7 +4,7 @@ import plotly.express as px
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CORPORATIVO ---
+# --- ESTILO CORPORATIVO --- (Mantén tu CSS actual aquí abajo)
 st.markdown("""
     <style>
     .main { background-color: #f4f7f9; }
@@ -23,27 +23,31 @@ st.markdown("""
 def calcular_proyeccion(real, dias_t, dias_h):
     return (real / dias_t) * dias_h if dias_t > 0 else 0
 
-archivo = st.sidebar.file_uploader("📂 Cargar Archivo Madre Autociel", type="xlsx")
+# --- NUEVA FUNCIÓN PARA GOOGLE SHEETS ---
+@st.cache_data(ttl=600)  # Se actualiza cada 10 minutos
+def cargar_datos_desde_sheets(sheet_id):
+    hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
+    data_dict = {}
+    for h in hojas:
+        # Formateamos la URL para descargar cada hoja como CSV
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
+        data_dict[h] = pd.read_csv(url).fillna(0)
+    return data_dict
 
-if archivo:
-    try:
-        hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
-        data = {h: pd.read_excel(archivo, sheet_name=h).fillna(0) for h in hojas}
+# El ID de tu Google Sheet
+SHEET_ID = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
-        for h in hojas:
-            col_f = 'Fecha Corte' if 'Fecha Corte' in data[h].columns else 'Fecha'
-            data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f]).dt.date
+try:
+    data = cargar_datos_desde_sheets(SHEET_ID)
 
-        fechas = sorted(data['CALENDARIO']['Fecha_dt'].unique(), reverse=True)
-        f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
-        
-        meses_es = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
-                    7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
-        
-        c_r = data['CALENDARIO'][data['CALENDARIO']['Fecha_dt'] == f_sel].iloc[0]
-        d_t, d_h = int(c_r['Días Transcurridos']), int(c_r['Días Hábiles Mes'])
-        prog_t = d_t / d_h if d_h > 0 else 0
+    # Convertir fechas después de cargar
+    for h in data:
+        col_f = 'Fecha Corte' if 'Fecha Corte' in data[h].columns else 'Fecha'
+        data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f]).dt.date
 
+    fechas = sorted(data['CALENDARIO']['Fecha_dt'].unique(), reverse=True)
+    f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
+    
         # --- PORTADA ---
         st.markdown(f"""
             <div class="portada-container">
