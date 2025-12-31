@@ -30,7 +30,7 @@ try:
     # Procesar Fechas
     for h in df_all:
         col = 'Fecha Corte' if 'Fecha Corte' in df_all[h].columns else 'Fecha'
-        df_all[h]['Fecha_dt'] = pd.to_datetime(df_all[h][col]).dt.date
+        df_all[h]['Fecha_dt'] = pd.to_datetime(df_all[h][col], dayfirst=True).dt.date
 
     fechas = sorted(df_all['CALENDARIO']['Fecha_dt'].unique(), reverse=True)
     f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
