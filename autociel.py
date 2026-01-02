@@ -23,13 +23,13 @@ st.markdown("""
 def calcular_proyeccion(real, dias_t, dias_h):
     return (float(real) / float(dias_t)) * float(dias_h) if float(dias_t) > 0 else 0
 
-# --- CARGA DESDE GOOGLE SHEETS (SIN CACHÉ PARA FORZAR ACTUALIZACIÓN) ---
+# --- CARGA DESDE GOOGLE SHEETS (SIN CACHÉ PARA ACTUALIZACIÓN INMEDIATA) ---
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
     data_dict = {}
     for h in hojas:
+        # Forzamos la descarga del CSV desde Google Sheets con decimal de coma
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
-        # Usamos decimal=',' porque tu Sheet usa comas
         df = pd.read_csv(url, decimal=',').fillna(0)
         data_dict[h] = df
     return data_dict
@@ -76,7 +76,7 @@ try:
         f_o = df[df['Fecha_dt'] == f_obj]
         return float(f_o[col].iloc[0]) if not f_o.empty else float(df[col].max())
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🏠 General", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🏠 General", "🛠️ Taller y Eficiencia", "📦 Repuestos", "🎨 Chapa y Pintura"])
 
     with tab1:
         cols = st.columns(4)
@@ -87,10 +87,10 @@ try:
         r_cs = float(cs_r['MO Pura']) + float(cs_r['MO Tercero']) + float(cs_r.get('Fact Repuestos', 0))
         
         metas = [
-            ("Servicios", r_mo, get_o('SERVICIOS', 'Obj MO Total')), 
-            ("Repuestos", r_rep, get_o('REPUESTOS', 'Obj Facturación Total')),
-            ("CyP Jujuy", r_cj, get_o('CyP JUJUY', 'Obj Facturación Total CyP Jujuy')), 
-            ("CyP Salta", r_cs, get_o('CyP SALTA', 'Obj Facturación Total CyP Salta'))
+            ("M.O. Servicios", r_mo, get_o('SERVICIOS', 'Obj MO Total')), 
+            ("Venta Repuestos", r_rep, get_o('REPUESTOS', 'Obj Facturación Total')),
+            ("Facturación CyP Jujuy", r_cj, get_o('CyP JUJUY', 'Obj Facturación Total CyP Jujuy')), 
+            ("Facturación CyP Salta", r_cs, get_o('CyP SALTA', 'Obj Facturación Total CyP Salta'))
         ]
 
         for i, (tit, real, obj) in enumerate(metas):
@@ -100,55 +100,64 @@ try:
             with cols[i]:
                 st.markdown(f"**{tit}**")
                 st.markdown(f"<h1 style='margin:0; color:#00235d; font-size: 32px;'>${real:,.0f}</h1>", unsafe_allow_html=True)
-                st.markdown(f"<p style='margin:0; font-size: 18px; color: #444; font-weight: 700;'>OBJETIVO: ${obj:,.0f}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='margin:0; font-size: 14px; color: #444; font-weight: 700;'>OBJ: ${obj:,.0f}</p>", unsafe_allow_html=True)
                 st.markdown(f"<div style='margin-top:10px;'><p style='color:{color}; font-size:18px; margin:0;'><b>Proy: {alc:.1%}</b></p></div>", unsafe_allow_html=True)
-                st.markdown(f'<div style="width:100%; background:#e0e0e0; height:8px; border-radius:10px;"><div style="width:{min(alc*100, 100)}%; background:{color}; height:8px; border-radius:10px;"></div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="width:100%; background:#e0e0e0; height:8px; border-radius:10px; margin-top:5px;"><div style="width:{min(alc*100, 100)}%; background:{color}; height:8px; border-radius:10px;"></div></div>', unsafe_allow_html=True)
 
     with tab2:
-        st.header("Flujo de Unidades y Performance")
-        c_u1, c_u2 = st.columns(2)
-        real_tus = float(s_r['CPUS']) + float(s_r['Otros Cargos'])
-        ind_taller = [("Total Unidades Servicio (TUS)", real_tus, get_o('SERVICIOS', 'Obj TUS')), 
-                      ("Cargos Clientes (CPUS)", float(s_r['CPUS']), get_o('SERVICIOS', 'Obj CPUS'))]
-        for i, (tit, real, obj) in enumerate(ind_taller):
-            p_cant = calcular_proyeccion(real, d_t, d_h)
-            alc = p_cant / obj if obj > 0 else 0
-            color_kpi = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
-            with (c_u1 if i == 0 else c_u2):
-                st.markdown(f"""<div style="border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; background-color: white; min-height: 180px;">
-                                <p style="font-size: 14px; color: #666; margin-bottom: 2px; font-weight: bold;">{tit}</p>
-                                <h1 style="margin: 0; font-size: 42px; color: #333;">{real:,.0f} <span style="font-size: 18px; color: #999;">/ Obj: {obj:,.0f}</span></h1>
-                                <p style="color: {color_kpi}; font-weight: bold; font-size: 18px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">↑ Proyección: {p_cant:,.0f} ({alc:.1%})</p></div>""", unsafe_allow_html=True)
+        st.header("Análisis de Horas y Eficiencia")
+        e1, e2, e3 = st.columns(3)
+        ht_tot = float(t_r['Hs Trabajadas CC']) + float(t_r['Hs Trabajadas CG']) + float(t_r['Hs Trabajadas CI'])
+        hf_tot = float(t_r['Hs Facturadas CC']) + float(t_r['Hs Facturadas CG']) + float(t_r['Hs Facturadas CI'])
+        ef_gl = hf_tot / ht_tot if ht_tot > 0 else 0
+        
+        e1.metric("Eficiencia Global", f"{ef_gl:.1%}")
+        e2.metric("Ocupación", f"{(ht_tot / float(t_r['Hs Disponibles Real']) if float(t_r['Hs Disponibles Real']) > 0 else 0):.1%}")
+        e3.metric("Productividad", f"{t_r.get('Productividad Taller %', 0):.1%}")
 
         st.markdown("---")
-        st.header("Composición de Horas")
-        ht_cc, ht_cg, ht_ci = float(t_r['Hs Trabajadas CC']), float(t_r['Hs Trabajadas CG']), float(t_r['Hs Trabajadas CI'])
-        hf_cc, hf_cg, hf_ci = float(t_r['Hs Facturadas CC']), float(t_r['Hs Facturadas CG']), float(t_r['Hs Facturadas CI'])
-        c_h1, c_h2 = st.columns(2)
-        with c_h1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Horas Trabajadas"), use_container_width=True)
-        with c_h2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Horas Facturadas"), use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            fig_ht = px.pie(values=[float(t_r['Hs Trabajadas CC']), float(t_r['Hs Trabajadas CG']), float(t_r['Hs Trabajadas CI'])], 
+                           names=["M.O. Cliente", "Garantía", "Interna"], hole=0.4, title="Horas Trabajadas",
+                           color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"])
+            fig_ht.update_traces(textinfo='percent+label')
+            st.plotly_chart(fig_ht, use_container_width=True)
+        with c2:
+            fig_hf = px.pie(values=[float(t_r['Hs Facturadas CC']), float(t_r['Hs Facturadas CG']), float(t_r['Hs Facturadas CI'])], 
+                           names=["M.O. Cliente", "Garantía", "Interna"], hole=0.4, title="Horas Facturadas",
+                           color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"])
+            fig_hf.update_traces(textinfo='percent+label')
+            st.plotly_chart(fig_hf, use_container_width=True)
 
     with tab3:
-        st.header("Márgenes por Canal (Repuestos)")
+        st.header("Márgenes de Repuestos por Canal")
         detalles = []
         for c in canales_rep:
             if f'Venta {c}' in r_r:
                 vb = float(r_r[f'Venta {c}'])
                 vn = vb - float(r_r.get(f'Descuento {c}', 0))
-                detalles.append({"Canal": c, "Venta Bruta": vb, "Margen $": vn - float(r_r.get(f'Costo {c}', 0)), "% Mg": ((vn - float(r_r.get(f'Costo {c}', 0)))/vn if vn>0 else 0)})
-        st.dataframe(pd.DataFrame(detalles).style.format({"Venta Bruta": "${:,.0f}", "Margen $": "${:,.0f}", "% Mg": "{:.1%}"}), use_container_width=True, hide_index=True)
+                mg_p = vn - float(r_r.get(f'Costo {c}', 0))
+                detalles.append({"Canal": c, "Venta Bruta": vb, "Margen $": mg_p, "% Mg": (mg_p/vn if vn>0 else 0)})
+        
+        df_rep = pd.DataFrame(detalles)
+        st.dataframe(df_rep.style.format({"Venta Bruta": "${:,.0f}", "Margen $": "${:,.0f}", "% Mg": "{:.1%}"}), use_container_width=True, hide_index=True)
+        
+        st.info(f"VALOR TOTAL DEL STOCK: ${float(r_r.get('Valor Stock', 0)):,.0f}")
 
     with tab4:
-        st.header("Chapa y Pintura")
-        sedes = [('Jujuy', cj_r, 'CyP JUJUY'), ('Salta', cs_r, 'CyP SALTA')]
-        cyp1, cyp2 = st.columns(2)
-        for i, (nom, row, sh) in enumerate(sedes):
-            with (cyp1 if i == 0 else cyp2):
-                st.markdown(f"""<div style="border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; background-color: white;">
-                                <h3>Sede {nom}</h3>
-                                <p>Paños Propios: <b>{row['Paños Propios']}</b></p>
-                                <p>Facturación MO: <b>${(float(row['MO Pura'])+float(row['MO Tercero'])):,.0f}</b></p></div>""", unsafe_allow_html=True)
-                st.plotly_chart(px.pie(values=[float(row['MO Pura']), float(row['MO Tercero'])], names=["MO Pura", "Terceros"], hole=0.4, title=f"Composición {nom}"), use_container_width=True)
+        st.header("Chapa y Pintura - Sede Jujuy y Salta")
+        cp_j, cp_s = st.columns(2)
+        sedes = [('Jujuy', cj_r, cp_j), ('Salta', cs_r, cp_s)]
+        for nom, row, col_web in sedes:
+            with col_web:
+                st.subheader(f"Sede {nom}")
+                st.metric("Paños Propios", f"{row['Paños Propios']}")
+                fig_cyp = px.pie(values=[float(row['MO Pura']), float(row['MO Tercero'])], 
+                               names=["M.O. Pura", "Terceros"], hole=0.4,
+                               color_discrete_sequence=["#00235d", "#00A8E8"])
+                fig_cyp.update_traces(textinfo='percent+label')
+                st.plotly_chart(fig_cyp, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Error técnico: {e}")
+    st.error(f"Error cargando los datos del Sheet: {e}")
