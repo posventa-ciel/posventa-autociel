@@ -23,14 +23,13 @@ st.markdown("""
 def calcular_proyeccion(real, dias_t, dias_h):
     return (float(real) / float(dias_t)) * float(dias_h) if float(dias_t) > 0 else 0
 
-# --- FUNCIÓN DE CARGA SIN CACHÉ PROLONGADA (Para ver cambios al instante) ---
-@st.cache_data(ttl=1) 
-def cargar_datos_desde_sheets(sheet_id):
+# --- CARGA DESDE GOOGLE SHEETS (SIN CACHÉ PARA FORZAR ACTUALIZACIÓN) ---
+def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
     data_dict = {}
     for h in hojas:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
-        # Forzamos lectura de comas como decimales
+        # Usamos decimal=',' porque tu Sheet usa comas
         df = pd.read_csv(url, decimal=',').fillna(0)
         data_dict[h] = df
     return data_dict
@@ -38,7 +37,7 @@ def cargar_datos_desde_sheets(sheet_id):
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
 try:
-    data = cargar_datos_desde_sheets(ID_SHEET)
+    data = cargar_datos(ID_SHEET)
 
     for h in data:
         col_f = 'Fecha Corte' if 'Fecha Corte' in data[h].columns else 'Fecha'
@@ -54,6 +53,7 @@ try:
     d_t, d_h = float(c_r['Días Transcurridos']), float(c_r['Días Hábiles Mes'])
     prog_t = d_t / d_h if d_h > 0 else 0
 
+    # --- PORTADA ---
     st.markdown(f"""
         <div class="portada-container">
             <div style="letter-spacing: 3px; opacity: 0.8; text-transform: uppercase;">Grupo CENOA</div>
@@ -120,16 +120,23 @@ try:
                                 <h1 style="margin: 0; font-size: 42px; color: #333;">{real:,.0f} <span style="font-size: 18px; color: #999;">/ Obj: {obj:,.0f}</span></h1>
                                 <p style="color: {color_kpi}; font-weight: bold; font-size: 18px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">↑ Proyección: {p_cant:,.0f} ({alc:.1%})</p></div>""", unsafe_allow_html=True)
 
+        st.markdown("---")
+        st.header("Composición de Horas")
+        ht_cc, ht_cg, ht_ci = float(t_r['Hs Trabajadas CC']), float(t_r['Hs Trabajadas CG']), float(t_r['Hs Trabajadas CI'])
+        hf_cc, hf_cg, hf_ci = float(t_r['Hs Facturadas CC']), float(t_r['Hs Facturadas CG']), float(t_r['Hs Facturadas CI'])
+        c_h1, c_h2 = st.columns(2)
+        with c_h1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Horas Trabajadas"), use_container_width=True)
+        with c_h2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Horas Facturadas"), use_container_width=True)
+
     with tab3:
-        st.header("Repuestos")
-        canales = ['Mostrador', 'Taller', 'Interna', 'Garantía', 'CyP', 'Mayorista', 'Seguros']
+        st.header("Márgenes por Canal (Repuestos)")
         detalles = []
-        for c in canales:
+        for c in canales_rep:
             if f'Venta {c}' in r_r:
                 vb = float(r_r[f'Venta {c}'])
                 vn = vb - float(r_r.get(f'Descuento {c}', 0))
-                detalles.append({"Canal": c, "Venta Bruta": vb, "Margen %": ((vn - float(r_r.get(f'Costo {c}', 0)))/vn if vn>0 else 0)})
-        st.table(pd.DataFrame(detalles))
+                detalles.append({"Canal": c, "Venta Bruta": vb, "Margen $": vn - float(r_r.get(f'Costo {c}', 0)), "% Mg": ((vn - float(r_r.get(f'Costo {c}', 0)))/vn if vn>0 else 0)})
+        st.dataframe(pd.DataFrame(detalles).style.format({"Venta Bruta": "${:,.0f}", "Margen $": "${:,.0f}", "% Mg": "{:.1%}"}), use_container_width=True, hide_index=True)
 
     with tab4:
         st.header("Chapa y Pintura")
@@ -137,8 +144,11 @@ try:
         cyp1, cyp2 = st.columns(2)
         for i, (nom, row, sh) in enumerate(sedes):
             with (cyp1 if i == 0 else cyp2):
-                st.metric(f"Paños Propios {nom}", f"{row['Paños Propios']}")
-                st.metric(f"Facturación MO {nom}", f"${(float(row['MO Pura'])+float(row['MO Tercero'])):,.0f}")
+                st.markdown(f"""<div style="border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; background-color: white;">
+                                <h3>Sede {nom}</h3>
+                                <p>Paños Propios: <b>{row['Paños Propios']}</b></p>
+                                <p>Facturación MO: <b>${(float(row['MO Pura'])+float(row['MO Tercero'])):,.0f}</b></p></div>""", unsafe_allow_html=True)
+                st.plotly_chart(px.pie(values=[float(row['MO Pura']), float(row['MO Tercero'])], names=["MO Pura", "Terceros"], hole=0.4, title=f"Composición {nom}"), use_container_width=True)
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
