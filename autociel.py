@@ -3,9 +3,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Grupo CENOA - Gestión Posventa Pro", layout="wide")
+st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO MEJORADO (Cuadros simétricos y profesionales) ---
+# --- ESTILO CORREGIDO (Simetría total) ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
@@ -18,15 +18,12 @@ st.markdown("""<style>
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
-# --- FUNCIÓN DE BÚSQUEDA ---
 def find_col(df, include_keywords, exclude_keywords=[]):
     for col in df.columns:
         if all(k.upper() in col for k in include_keywords):
-            if not any(x.upper() in col for x in exclude_keywords):
-                return col
+            if not any(x.upper() in col for x in exclude_keywords): return col
     return ""
 
-# --- CARGA DE DATOS ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
@@ -36,7 +33,7 @@ def cargar_datos(sheet_id):
         df = pd.read_csv(url, dtype=str).fillna("0")
         df.columns = [c.strip().upper().replace(".", "") for c in df.columns]
         for col in df.columns:
-            if "FECHA" not in col and "CANAL" not in col and "ESTADO" not in col:
+            if "FECHA" not in col and "CANAL" not in col:
                 df[col] = df[col].astype(str).str.replace(r'[\$%\s]', '', regex=True).str.replace(',', '.')
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
         data_dict[h] = df
@@ -52,7 +49,6 @@ try:
         data[h]['Mes'] = data[h]['Fecha_dt'].dt.month
         data[h]['Año'] = data[h]['Fecha_dt'].dt.year
 
-    # --- FILTROS ---
     años_disp = sorted([int(a) for a in data['CALENDARIO']['Año'].unique() if a > 0], reverse=True)
     año_sel = st.sidebar.selectbox("📅 Año", años_disp)
     meses_nom = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
@@ -101,7 +97,7 @@ try:
             p = (real/d_t)*d_h if d_t > 0 else 0; alc = p/obj if obj > 0 else 0
             color = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
             cols[i].markdown(f"""<div class="area-box">
-                <div><p style="font-weight:bold; color:#666; margin-bottom:5px;">{tit}</p><h2 style="color:#00235d;">${real:,.0f}</h2><p style="font-size:13px; color:#999;">Obj: ${obj:,.0f}</p></div>
+                <div><p style="font-weight:bold; color:#666;">{tit}</p><h2 style="color:#00235d;">${real:,.0f}</h2><p style="font-size:12px; color:#999;">Obj: ${obj:,.0f}</p></div>
                 <div><p style="color:{color}; font-weight:bold; margin:0;">Proy: {alc:.1%}</p>
                 <div style="width:100%; background:#e0e0e0; height:8px; border-radius:10px;"><div style="width:{min(alc*100, 100)}%; background:{color}; height:8px; border-radius:10px;"></div></div>
                 </div></div>""", unsafe_allow_html=True)
@@ -145,7 +141,7 @@ try:
                 st.plotly_chart(px.line(hist_t, x='Mes', y='EF', markers=True, title="Evolución Eficiencia"), use_container_width=True)
 
     with tab3:
-        st.header("Repuestos")
+        st.header("Análisis de Repuestos")
         detalles = []
         for c in canales_totales:
             v_col = find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"])
