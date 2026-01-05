@@ -15,7 +15,7 @@ st.markdown("""<style>
         padding: 20px; 
         border-radius: 12px; 
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-        min-height: 320px; /* Altura aumentada para simetría total */
+        min-height: 320px; /* Altura para simetría total */
         margin-bottom: 20px; 
     }
     .stMetric { background-color: white; border: 1px solid #e0e0e0; padding: 15px; border-radius: 10px; }
@@ -98,10 +98,10 @@ try:
             col_v = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
             if col_v: r_rep += r_r.get(col_v, 0)
         
-        # SUMA SALTA CORREGIDA (Pura + Terceros + Repuestos)
+        # SUMA SALTA (Pura + Terceros + Repuestos)
         f_p_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0)
         f_t_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0)
-        f_r_s = cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0) # Columna F
+        f_r_s = cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0) 
         total_salta_home = f_p_s + f_t_s + f_r_s
 
         metas = [
@@ -153,7 +153,6 @@ try:
         card(k1, "TUS Total", real_tus, obj_tus, p_tus, alc_tus)
         card(k2, "CPUS (Cargos Cliente)", real_cpus, obj_cpus, p_cpus, alc_cpus)
 
-        # Ticket Promedio
         divisor = real_cpus if real_cpus > 0 else 1
         col_hs_cc = find_col(data['TALLER'], ["FACT", "CC"], exclude_keywords=["$", "PESOS", "OBJ"])
         col_hs_cg = find_col(data['TALLER'], ["FACT", "CG"], exclude_keywords=["$", "PESOS", "OBJ"])
@@ -164,13 +163,12 @@ try:
         k4.metric("Ticket Promedio M.O. ($)", f"${tp_mo:,.0f}/CPUS")
         
         st.markdown("---")
-        # GRÁFICOS DE COMPOSICIÓN DE HORAS
-        st.subheader("Composición de Horas")
+        st.subheader("Indicadores de Taller")
         col_tr_cc = find_col(data['TALLER'], ["TRAB", "CC"], exclude_keywords=["$"])
         col_tr_cg = find_col(data['TALLER'], ["TRAB", "CG"], exclude_keywords=["$"])
         col_tr_ci = find_col(data['TALLER'], ["TRAB", "CI"], exclude_keywords=["$"])
-        col_ft_cc = find_col(data['TALLER'], ["FACT", "CC"], exclude_keywords=["$"])
-        col_ft_cg = find_col(data['TALLER'], ["FACT", "CG"], exclude_keywords=["$"])
+        col_ft_cc = col_hs_cc
+        col_ft_cg = col_hs_cg
         col_ft_ci = find_col(data['TALLER'], ["FACT", "CI"], exclude_keywords=["$"])
 
         ht_vals = [t_r.get(col_tr_cc, 0), t_r.get(col_tr_cg, 0), t_r.get(col_tr_ci, 0)]
@@ -180,8 +178,6 @@ try:
         with g1: st.plotly_chart(px.pie(values=ht_vals, names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
         with g2: st.plotly_chart(px.pie(values=hf_vals, names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
-        # --- INDICADORES DE TALLER ---
-        st.subheader("Indicadores de Taller")
         ht_cc, ht_cg, ht_ci = t_r.get(col_tr_cc, 0), t_r.get(col_tr_cg, 0), t_r.get(col_tr_ci, 0)
         hf_cc, hf_cg, hf_ci = t_r.get(col_ft_cc, 0), t_r.get(col_ft_cg, 0), t_r.get(col_ft_ci, 0)
         
@@ -192,8 +188,8 @@ try:
         hs_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
         ocup = (ht_cc + ht_cg + ht_ci) / hs_disp if hs_disp > 0 else 0
         
-        # PRESENCIA CORREGIDA
-        hs_ideales = 6 * 9 * d_t 
+        # --- GRADO DE PRESENCIA (FÓRMULA 8 HS) ---
+        hs_ideales = 6 * 8 * d_t 
         presencia = hs_disp / hs_ideales if hs_ideales > 0 else 0
         
         prod = t_r.get(find_col(data['TALLER'], ["PRODUCTIVIDAD", "TALLER"]), 0)
