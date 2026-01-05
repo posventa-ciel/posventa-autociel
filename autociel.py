@@ -265,17 +265,17 @@ try:
                     m_rep = f_r - c_rep
                     st.markdown(f"<div style='background:#e8f5e9; padding:10px; border-radius:8px; border-left: 5px solid #28a745; margin-top:5px;'><b>Repuestos:</b> Fact: ${f_r:,.0f} | Costo: ${c_rep:,.0f} | <b>Mg: ${m_rep:,.0f}</b></div>", unsafe_allow_html=True)
                 
-                # --- PAÑOS POR TÉCNICO (CÁLCULO CORREGIDO) ---
-                panos = row.get(find_col(data[sh], ['PAÑOS', 'PROP']), 0)
-                # Buscamos columnas de cantidad (no de porcentaje)
-                col_tecnicos = find_col(data[sh], ['CANT', 'TEC'], exclude_keywords=['PRODUCTIVIDAD'])
-                if not col_tecnicos: col_tecnicos = find_col(data[sh], ['OFICIALES'], exclude_keywords=['PRODUCTIVIDAD'])
-                if not col_tecnicos: col_tecnicos = find_col(data[sh], ['TECNICOS'], exclude_keywords=['PRODUCTIVIDAD'])
+                # --- PAÑOS POR TÉCNICO (CÁLCULO CORREGIDO DEFINITIVO) ---
+                col_panos_real = find_col(data[sh], ['PAÑOS', 'PROP'], exclude_keywords=['OBJ'])
+                val_panos = row.get(col_panos_real, 0)
+
+                col_tech = find_col(data[sh], ['CANT', 'TEC'], exclude_keywords=['OBJ', 'META'])
+                if not col_tech: col_tech = find_col(data[sh], ['TECNICOS'], exclude_keywords=['OBJ', 'META', 'PRODUCTIVIDAD', '%'])
                 
-                cant_tecnicos = row.get(col_tecnicos, 1) # Si no encuentra, usa 1 para no romper
-                if cant_tecnicos == 0: cant_tecnicos = 1
+                val_tech = row.get(col_tech, 1)
+                if val_tech == 0: val_tech = 1
                 
-                ratio = panos / cant_tecnicos
+                ratio = val_panos / val_tech
                 st.metric("Paños por Técnico", f"{ratio:.1f}")
 
 except Exception as e:
