@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CORPORATIVO ---
+# --- ESTILO ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
@@ -77,14 +77,15 @@ try:
         c_mt = find_col(data['SERVICIOS'], ["MO", "TER"], ["OBJ", "HS"])
         r_mo = s_r.get(c_mc,0) + s_r.get(c_mg,0) + s_r.get(c_mt,0)
         
-        canales_tot = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
-        r_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"]), 0) for c in canales_tot])
+        canales_totales = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
+        r_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"]), 0) for c in canales_totales])
         
-        metas = [("Servicios", r_mo, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
-                 ("Repuestos", r_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
-                 ("CyP Jujuy", cj_r.get(find_col(data['CyP JUJUY'], ["MO", "PUR"]), 0) + cj_r.get(find_col(data['CyP JUJUY'], ["MO", "TER"]), 0), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
-                 ("CyP Salta", cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0) + cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0) + cs_r.get('FACTREPUESTOS', 0), cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))]
-        
+        metas = [
+            ("M.O. Servicios", r_mo, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
+            ("Repuestos", r_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
+            ("CyP Jujuy", cj_r.get(find_col(data['CyP JUJUY'], ["MO", "PUR"]), 0) + cj_r.get(find_col(data['CyP JUJUY'], ["MO", "TER"]), 0), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
+            ("CyP Salta", cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0) + cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0) + cs_r.get('FACTREPUESTOS', 0), cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
+        ]
         for i, (tit, real, obj) in enumerate(metas):
             p = (real/d_t)*d_h if d_t > 0 else 0; alc = p/obj if obj > 0 else 0
             color = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
@@ -98,23 +99,21 @@ try:
         st.header("Performance y Tickets")
         k1, k2, k3, k4 = st.columns(4)
         c_cpus_r = find_col(data['SERVICIOS'], ["CPUS"], ["OBJ", "META"])
-        real_tus = s_r.get(c_cpus_r, 0) + s_r.get(find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], ["OBJ"]), 0)
         real_cpus = s_r.get(c_cpus_r, 0)
+        real_tus = real_cpus + s_r.get(find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], ["OBJ"]), 0)
         obj_tus, obj_cpus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'TUS']), 1), s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'CPUS']), 1)
         
-        p_tus, p_cpus = (real_tus/d_t)*d_h if d_t > 0 else 0, (real_cpus/d_t)*d_h if d_t > 0 else 0
-        
-        # COLORES POR PROYECCIÓN (No siempre verde)
-        c_tus = "#28a745" if (p_tus/obj_tus) >= 0.95 else "#dc3545"
-        c_cpus = "#28a745" if (p_cpus/obj_cpus) >= 0.95 else "#dc3545"
+        # COLORES SEGÚN OBJETIVO
+        c_tus_color = "normal" if (real_tus/obj_tus) >= (d_t/d_h) else "inverse"
+        c_cpus_color = "normal" if (real_cpus/obj_cpus) >= (d_t/d_h) else "inverse"
 
-        k1.metric("TUS Real", f"{real_tus:,.0f}", f"Obj: {obj_tus:,.0f}", delta_color="normal")
-        k2.metric("CPUS Real", f"{real_cpus:,.0f}", f"Obj: {obj_cpus:,.0f}", delta_color="normal")
+        k1.metric("TUS Real", f"{real_tus:,.0f}", f"Obj: {obj_tus:,.0f}", delta_color=c_tus_color)
+        k2.metric("CPUS Real", f"{real_cpus:,.0f}", f"Obj: {obj_cpus:,.0f}", delta_color=c_cpus_color)
         
         divisor = real_cpus if real_cpus > 0 else 1
-        col_h_cc = find_col(data['TALLER'], ["FACT", "CC"], ["$"])
-        col_h_cg = find_col(data['TALLER'], ["FACT", "CG"], ["$"])
-        tp_hs = (t_r.get(col_h_cc, 0) + t_r.get(col_h_cg, 0)) / divisor
+        h_cc = t_r.get(find_col(data['TALLER'], ["FACT", "CC"], ["$"]), 0)
+        h_cg = t_r.get(find_col(data['TALLER'], ["FACT", "CG"], ["$"]), 0)
+        tp_hs = (h_cc + h_cg) / divisor
         tp_mo = (s_r.get(c_mc, 0) + s_r.get(c_mg, 0)) / divisor
         
         k3.metric("Ticket Promedio (Hs)", f"{tp_hs:.2f}")
@@ -123,7 +122,7 @@ try:
         st.markdown("---")
         st.subheader("Indicadores de Taller")
         col_tr_cc, col_tr_cg, col_tr_ci = find_col(data['TALLER'], ["TRAB", "CC"], ["$"]), find_col(data['TALLER'], ["TRAB", "CG"], ["$"]), find_col(data['TALLER'], ["TRAB", "CI"], ["$"])
-        col_ft_cc, col_ft_cg, col_ft_ci = col_h_cc, col_h_cg, find_col(data['TALLER'], ["FACT", "CI"], ["$"])
+        col_ft_cc, col_ft_cg, col_ft_ci = find_col(data['TALLER'], ["FACT", "CC"], ["$"]), find_col(data['TALLER'], ["FACT", "CG"], ["$"]), find_col(data['TALLER'], ["FACT", "CI"], ["$"])
         
         ht_tot = t_r.get(col_tr_cc, 0) + t_r.get(col_tr_cg, 0) + t_r.get(col_tr_ci, 0)
         hf_tot = t_r.get(col_ft_cc, 0) + t_r.get(col_ft_cg, 0) + t_r.get(col_ft_ci, 0)
@@ -141,15 +140,13 @@ try:
 
     with tab3:
         st.header("Repuestos")
-        # ORDENAR CANALES PARA LA TABLA
         canales_r = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
         detalles = []
         for c in canales_r:
             v_col = find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"])
             if v_col:
                 vb, d, cost = r_r.get(v_col, 0), r_r.get(find_col(data['REPUESTOS'], ["DESC", c]), 0), r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]), 0)
-                vn = vb - d; ut = vn - cost
-                detalles.append({"Canal": c.replace("GAR", "GARANTÍA"), "Bruta": vb, "Desc": d, "Costo": cost, "Margen $": ut, "% Mg": (ut/vn if vn>0 else 0)})
+                detalles.append({"Canal": c.replace("GAR", "GARANTÍA"), "Bruta": vb, "Desc": d, "Costo": cost, "Margen $": (vb-d-cost), "% Mg": ((vb-d-cost)/(vb-d) if (vb-d)>0 else 0)})
         st.dataframe(pd.DataFrame(detalles).style.format({"Bruta":"${:,.0f}", "Desc":"${:,.0f}", "Costo":"${:,.0f}", "Margen $":"${:,.0f}", "% Mg":"{:.1%}"}), use_container_width=True)
         
         rg1, rg2 = st.columns(2)
@@ -165,21 +162,21 @@ try:
         for i, (nom, row, sh) in enumerate([('Jujuy', cj_r, 'CyP JUJUY'), ('Salta', cs_r, 'CyP SALTA')]):
             with (c1 if i == 0 else c2):
                 st.subheader(f"Sede {nom}")
-                p_prop = row.get(find_col(data[sh], ["PAÑOS", "PROP"], ["OBJ", "META"]), 0)
-                # EXCLUSIÓN ESTRICTA PARA TÉCNICOS
+                # --- RATIO PAÑOS ---
+                p_prop = row.get(find_col(data[sh], ["PAÑOS", "PROP"], ["OBJ"]), 0)
                 col_t = find_col(data[sh], ["TEC"], ["OBJ", "META", "PROD", "%", "PAÑO", "HS"])
-                if not col_t: col_t = find_col(data[sh], ["PRODUCTIVOS"], ["OBJ", "META", "%"])
                 cant_t = row.get(col_t, 1)
                 
-                st.metric("Paños por Técnico", f"{(p_prop/cant_t if cant_t>0 else 0):.2f}")
+                st.metric("Paños por Técnico", f"{(p_prop/cant_t if cant_t > 0 else 0):.2f}")
                 
                 f_p, f_t = row.get(find_col(data[sh], ['MO', 'PUR']), 0), row.get(find_col(data[sh], ['MO', 'TER']), 0)
-                f_r = row.get(find_col(data[sh], ['FACT', 'REP']), 0) if nom == 'Salta' else 0
-                st.metric(f"Facturación Total {nom}", f"${(f_p + f_t + f_r):,.0f}")
+                # FACTURACIÓN COMPLETA (SALTA SUMA REPUESTOS)
+                f_r_extra = row.get(find_col(data[sh], ['FACT', 'REP']), 0) if nom == 'Salta' else 0
+                st.metric(f"Facturación Total {nom}", f"${(f_p + f_t + f_r_extra):,.0f}")
                 
-                # MÁRGENES TERCEROS
-                c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
-                st.markdown(f"<div style='background:#f1f3f6; padding:10px; border-radius:8px; border-left: 5px solid #00235d;'>Terceros {nom}: Fact: ${f_t:,.0f} | Costo: ${c_ter:,.0f} | Mg: ${(f_t-c_ter):,.0f}</div>", unsafe_allow_html=True)
-                
+                st.markdown(f"<div style='background:#f1f3f6; padding:10px; border-radius:8px; border-left: 5px solid #00235d;'><b>Terceros:</b> Fact: ${f_t:,.0f} | Mg: ${(f_t - row.get(find_col(data[sh], ['COSTO', 'TER']), 0)):,.0f}</div>", unsafe_allow_html=True)
+                if nom == 'Salta':
+                    st.markdown(f"<div style='background:#e8f5e9; padding:10px; border-radius:8px; border-left: 5px solid #28a745;'><b>Repuestos CyP:</b> Fact: ${f_r_extra:,.0f} | Mg: ${(f_r_extra - row.get(find_col(data[sh], ['COSTO', 'REP']), 0)):,.0f}</div>", unsafe_allow_html=True)
+
 except Exception as e:
-    st.error(f"Error técnico detectado: {e}")
+    st.error(f"Error detectado: {e}")
