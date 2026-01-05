@@ -20,12 +20,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-def calcular_proyeccion(real, dias_t, dias_h):
+# --- FUNCIÓN DE LIMPIEZA DE DATOS ---
+def limpiar_valor(v):
+    if isinstance(v, str):
+        # Quitamos símbolos que rompen la conversión a número
+        v = v.replace('%', '').replace('$', '').replace(' ', '').replace(',', '.')
     try:
-        return (float(real) / float(dias_t)) * float(dias_h) if float(dias_t) > 0 else 0
-    except: return 0
+        return float(v)
+    except:
+        return 0.0
 
-# --- PROCESADOR DE DATOS SEGURO ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
@@ -34,12 +38,10 @@ def cargar_datos(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         df = pd.read_csv(url, dtype=str).fillna("0")
         
-        # Limpieza de caracteres que rompen el código
+        # Convertimos todas las columnas numéricas a float real
         for col in df.columns:
             if col not in ['Fecha', 'Fecha Corte', 'Canal', 'Estado']:
-                df[col] = df[col].astype(str).str.replace(r'[%\$ ]', '', regex=True)
-                df[col] = df[col].str.replace(',', '.', regex=False)
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                df[col] = df[col].apply(limpiar_valor)
         data_dict[h] = df
     return data_dict
 
@@ -56,11 +58,11 @@ try:
     f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
     f_obj = f_sel.replace(day=1)
 
-    # --- VARIABLES CALENDARIO ---
+    # --- DATOS CALENDARIO ---
     c_r = data['CALENDARIO'][data['CALENDARIO']['Fecha_dt'] == f_sel].iloc[0]
     d_t = float(c_r['Días Transcurridos'])
     d_h = float(c_r['Días Hábiles Mes'])
-    prog_t = d_t / d_h if d_h > 0 else 0
+    prog_t = d_t / d_h if d_h > 0 else 0.0
 
     meses_es = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
                 7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
@@ -76,7 +78,7 @@ try:
         </div>
     """, unsafe_allow_html=True)
 
-    # Extracción de datos de las hojas
+    # Filas de datos
     s_r = data['SERVICIOS'][data['SERVICIOS']['Fecha_dt'] == f_sel].iloc[0]
     r_r = data['REPUESTOS'][data['REPUESTOS']['Fecha_dt'] == f_sel].iloc[0]
     t_r = data['TALLER'][data['TALLER']['Fecha_dt'] == f_sel].iloc[0]
@@ -86,7 +88,8 @@ try:
     def get_o(df_name, col):
         df = data[df_name]
         f_o = df[df['Fecha_dt'] == f_obj]
-        return float(f_o[col].iloc[0]) if not f_o.empty else float(df[col].max())
+        val = f_o[col].iloc[0] if not f_o.empty else df[col].max()
+        return float(val)
 
     tab1, tab2, tab3, tab4 = st.tabs(["🏠 General", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura"])
 
@@ -104,7 +107,7 @@ try:
                  ("CyP Salta", r_cs, get_o('CyP SALTA', 'Obj Facturación Total CyP Salta'))]
 
         for i, (tit, real, obj) in enumerate(metas):
-            p_pesos = calcular_proyeccion(real, d_t, d_h)
+            p_pesos = (real / d_t) * d_h if d_t > 0 else 0
             alc = p_pesos / obj if obj > 0 else 0
             color = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
             with cols[i]:
@@ -115,42 +118,59 @@ try:
                 st.markdown(f'<div style="width:100%; background:#e0e0e0; height:8px; border-radius:10px;"><div style="width:{min(alc*100, 100)}%; background:{color}; height:8px; border-radius:10px;"></div></div>', unsafe_allow_html=True)
 
     with tab2:
-        st.header("Flujo de Unidades y Eficiencia")
-        c1, c2 = st.columns(2)
+        st.header("Flujo de Unidades y Performance")
+        c_u1, c_u2 = st.columns(2)
         real_tus = s_r['CPUS'] + s_r['Otros Cargos']
-        with c1:
-            st.metric("Total Unidades Servicio (TUS)", f"{real_tus:,.0f}", f"{calcular_proyeccion(real_tus, d_t, d_h):,.0f} Proy.")
-        with c2:
-            st.metric("Cargos Clientes (CPUS)", f"{s_r['CPUS']:,.0f}", f"{calcular_proyeccion(s_r['CPUS'], d_t, d_h):,.0f} Proy.")
-        
+        for i, (tit, real, obj) in enumerate([("Total Unidades Servicio (TUS)", real_tus, get_o('SERVICIOS', 'Obj TUS')), 
+                                              ("Cargos Clientes (CPUS)", s_r['CPUS'], get_o('SERVICIOS', 'Obj CPUS'))]):
+            p_cant = (real / d_t) * d_h if d_t > 0 else 0
+            alc = p_cant / obj if obj > 0 else 0
+            color_kpi = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
+            with (c_u1 if i == 0 else c_u2):
+                st.markdown(f"""<div style="border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px; background-color: white;">
+                    <p style="font-weight: bold; color: #666;">{tit}</p>
+                    <h2 style="margin:0;">{real:,.0f} <span style="font-size:15px; color:#999;">/ Obj: {obj:,.0f}</span></h2>
+                    <p style="color:{color_kpi}; font-weight:bold; margin-top:10px;">↑ Proy: {p_cant:,.0f} ({alc:.1%})</p>
+                </div>""", unsafe_allow_html=True)
+
         st.markdown("---")
-        # Gráficos de Tortas originales
+        st.header("Composición de Horas y Eficiencia")
         g1, g2 = st.columns(2)
         with g1:
             st.plotly_chart(px.pie(values=[t_r['Hs Trabajadas CC'], t_r['Hs Trabajadas CG'], t_r['Hs Trabajadas CI']], 
-                                   names=["Cliente", "Garantía", "Interna"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
+                                   names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
         with g2:
             st.plotly_chart(px.pie(values=[t_r['Hs Facturadas CC'], t_r['Hs Facturadas CG'], t_r['Hs Facturadas CI']], 
-                                   names=["Cliente", "Garantía", "Interna"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
+                                   names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
+        
+        e1, e2, e3 = st.columns(3)
+        ht_tot = t_r['Hs Trabajadas CC'] + t_r['Hs Trabajadas CG'] + t_r['Hs Trabajadas CI']
+        hf_tot = t_r['Hs Facturadas CC'] + t_r['Hs Facturadas CG'] + t_r['Hs Facturadas CI']
+        e1.metric("Eficiencia Global", f"{(hf_tot/ht_tot if ht_tot>0 else 0):.1%}")
+        e2.metric("Ocupación", f"{(ht_tot/t_r['Hs Disponibles Real'] if t_r['Hs Disponibles Real']>0 else 0):.1%}")
+        e3.metric("Productividad", f"{(t_r.get('Productividad Taller %', 0)/100 if t_r.get('Productividad Taller %', 0)>1 else t_r.get('Productividad Taller %', 0)):.1%}")
 
     with tab3:
-        st.header("Análisis de Repuestos")
+        st.header("Análisis de Ventas y Márgenes de Repuestos")
         detalles = []
         for c in canales_rep:
             if f'Venta {c}' in r_r:
                 vn = r_r[f'Venta {c}'] - r_r.get(f'Descuento {c}', 0)
-                detalles.append({"Canal": c, "Venta Neta": vn, "Margen %": ((vn - r_r.get(f'Costo {c}', 0))/vn if vn>0 else 0)})
-        st.dataframe(pd.DataFrame(detalles).style.format({"Venta Neta": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+                mg = vn - r_r.get(f'Costo {c}', 0)
+                detalles.append({"Canal": c, "Venta Neta": vn, "Margen $": mg, "% Margen": (mg/vn if vn>0 else 0)})
+        st.dataframe(pd.DataFrame(detalles).style.format({"Venta Neta": "${:,.0f}", "Margen $": "${:,.0f}", "% Margen": "{:.1%}"}), use_container_width=True)
         st.info(f"VALOR TOTAL DEL STOCK: ${r_r.get('Valor Stock', 0):,.0f}")
 
     with tab4:
-        st.header("Chapa y Pintura")
-        cyp_j, cyp_s = st.columns(2)
+        st.header("Producción y Facturación Chapa y Pintura")
+        c1, c2 = st.columns(2)
         for i, (nom, row) in enumerate([('Jujuy', cj_r), ('Salta', cs_r)]):
-            with (cyp_j if i==0 else cyp_s):
+            with (c1 if i==0 else c2):
                 st.subheader(f"Sede {nom}")
                 st.metric("Paños Propios", f"{row['Paños Propios']:,.0f}")
-                st.plotly_chart(px.pie(values=[row['MO Pura'], row['MO Tercero']], names=["MO Pura", "Terceros"], hole=0.4, title=f"Facturación {nom}"), use_container_width=True)
+                st.plotly_chart(px.pie(values=[row['MO Pura'], row['MO Tercero']], names=["Propia", "Terceros"], hole=0.4, title=f"Origen MO {nom}"), use_container_width=True)
+                if nom == 'Salta':
+                    st.write(f"Fact. Repuestos: ${row.get('Fact Repuestos', 0):,.0f}")
 
 except Exception as e:
     st.error(f"Error cargando los datos del Sheet: {e}")
