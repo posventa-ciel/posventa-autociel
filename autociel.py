@@ -1,10 +1,3 @@
-Entiendo perfectamente. El error persiste porque alguna columna en tu Google Sheet tiene un formato de texto que "engaña" al código, y al intentar simplificarlo para que no falle, perdimos la riqueza visual de tu versión original.
-
-Vamos a solucionar esto con una versión final "Blindada". He reconstruido el código respetando cada gráfico, cada tabla y cada cálculo de tu código original, pero añadiendo un procesador de datos ultra-robusto que convierte todo a número antes de graficar.
-
-Código Completo y Restaurado (Copiar y Pegar todo)
-Python
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
