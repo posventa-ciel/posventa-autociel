@@ -31,6 +31,7 @@ def cargar_datos_sheets(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx:out:csv&sheet={h.replace(' ', '%20')}"
         df = pd.read_csv(url, dtype=str).fillna("0")
         for col in df.columns:
+            # Procesamiento de números: limpiar símbolos y comas
             if col not in ['Fecha', 'Fecha Corte', 'Canal', 'Estado']:
                 df[col] = df[col].astype(str).str.replace(r'[\$%\s]', '', regex=True).str.replace(',', '.')
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
@@ -42,9 +43,20 @@ ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 try:
     data = cargar_datos_sheets(ID_SHEET)
 
+    # Lógica inteligente para encontrar la columna de fecha correcta en cada hoja
     for h in data:
-        col_f = 'Fecha Corte' if 'Fecha Corte' in data[h].columns else 'Fecha'
-        data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f], dayfirst=True).dt.date
+        columnas = data[h].columns
+        col_fecha = None
+        if 'Fecha Corte' in columnas:
+            col_fecha = 'Fecha Corte'
+        elif 'Fecha' in columnas:
+            col_fecha = 'Fecha'
+        
+        if col_fecha:
+            data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_fecha], dayfirst=True).dt.date
+        else:
+            # Si una hoja no tiene fecha, usamos la de CALENDARIO por defecto para evitar errores
+            data[h]['Fecha_dt'] = pd.to_datetime(data['CALENDARIO'].iloc[:,0], dayfirst=True).dt.date
 
     fechas = sorted(data['CALENDARIO']['Fecha_dt'].unique(), reverse=True)
     f_sel = st.sidebar.selectbox("📅 Seleccionar Fecha", fechas)
@@ -63,11 +75,17 @@ try:
         <div class="status-line">📍 Autociel | 📅 {meses_es[f_sel.month]} {f_sel.year} | ⏱️ Avance: {d_t:g}/{d_h:g} días ({prog_t:.1%})</div>
     </div>""", unsafe_allow_html=True)
 
-    s_r = data['SERVICIOS'][data['SERVICIOS']['Fecha_dt'] == f_sel].iloc[0]
-    r_r = data['REPUESTOS'][data['REPUESTOS']['Fecha_dt'] == f_sel].iloc[0]
-    t_r = data['TALLER'][data['TALLER']['Fecha_dt'] == f_sel].iloc[0]
-    cj_r = data['CyP JUJUY'][data['CyP JUJUY']['Fecha_dt'] == f_sel].iloc[0]
-    cs_r = data['CyP SALTA'][data['CyP SALTA']['Fecha_dt'] == f_sel].iloc[0]
+    # Selección de filas filtradas por fecha
+    def get_row(sheet):
+        df = data[sheet]
+        res = df[df['Fecha_dt'] == f_sel]
+        return res.iloc[0] if not res.empty else df.iloc[-1]
+
+    s_r = get_row('SERVICIOS')
+    r_r = get_row('REPUESTOS')
+    t_r = get_row('TALLER')
+    cj_r = get_row('CyP JUJUY')
+    cs_r = get_row('CyP SALTA')
 
     def get_o(df_name, col):
         df = data[df_name]; f_o = df[df['Fecha_dt'] == f_obj]
