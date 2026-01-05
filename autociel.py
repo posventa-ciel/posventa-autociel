@@ -5,11 +5,19 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO ---
+# --- ESTILO CORREGIDO (Simetría de cuadros) ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
-    .area-box { background-color: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); min-height: 250px; margin-bottom: 20px; }
+    .area-box { 
+        background-color: white; 
+        border: 1px solid #e0e0e0; 
+        padding: 20px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+        min-height: 320px; /* Altura aumentada para simetría total */
+        margin-bottom: 20px; 
+    }
     .stMetric { background-color: white; border: 1px solid #e0e0e0; padding: 15px; border-radius: 10px; }
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
@@ -90,11 +98,17 @@ try:
             col_v = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
             if col_v: r_rep += r_r.get(col_v, 0)
         
+        # SUMA SALTA CORREGIDA (Pura + Terceros + Repuestos)
+        f_p_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0)
+        f_t_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0)
+        f_r_s = cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0) # Columna F
+        total_salta_home = f_p_s + f_t_s + f_r_s
+
         metas = [
             ("M.O. Servicios", r_mo, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
             ("Repuestos", r_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
             ("CyP Jujuy", cj_r.get(find_col(data['CyP JUJUY'], ["MO", "PUR"]), 0) + cj_r.get(find_col(data['CyP JUJUY'], ["MO", "TER"]), 0), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
-            ("CyP Salta", cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0) + cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0) + cs_r.get('FACTREPUESTOS', 0), cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
+            ("CyP Salta", total_salta_home, cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
         ]
         
         for i, (tit, real, obj) in enumerate(metas):
@@ -166,38 +180,32 @@ try:
         with g1: st.plotly_chart(px.pie(values=ht_vals, names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
         with g2: st.plotly_chart(px.pie(values=hf_vals, names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
-        # --- LOS 6 INDICADORES DE TALLER ---
+        # --- INDICADORES DE TALLER ---
         st.subheader("Indicadores de Taller")
-        # Definición de variables para indicadores
         ht_cc, ht_cg, ht_ci = t_r.get(col_tr_cc, 0), t_r.get(col_tr_cg, 0), t_r.get(col_tr_ci, 0)
         hf_cc, hf_cg, hf_ci = t_r.get(col_ft_cc, 0), t_r.get(col_ft_cg, 0), t_r.get(col_ft_ci, 0)
         
-        # Eficiencias
         ef_cc = hf_cc / ht_cc if ht_cc > 0 else 0
         ef_cg = hf_cg / ht_cg if ht_cg > 0 else 0
         ef_gl = (hf_cc + hf_cg + hf_ci) / (ht_cc + ht_cg + ht_ci) if (ht_cc + ht_cg + ht_ci) > 0 else 0
         
-        # Ocupación
         hs_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
         ocup = (ht_cc + ht_cg + ht_ci) / hs_disp if hs_disp > 0 else 0
         
-        # Presencia Estimada
-        hs_teoricas = 6 * 9 * d_t # Aproximado
-        presencia = hs_disp / hs_teoricas if hs_teoricas > 0 else 0
+        # PRESENCIA CORREGIDA
+        hs_ideales = 6 * 9 * d_t 
+        presencia = hs_disp / hs_ideales if hs_ideales > 0 else 0
         
-        # Productividad
         prod = t_r.get(find_col(data['TALLER'], ["PRODUCTIVIDAD", "TALLER"]), 0)
         if prod > 2: prod /= 100
 
-        # Fila 1: Eficiencias
         e1, e2, e3 = st.columns(3)
         e1.metric("Eficiencia CC", f"{ef_cc:.1%}", delta=f"{(ef_cc-1):.1%}")
         e2.metric("Eficiencia CG", f"{ef_cg:.1%}", delta=f"{(ef_cg-1):.1%}")
         e3.metric("Eficiencia Global", f"{ef_gl:.1%}", delta=f"{(ef_gl-0.85):.1%}")
         
-        # Fila 2: Presencia, Ocupación, Productividad
         e4, e5, e6 = st.columns(3)
-        e4.metric("Grado Presencia (Est.)", f"{presencia:.1%}")
+        e4.metric("Grado Presencia", f"{presencia:.1%}")
         e5.metric("Grado Ocupación", f"{ocup:.1%}", delta=f"{(ocup-0.95):.1%}")
         e6.metric("Productividad", f"{prod:.1%}", delta=f"{(prod-0.95):.1%}")
 
@@ -205,7 +213,6 @@ try:
         st.subheader("Evolución de Indicadores")
         hist_t = data['TALLER'][data['TALLER']['Año'] == año_sel].copy().groupby('Mes').last().reset_index()
         if not hist_t.empty:
-            # Recálculo histórico fila por fila
             hist_t['Tot_Trab'] = hist_t[col_tr_cc] + hist_t[col_tr_cg] + hist_t[col_tr_ci]
             hist_t['Tot_Fact'] = hist_t[col_ft_cc] + hist_t[col_ft_cg] + hist_t[col_ft_ci]
             hist_t['Eficiencia'] = hist_t['Tot_Fact'] / hist_t['Tot_Trab'].replace(0,1)
@@ -221,7 +228,7 @@ try:
 
     with tab3:
         st.header("Repuestos")
-        canales_r = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS'] # GAR incluye Garantía
+        canales_r = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
         detalles = []
         for c in canales_r:
             v_col = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
@@ -237,8 +244,6 @@ try:
         vbt = df_r['Bruta'].sum()
         mgt = df_r['Margen $'].sum()
         mgp = mgt / (vbt - df_r['Desc'].sum()) if (vbt - df_r['Desc'].sum())>0 else 0
-        
-        # Ticket Repuestos: Sumamos Taller + Garantía + CyP
         v_taller = df_r.loc[df_r['Canal'].isin(['TALLER', 'GARANTÍA', 'CYP']), 'Bruta'].sum()
         tp_rep = v_taller / divisor
         
@@ -274,7 +279,6 @@ try:
                 
                 st.plotly_chart(px.pie(values=[f_p, f_t, f_r] if f_r>0 else [f_p, f_t], names=["M.O. Pura", "M.O. Terceros", "Repuestos"] if f_r>0 else ["M.O. Pura", "M.O. Terceros"], hole=0.4, color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
                 
-                # Detalle Terceros
                 c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
                 m_ter = f_t - c_ter
                 st.markdown(f"<div style='background:#f1f3f6; padding:10px; border-radius:8px; border-left: 5px solid #00235d; margin-top:5px;'><b>Terceros:</b> Fact: ${f_t:,.0f} | Costo: ${c_ter:,.0f} | <b>Mg: ${m_ter:,.0f}</b></div>", unsafe_allow_html=True)
@@ -284,15 +288,10 @@ try:
                     m_rep = f_r - c_rep
                     st.markdown(f"<div style='background:#e8f5e9; padding:10px; border-radius:8px; border-left: 5px solid #28a745; margin-top:5px;'><b>Repuestos:</b> Fact: ${f_r:,.0f} | Costo: ${c_rep:,.0f} | <b>Mg: ${m_rep:,.0f}</b></div>", unsafe_allow_html=True)
                 
-                # Paños por Técnico (Corregido)
                 panos = row.get(find_col(data[sh], ['PAÑOS', 'PROP']), 0)
-                # Buscamos "TECNICOS" o "PRODUCTIVOS" excluyendo la palabra "PRODUCTIVIDAD"
-                col_tecnicos = find_col(data[sh], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
-                if not col_tecnicos: col_tecnicos = find_col(data[sh], ['PRODUCTIVOS'], exclude_keywords=['PRODUCTIVIDAD'])
-                
-                # Si no encuentra columna, asumimos 1 para evitar division por cero
+                col_tecnicos = find_col(data[sh], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD', 'OBJ', 'META'])
+                if not col_tecnicos: col_tecnicos = find_col(data[sh], ['PRODUCTIVOS'], exclude_keywords=['PRODUCTIVIDAD', 'OBJ', 'META'])
                 cant_tecnicos = row.get(col_tecnicos, 1) if col_tecnicos else 1
-                
                 ratio = panos / cant_tecnicos if cant_tecnicos > 0 else 0
                 st.metric("Paños por Técnico", f"{ratio:.1f}")
 
