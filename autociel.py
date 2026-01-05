@@ -20,24 +20,24 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-def calcular_proyeccion(real, dias_t, dias_h):
-    try:
-        return (float(real) / float(dias_t)) * float(dias_h) if float(dias_t) > 0 else 0
-    except: return 0
-
+# --- CARGA DESDE GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
     data_dict = {}
     for h in hojas:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
-        # Leemos todo como texto para limpiar manualmente
         df = pd.read_csv(url, dtype=str).fillna("0")
-        # Limpieza masiva de comas por puntos y conversión a números
+        
+        # Limpieza profunda de cada celda
         for col in df.columns:
             if col not in ['Fecha', 'Fecha Corte', 'Canal', 'Estado']:
-                df[col] = df[col].str.replace(',', '.').str.replace('%', '').str.strip()
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                # Quitamos símbolos, espacios y cambiamos comas por puntos
+                df[col] = df[col].astype(str).str.replace('%', '', regex=False)
+                df[col] = df[col].str.replace(',', '.', regex=False)
+                df[col] = df[col].str.strip()
+                # Convertimos a número real
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
         data_dict[h] = df
     return data_dict
 
@@ -56,10 +56,13 @@ try:
     meses_es = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
                 7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
     
+    # Aseguramos que d_t y d_h sean números
     c_r = data['CALENDARIO'][data['CALENDARIO']['Fecha_dt'] == f_sel].iloc[0]
-    d_t, d_h = float(c_r['Días Transcurridos']), float(c_r['Días Hábiles Mes'])
-    prog_t = d_t / d_h if d_h > 0 else 0
+    d_t = float(c_r['Días Transcurridos'])
+    d_h = float(c_r['Días Hábiles Mes'])
+    prog_t = float(d_t / d_h) if d_h > 0 else 0.0
 
+    # --- PORTADA ---
     st.markdown(f"""
         <div class="portada-container">
             <div style="letter-spacing: 3px; opacity: 0.8; text-transform: uppercase;">Grupo CENOA</div>
@@ -71,6 +74,8 @@ try:
     """, unsafe_allow_html=True)
 
     f_obj = f_sel.replace(day=1)
+    
+    # Cargar filas y asegurar conversión a float de toda la fila
     s_r = data['SERVICIOS'][data['SERVICIOS']['Fecha_dt'] == f_sel].iloc[0]
     r_r = data['REPUESTOS'][data['REPUESTOS']['Fecha_dt'] == f_sel].iloc[0]
     t_r = data['TALLER'][data['TALLER']['Fecha_dt'] == f_sel].iloc[0]
@@ -101,7 +106,7 @@ try:
         ]
 
         for i, (tit, real, obj) in enumerate(metas):
-            p_pesos = calcular_proyeccion(real, d_t, d_h)
+            p_pesos = (real / d_t) * d_h if d_t > 0 else 0
             alc = p_pesos / obj if obj > 0 else 0
             color = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
             with cols[i]:
@@ -118,10 +123,10 @@ try:
         hf_tot = float(t_r['Hs Facturadas CC']) + float(t_r['Hs Facturadas CG']) + float(t_r['Hs Facturadas CI'])
         ef_gl = hf_tot / ht_tot if ht_tot > 0 else 0
         
-        # Corrección aquí: Usamos try/except o aseguramos float para las métricas
+        # Forzar productividad como porcentaje (si en el sheet está como 95, lo llevamos a 0.95)
         prod_val = float(t_r.get('Productividad Taller %', 0))
-        # Si el valor viene como 0.95 en el sheet pero queremos porcentaje, lo multiplicamos si es necesario.
-        # En este código asumimos que ya es decimal (0.95)
+        if prod_val > 2: prod_val = prod_val / 100
+
         e1.metric("Eficiencia Global", f"{ef_gl:.1%}")
         e2.metric("Ocupación", f"{(ht_tot / float(t_r['Hs Disponibles Real']) if float(t_r['Hs Disponibles Real']) > 0 else 0):.1%}")
         e3.metric("Productividad", f"{prod_val:.1%}")
