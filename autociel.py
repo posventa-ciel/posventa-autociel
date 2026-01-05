@@ -21,16 +21,23 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 def calcular_proyeccion(real, dias_t, dias_h):
-    return (float(real) / float(dias_t)) * float(dias_h) if float(dias_t) > 0 else 0
+    try:
+        return (float(real) / float(dias_t)) * float(dias_h) if float(dias_t) > 0 else 0
+    except: return 0
 
-# --- CARGA DESDE GOOGLE SHEETS (SIN CACHÉ PARA ACTUALIZACIÓN INMEDIATA) ---
+@st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
     data_dict = {}
     for h in hojas:
-        # Forzamos la descarga del CSV desde Google Sheets con decimal de coma
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
-        df = pd.read_csv(url, decimal=',').fillna(0)
+        # Leemos todo como texto para limpiar manualmente
+        df = pd.read_csv(url, dtype=str).fillna("0")
+        # Limpieza masiva de comas por puntos y conversión a números
+        for col in df.columns:
+            if col not in ['Fecha', 'Fecha Corte', 'Canal', 'Estado']:
+                df[col] = df[col].str.replace(',', '.').str.replace('%', '').str.strip()
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         data_dict[h] = df
     return data_dict
 
@@ -53,13 +60,12 @@ try:
     d_t, d_h = float(c_r['Días Transcurridos']), float(c_r['Días Hábiles Mes'])
     prog_t = d_t / d_h if d_h > 0 else 0
 
-    # --- PORTADA ---
     st.markdown(f"""
         <div class="portada-container">
             <div style="letter-spacing: 3px; opacity: 0.8; text-transform: uppercase;">Grupo CENOA</div>
             <div class="titulo-portada">Resumen General de Objetivos de Posventa</div>
             <div class="status-line">
-                📍 Autociel | 📅 {meses_es[f_sel.month]} {f_sel.year} | ⏱️ Avance: {d_t}/{d_h} días ({prog_t:.1%})
+                📍 Autociel | 📅 {meses_es[f_sel.month]} {f_sel.year} | ⏱️ Avance: {d_t:g}/{d_h:g} días ({prog_t:.1%})
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -74,7 +80,8 @@ try:
     def get_o(df_name, col):
         df = data[df_name]
         f_o = df[df['Fecha_dt'] == f_obj]
-        return float(f_o[col].iloc[0]) if not f_o.empty else float(df[col].max())
+        val = f_o[col].iloc[0] if not f_o.empty else df[col].max()
+        return float(val)
 
     tab1, tab2, tab3, tab4 = st.tabs(["🏠 General", "🛠️ Taller y Eficiencia", "📦 Repuestos", "🎨 Chapa y Pintura"])
 
@@ -111,9 +118,13 @@ try:
         hf_tot = float(t_r['Hs Facturadas CC']) + float(t_r['Hs Facturadas CG']) + float(t_r['Hs Facturadas CI'])
         ef_gl = hf_tot / ht_tot if ht_tot > 0 else 0
         
+        # Corrección aquí: Usamos try/except o aseguramos float para las métricas
+        prod_val = float(t_r.get('Productividad Taller %', 0))
+        # Si el valor viene como 0.95 en el sheet pero queremos porcentaje, lo multiplicamos si es necesario.
+        # En este código asumimos que ya es decimal (0.95)
         e1.metric("Eficiencia Global", f"{ef_gl:.1%}")
         e2.metric("Ocupación", f"{(ht_tot / float(t_r['Hs Disponibles Real']) if float(t_r['Hs Disponibles Real']) > 0 else 0):.1%}")
-        e3.metric("Productividad", f"{t_r.get('Productividad Taller %', 0):.1%}")
+        e3.metric("Productividad", f"{prod_val:.1%}")
 
         st.markdown("---")
         c1, c2 = st.columns(2)
@@ -142,17 +153,16 @@ try:
         
         df_rep = pd.DataFrame(detalles)
         st.dataframe(df_rep.style.format({"Venta Bruta": "${:,.0f}", "Margen $": "${:,.0f}", "% Mg": "{:.1%}"}), use_container_width=True, hide_index=True)
-        
         st.info(f"VALOR TOTAL DEL STOCK: ${float(r_r.get('Valor Stock', 0)):,.0f}")
 
     with tab4:
-        st.header("Chapa y Pintura - Sede Jujuy y Salta")
+        st.header("Chapa y Pintura")
         cp_j, cp_s = st.columns(2)
         sedes = [('Jujuy', cj_r, cp_j), ('Salta', cs_r, cp_s)]
         for nom, row, col_web in sedes:
             with col_web:
                 st.subheader(f"Sede {nom}")
-                st.metric("Paños Propios", f"{row['Paños Propios']}")
+                st.metric("Paños Propios", f"{int(float(row['Paños Propios']))}")
                 fig_cyp = px.pie(values=[float(row['MO Pura']), float(row['MO Tercero'])], 
                                names=["M.O. Pura", "Terceros"], hole=0.4,
                                color_discrete_sequence=["#00235d", "#00A8E8"])
