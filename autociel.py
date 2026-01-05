@@ -1,11 +1,3 @@
-Entendido. He tomado el código "limpio" que me pasaste y le he inyectado las funcionalidades que faltaban (Tickets Promedio, Históricos y selector de Año/Mes) sin romper la estructura visual que ya te gustaba.
-
-Además, he incluido la protección contra el error de la fecha (31/12/2025) para que no vuelva a aparecer.
-
-Aquí tienes el código completo y listo para usar:
-
-Python
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
