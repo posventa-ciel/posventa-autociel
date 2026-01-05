@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO ACTUALIZADO (Cuadros simétricos y limpios) ---
+# --- ESTILO ACTUALIZADO (Cuadros simétricos y altura fija) ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
@@ -15,7 +15,7 @@ st.markdown("""<style>
         padding: 20px; 
         border-radius: 12px; 
         box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-        min-height: 300px; /* Altura aumentada para asegurar simetría */
+        min-height: 320px; 
         margin-bottom: 20px; 
     }
     .stMetric { background-color: white; border: 1px solid #e0e0e0; padding: 15px; border-radius: 10px; }
@@ -68,12 +68,8 @@ try:
         res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)]
         return res.sort_values('Fecha_dt').iloc[-1] if not res.empty else df.iloc[-1]
 
-    c_r = get_mes_data(data['CALENDARIO'])
-    s_r = get_mes_data(data['SERVICIOS'])
-    r_r = get_mes_data(data['REPUESTOS'])
-    t_r = get_mes_data(data['TALLER'])
-    cj_r = get_mes_data(data['CyP JUJUY'])
-    cs_r = get_mes_data(data['CyP SALTA'])
+    c_r, s_r, r_r, t_r = get_mes_data(data['CALENDARIO']), get_mes_data(data['SERVICIOS']), get_mes_data(data['REPUESTOS']), get_mes_data(data['TALLER'])
+    cj_r, cs_r = get_mes_data(data['CyP JUJUY']), get_mes_data(data['CyP SALTA'])
 
     d_t = float(c_r.get(find_col(data['CALENDARIO'], ["DIAS", "TRANS"]), 1))
     d_h = float(c_r.get(find_col(data['CALENDARIO'], ["DIAS", "HAB"]), 1))
@@ -91,20 +87,19 @@ try:
         c_mt = find_col(data['SERVICIOS'], ["MO", "TER"], ["OBJ", "HS"])
         r_mo = s_r.get(c_mc,0) + s_r.get(c_mg,0) + s_r.get(c_mt,0)
         
-        canales_totales = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
-        r_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"]), 0) for c in canales_totales])
+        canales_tot = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
+        r_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"]), 0) for c in canales_tot])
         
-        # SUMA SALTA: PURA + TERCEROS + REPUESTOS (Columna F)
-        f_p_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0)
-        f_t_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0)
-        f_r_s = cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0) # Columna F
-        total_salta_gen = f_p_s + f_t_s + f_r_s
+        # FACTURACIÓN CYP SALTA (Pura + Terceros + Repuestos Columna F)
+        total_salta_home = cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0) + \
+                          cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0) + \
+                          cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0)
 
         metas = [
             ("M.O. Servicios", r_mo, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
             ("Repuestos", r_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
             ("CyP Jujuy", cj_r.get(find_col(data['CyP JUJUY'], ["MO", "PUR"]), 0) + cj_r.get(find_col(data['CyP JUJUY'], ["MO", "TER"]), 0), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
-            ("CyP Salta", total_salta_gen, cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
+            ("CyP Salta", total_salta_home, cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
         ]
         
         for i, (tit, real, obj) in enumerate(metas):
@@ -127,40 +122,46 @@ try:
     with tab2:
         st.header("Performance y Tickets")
         k1, k2, k3, k4 = st.columns(4)
-        c_cpus_real = find_col(data['SERVICIOS'], ["CPUS"], ["OBJ", "META"])
-        real_cpus = s_r.get(c_cpus_real, 0)
+        c_cpus_r = find_col(data['SERVICIOS'], ["CPUS"], ["OBJ", "META"])
+        real_cpus = s_r.get(c_cpus_r, 0)
         real_tus = real_cpus + s_r.get(find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], ["OBJ"]), 0)
         
         k1.metric("TUS Total", f"{real_tus:,.0f}")
         k2.metric("CPUS Cliente", f"{real_cpus:,.0f}")
 
         divisor = real_cpus if real_cpus > 0 else 1
-        col_hs_cc = find_col(data['TALLER'], ["FACT", "CC"], ["$"])
-        col_hs_cg = find_col(data['TALLER'], ["FACT", "CG"], ["$"])
-        tp_hs = (t_r.get(col_hs_cc, 0) + t_r.get(col_hs_cg, 0)) / divisor
+        col_h_cc = find_col(data['TALLER'], ["FACT", "CC"], ["$"])
+        col_h_cg = find_col(data['TALLER'], ["FACT", "CG"], ["$"])
+        tp_hs = (t_r.get(col_h_cc, 0) + t_r.get(col_h_cg, 0)) / divisor
         tp_mo = (s_r.get(c_mc, 0) + s_r.get(c_mg, 0)) / divisor
         
-        k3.metric("Ticket Promedio (Hs)", f"{tp_hs:.2f} hs/CPUS")
-        k4.metric("Ticket Promedio ($)", f"${tp_mo:,.0f}/CPUS")
+        k3.metric("Ticket Promedio (Hs)", f"{tp_hs:.2f}")
+        k4.metric("Ticket Promedio ($)", f"${tp_mo:,.0f}")
         
         st.markdown("---")
         st.subheader("Indicadores de Taller")
         h_disp_real = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
         
-        # --- CÁLCULO GRADO DE PRESENCIA (SOLICITADO) ---
-        # hs_ideales = 6 técnicos * 8 hs * días transcurridos
-        h_ideales = 6 * 8 * d_t
-        grado_presencia = h_disp_real / h_ideales if h_ideales > 0 else 0
+        # --- CÁLCULO GRADO DE PRESENCIA (hs_reales / (6 tech * 8 hs * dias_trans)) ---
+        presencia = h_disp_real / (6 * 8 * d_t) if d_t > 0 else 0
 
         i1, i2, i3 = st.columns(3)
         col_tr_cc, col_tr_cg, col_tr_ci = find_col(data['TALLER'], ["TRAB", "CC"], ["$"]), find_col(data['TALLER'], ["TRAB", "CG"], ["$"]), find_col(data['TALLER'], ["TRAB", "CI"], ["$"])
-        col_ft_cc, col_ft_cg, col_ft_ci = col_hs_cc, col_hs_cg, find_col(data['TALLER'], ["FACT", "CI"], ["$"])
         ht_tot = t_r.get(col_tr_cc, 0) + t_r.get(col_tr_cg, 0) + t_r.get(col_tr_ci, 0)
-        hf_tot = t_r.get(col_ft_cc, 0) + t_r.get(col_ft_cg, 0) + t_r.get(col_ft_ci, 0)
+        hf_tot = t_r.get(col_h_cc, 0) + t_r.get(col_h_cg, 0) + t_r.get(find_col(data['TALLER'], ["FACT", "CI"], ["$"]), 0)
         
         i1.metric("Eficiencia Global", f"{(hf_tot/ht_tot if ht_tot>0 else 0):.1%}")
         i2.metric("Grado Ocupación", f"{(ht_tot/h_disp_real if h_disp_real>0 else 0):.1%}")
-        i3.metric("Grado Presencia", f"{grado_presencia:.1%}")
+        i3.metric("Grado Presencia", f"{presencia:.1%}")
+
+        st.subheader("Evolución y Composición")
+        g1, g2 = st.columns(2)
+        with g1: st.plotly_chart(px.pie(values=[t_r.get(col_tr_cc, 0), t_r.get(col_tr_cg, 0), t_r.get(col_tr_ci, 0)], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
+        with g2: 
+            hist_t = data['TALLER'][data['TALLER']['Año'] == año_sel].copy().groupby('Mes').last().reset_index()
+            if not hist_t.empty:
+                hist_t['EF'] = (hist_t[col_h_cc]+hist_t[col_h_cg]) / (hist_t[col_tr_cc]+hist_t[col_tr_cg]).replace(0,1)
+                st.plotly_chart(px.line(hist_t, x='Mes', y='EF', markers=True, title="Evolución Eficiencia"), use_container_width=True)
 
     with tab3:
         st.header("Repuestos")
@@ -172,6 +173,13 @@ try:
                 vb, d, cost = r_r.get(v_col, 0), r_r.get(find_col(data['REPUESTOS'], ["DESC", c]), 0), r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]), 0)
                 detalles.append({"Canal": c.replace("GAR", "GARANTÍA"), "Bruta": vb, "Desc": d, "Costo": cost, "Margen $": (vb-d-cost), "% Mg": ((vb-d-cost)/(vb-d) if (vb-d)>0 else 0)})
         st.dataframe(pd.DataFrame(detalles).style.format({"Bruta":"${:,.0f}","Desc":"${:,.0f}","Costo":"${:,.0f}","Margen $":"${:,.0f}","% Mg":"{:.1%}"}), use_container_width=True)
+        
+        rg1, rg2 = st.columns(2)
+        with rg1: st.plotly_chart(px.pie(pd.DataFrame(detalles), values="Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
+        with rg2:
+            val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+            st.metric("Valor Total del Stock", f"${val_stock:,.0f}")
+            st.plotly_chart(px.pie(values=[70, 20, 10], names=["Vivo", "Obsoleto", "Muerto"], hole=0.4, title="Estado Stock", color_discrete_sequence=["#28a745","#ffc107","#dc3545"]), use_container_width=True)
 
     with tab4:
         st.header("Chapa y Pintura")
@@ -184,6 +192,14 @@ try:
                 st.metric(f"Facturación Total {nom}", f"${(f_p+f_t+f_r):,.0f}")
                 
                 st.plotly_chart(px.pie(values=[f_p, f_t, f_r] if f_r>0 else [f_p, f_t], names=["M.O. Pura", "M.O. Terceros", "Repuestos"] if f_r>0 else ["M.O. Pura", "M.O. Terceros"], hole=0.4, color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
+                
+                # Detalle Terceros
+                c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
+                st.markdown(f"<div style='background:#f1f3f6; padding:10px; border-radius:8px; border-left: 5px solid #00235d; margin-top:5px;'><b>Terceros:</b> Fact: ${f_t:,.0f} | Mg: ${(f_t-c_ter):,.0f}</div>", unsafe_allow_html=True)
+                
+                if nom == 'Salta':
+                    c_rep = row.get(find_col(data[sh], ['COSTO', 'REP']), 0)
+                    st.markdown(f"<div style='background:#e8f5e9; padding:10px; border-radius:8px; border-left: 5px solid #28a745; margin-top:5px;'><b>Repuestos:</b> Fact: ${f_r:,.0f} | Mg: ${(f_r-c_rep):,.0f}</div>", unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"Error técnico detectado: {e}")
