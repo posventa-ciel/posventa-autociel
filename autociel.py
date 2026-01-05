@@ -1,20 +1,3 @@
-Entendido. He corregido el cálculo manual del Ticket Promedio para que coincida exactamente con tu fórmula: (Hs Fact. CC + Hs Fact. CG) / CPUS.
-
-Además, he restaurado toda la sección de Indicadores de Taller (Eficiencia, Ocupación, Productividad) que se había perdido y agregué los Gráficos de Evolución Histórica para esos indicadores específicos, tal cual lo hacías en tu sheet.
-
-Cambios realizados en esta versión v2026.4:
-Ticket Promedio (Hs): Ahora suma estrictamente Hs Facturadas CC + Hs Facturadas CG y divide por CPUS.
-
-Indicadores Taller: Volvieron las métricas de Eficiencia Global, Ocupación y Productividad con sus semáforos.
-
-Gráficos Históricos: Agregué en la pestaña Servicios un gráfico de líneas que muestra cómo evolucionaron la Eficiencia, la Ocupación y la Productividad mes a mes.
-
-Stock Repuestos: Aseguré que el cartel azul con el "Valor Total Stock" aparezca visible.
-
-Aquí tienes el código completo corregido:
-
-Python
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
