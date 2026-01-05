@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO ---
+# --- ESTILO CORREGIDO (Simetría y profesionalismo) ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
@@ -36,7 +36,7 @@ def cargar_datos(sheet_id):
         df = pd.read_csv(url, dtype=str).fillna("0")
         df.columns = [c.strip().upper().replace(".", "") for c in df.columns]
         for col in df.columns:
-            if "FECHA" not in col and "CANAL" not in col:
+            if "FECHA" not in col and "CANAL" not in col and "ESTADO" not in col:
                 df[col] = df[col].astype(str).str.replace(r'[\$%\s]', '', regex=True).str.replace(',', '.')
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
         data_dict[h] = df
@@ -52,7 +52,7 @@ try:
         data[h]['Mes'] = data[h]['Fecha_dt'].dt.month
         data[h]['Año'] = data[h]['Fecha_dt'].dt.year
 
-    # FILTROS
+    # --- FILTROS ---
     años_disp = sorted([int(a) for a in data['CALENDARIO']['Año'].unique() if a > 0], reverse=True)
     año_sel = st.sidebar.selectbox("📅 Año", años_disp)
     meses_nom = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
@@ -77,113 +77,110 @@ try:
 
     with tab1:
         cols = st.columns(4)
-        c_mc = find_col(data['SERVICIOS'], ["MO", "CLI"], ["OBJ"])
-        c_mg = find_col(data['SERVICIOS'], ["MO", "GAR"], ["OBJ"])
-        c_mt = find_col(data['SERVICIOS'], ["MO", "TER"], ["OBJ"])
+        c_mc = find_col(data['SERVICIOS'], ["MO", "CLI"], ["OBJ", "HS"])
+        c_mg = find_col(data['SERVICIOS'], ["MO", "GAR"], ["OBJ", "HS"])
+        c_mt = find_col(data['SERVICIOS'], ["MO", "TER"], ["OBJ", "HS"])
         r_mo = s_r.get(c_mc,0) + s_r.get(c_mg,0) + s_r.get(c_mt,0)
         
         canales_tot = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
         r_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"]), 0) for c in canales_tot])
         
-        # SUMA SALTA (Pura + Terceros + Repuestos F)
-        total_salta_gen = cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0) + \
-                          cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0) + \
-                          cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0)
+        # SUMA SALTA (Pura + Terceros + Repuestos Columna F)
+        f_pura_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "PUR"]), 0)
+        f_ter_s = cs_r.get(find_col(data['CyP SALTA'], ["MO", "TER"]), 0)
+        f_rep_s = cs_r.get(find_col(data['CyP SALTA'], ["FACT", "REP"]), 0)
+        total_salta_home = f_pura_s + f_ter_s + f_rep_s
 
         metas = [
             ("M.O. Servicios", r_mo, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
             ("Repuestos", r_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
             ("CyP Jujuy", cj_r.get(find_col(data['CyP JUJUY'], ["MO", "PUR"]), 0) + cj_r.get(find_col(data['CyP JUJUY'], ["MO", "TER"]), 0), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
-            ("CyP Salta", total_salta_gen, cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
+            ("CyP Salta", total_salta_home, cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
         ]
         
         for i, (tit, real, obj) in enumerate(metas):
             p = (real/d_t)*d_h if d_t > 0 else 0; alc = p/obj if obj > 0 else 0
             color = "#dc3545" if alc < 0.90 else ("#ffc107" if alc < 0.95 else "#28a745")
             cols[i].markdown(f"""<div class="area-box">
-                <div><p style="font-weight:bold; color:#666; margin-bottom:5px;">{tit}</p><h2 style="color:#00235d;">${real:,.0f}</h2><p style="font-size:12px; color:#999;">Obj: ${obj:,.0f}</p></div>
-                <div><p style="color:{color}; font-weight:bold; margin:0;">Proy: {alc:.1%}</p>
+                <div><p style="font-weight:bold; color:#666;">{tit}</p><h2 style="color:#00235d;">${real:,.0f}</h2></div>
+                <div><p style="color:{color}; font-weight:bold;">Proy: {alc:.1%}</p>
                 <div style="width:100%; background:#e0e0e0; height:8px; border-radius:10px;"><div style="width:{min(alc*100, 100)}%; background:{color}; height:8px; border-radius:10px;"></div></div>
-                <p style="font-size:11px; color:#666; margin-top:5px;">Est. al cierre: ${p:,.0f}</p></div></div>""", unsafe_allow_html=True)
+                </div></div>""", unsafe_allow_html=True)
 
     with tab2:
-        st.header("Performance y Eficiencia")
-        k_cols = st.columns(4)
-        c_cpus = find_col(data['SERVICIOS'], ["CPUS"], ["OBJ"])
-        real_cpus = s_r.get(c_cpus, 1)
-        k_cols[0].metric("CPUS Cliente", f"{real_cpus:,.0f}")
+        st.header("Performance y Tickets")
+        k1, k2, k3, k4 = st.columns(4)
+        c_cpus_r = find_col(data['SERVICIOS'], ["CPUS"], ["OBJ", "META"])
+        real_cpus = s_r.get(c_cpus_r, 0)
+        real_tus = real_cpus + s_r.get(find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], ["OBJ"]), 0)
+        obj_tus, obj_cpus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'TUS']), 1), s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'CPUS']), 1)
         
-        col_h_cc, col_h_cg = find_col(data['TALLER'], ["FACT", "CC"]), find_col(data['TALLER'], ["FACT", "CG"])
-        tp_hs = (t_r.get(col_h_cc, 0) + t_r.get(col_h_cg, 0)) / (real_cpus if real_cpus > 0 else 1)
-        k_cols[1].metric("Ticket Promedio (Hs)", f"{tp_hs:.2f}")
+        k1.metric("TUS Total", f"{real_tus:,.0f}", f"Obj: {obj_tus:,.0f}")
+        k2.metric("CPUS Cliente", f"{real_cpus:,.0f}", f"Obj: {obj_cpus:,.0f}")
 
+        divisor = real_cpus if real_cpus > 0 else 1
+        col_h_cc, col_h_cg = find_col(data['TALLER'], ["FACT", "CC"], ["$"]), find_col(data['TALLER'], ["FACT", "CG"], ["$"])
+        tp_hs = (t_r.get(col_h_cc, 0) + t_r.get(col_h_cg, 0)) / divisor
+        tp_mo = (s_r.get(c_mc, 0) + s_r.get(c_mg, 0)) / divisor
+        k3.metric("Ticket Promedio (Hs)", f"{tp_hs:.2f} hs/CPUS")
+        k4.metric("Ticket Promedio ($)", f"${tp_mo:,.0f}/CPUS")
+        
         st.markdown("---")
         st.subheader("Indicadores de Taller")
-        col_tr_cc, col_tr_cg, col_tr_ci = find_col(data['TALLER'], ["TRAB", "CC"]), find_col(data['TALLER'], ["TRAB", "CG"]), find_col(data['TALLER'], ["TRAB", "CI"])
-        col_ft_cc, col_ft_cg, col_ft_ci = col_h_cc, col_h_cg, find_col(data['TALLER'], ["FACT", "CI"])
-        
-        ht_tot = t_r.get(col_tr_cc,0) + t_r.get(col_tr_cg,0) + t_r.get(col_tr_ci,0)
-        hf_tot = t_r.get(col_ft_cc,0) + t_r.get(col_ft_cg,0) + t_r.get(col_ft_ci,0)
-        h_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 1)
+        col_tr_cc, col_tr_cg, col_tr_ci = find_col(data['TALLER'], ["TRAB", "CC"], ["$"]), find_col(data['TALLER'], ["TRAB", "CG"], ["$"]), find_col(data['TALLER'], ["TRAB", "CI"], ["$"])
+        col_ft_cc, col_ft_cg, col_ft_ci = col_h_cc, col_h_cg, find_col(data['TALLER'], ["FACT", "CI"], ["$"])
+        ht_tot = t_r.get(col_tr_cc, 0) + t_r.get(col_tr_cg, 0) + t_r.get(col_tr_ci, 0)
+        hf_tot = t_r.get(col_ft_cc, 0) + t_r.get(col_ft_cg, 0) + t_r.get(col_ft_ci, 0)
+        h_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
         
         # PRESENCIA: Reales / (6 tech * 8 hs * dias trans)
-        h_ideales = 6 * 8 * d_t
-        presencia = h_disp / h_ideales if h_ideales > 0 else 0
-        ocupacion = ht_tot / h_disp if h_disp > 0 else 0
-        eficiencia = hf_tot / ht_tot if ht_tot > 0 else 0
-        
-        i_cols = st.columns(3)
-        i_cols[0].metric("Eficiencia Global", f"{eficiencia:.1%}")
-        i_cols[1].metric("Grado Ocupación", f"{ocupacion:.1%}")
-        i_cols[2].metric("Grado Presencia", f"{presencia:.1%}")
+        h_presencia = h_disp / (6 * 8 * d_t) if d_t > 0 else 0
 
+        i_cols = st.columns(3)
+        i_cols[0].metric("Eficiencia Global", f"{(hf_tot/ht_tot if ht_tot>0 else 0):.1%}")
+        i_cols[1].metric("Grado Ocupación", f"{(ht_tot/h_disp if h_disp>0 else 0):.1%}")
+        i_cols[2].metric("Grado Presencia", f"{h_presencia:.1%}")
+
+        st.subheader("Análisis de Carga y Evolución")
         g1, g2 = st.columns(2)
-        with g1: 
-            st.plotly_chart(px.pie(values=[t_r.get(col_tr_cc,0), t_r.get(col_tr_cg,0), t_r.get(col_tr_ci,0)], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
-        with g2: 
+        with g1: st.plotly_chart(px.pie(values=[t_r.get(col_tr_cc, 0), t_r.get(col_tr_cg, 0), t_r.get(col_tr_ci, 0)], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
+        with g2:
             hist_t = data['TALLER'][data['TALLER']['Año'] == año_sel].copy().groupby('Mes').last().reset_index()
             if not hist_t.empty:
-                hist_t['EF'] = (hist_t[col_ft_cc]+hist_t[col_ft_cg]+hist_t[col_ft_ci]) / (hist_t[col_tr_cc]+hist_t[col_tr_cg]+hist_t[col_tr_ci]).replace(0,1)
-                st.plotly_chart(px.line(hist_t, x='Mes', y='EF', markers=True, title="Evolución Eficiencia Global"), use_container_width=True)
+                hist_t['EF'] = (hist_t[col_ft_cc]+hist_t[col_ft_cg]) / (hist_t[col_tr_cc]+hist_t[col_tr_cg]).replace(0,1)
+                st.plotly_chart(px.line(hist_t, x='Mes', y='EF', markers=True, title="Evolución Eficiencia Facturable"), use_container_width=True)
 
     with tab3:
-        st.header("Análisis de Repuestos")
+        st.header("Gestión de Repuestos")
+        canales_r = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
         detalles = []
-        for c in canales_tot:
+        for c in canales_r:
             v_col = find_col(data['REPUESTOS'], ["VENTA", c], ["OBJ"])
             if v_col:
-                vb, d, cost = r_r.get(v_col,0), r_r.get(find_col(data['REPUESTOS'], ["DESC", c]),0), r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]),0)
-                detalles.append({"Canal": c, "Venta Bruta": vb, "Descuento": d, "Costo": cost, "Margen $": (vb-d-cost), "% Mg": ((vb-d-cost)/(vb-d) if (vb-d)>0 else 0)})
+                vb, d, cost = r_r.get(v_col, 0), r_r.get(find_col(data['REPUESTOS'], ["DESC", c]), 0), r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]), 0)
+                detalles.append({"Canal": c.replace("GAR", "GARANTÍA"), "Venta": vb, "Costo": cost, "Margen": (vb-d-cost)})
+        st.dataframe(pd.DataFrame(detalles).style.format({"Venta":"${:,.0f}", "Margen":"${:,.0f}"}), use_container_width=True)
         
-        df_rep = pd.DataFrame(detalles)
-        st.dataframe(df_rep.style.format({"Venta Bruta":"${:,.0f}", "Margen $":"${:,.0f}", "% Mg":"{:.1%}"}), use_container_width=True)
-        
-        r_cols = st.columns(2)
-        with r_cols[0]:
-            st.plotly_chart(px.pie(df_rep, values="Venta Bruta", names="Canal", hole=0.4, title="Mix de Facturación"), use_container_width=True)
-        with r_cols[1]:
+        rg1, rg2 = st.columns(2)
+        with rg1: st.plotly_chart(px.pie(pd.DataFrame(detalles), values="Venta", names="Canal", hole=0.4, title="Mix de Venta"), use_container_width=True)
+        with rg2:
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
-            st.metric("VALOR TOTAL STOCK", f"${val_stock:,.0f}")
-            st.plotly_chart(px.pie(values=[70, 20, 10], names=["Vivo", "Obsoleto", "Muerto"], hole=0.4, title="Estado del Inventario"), use_container_width=True)
+            st.metric("VALOR STOCK TOTAL", f"${val_stock:,.0f}")
+            st.plotly_chart(px.pie(values=[70, 20, 10], names=["Vivo", "Obsoleto", "Muerto"], hole=0.4, title="Estado Stock", color_discrete_sequence=["#28a745","#ffc107","#dc3545"]), use_container_width=True)
 
     with tab4:
         st.header("Chapa y Pintura")
-        c_cols = st.columns(2)
+        cf1, cf2 = st.columns(2)
         for i, (nom, row, sh) in enumerate([('Jujuy', cj_r, 'CyP JUJUY'), ('Salta', cs_r, 'CyP SALTA')]):
-            with c_cols[i]:
+            with (cf1 if i == 0 else cf2):
                 st.subheader(f"Sede {nom}")
-                f_pura, f_ter = row.get(find_col(data[sh], ['MO', 'PUR']), 0), row.get(find_col(data[sh], ['MO', 'TER']), 0)
-                f_rep_cyp = row.get(find_col(data[sh], ['FACT', 'REP']), 0) if nom == 'Salta' else 0
-                st.metric(f"Facturación Total {nom}", f"${(f_pura+f_ter+f_rep_cyp):,.0f}")
-                
-                st.plotly_chart(px.pie(values=[f_pura, f_ter, f_rep_cyp] if f_rep_cyp>0 else [f_pura, f_ter], 
-                                     names=["Pura", "Terceros", "Repuestos"] if f_rep_cyp>0 else ["Pura", "Terceros"], 
-                                     hole=0.4, title=f"Mix de Ingresos {nom}",
-                                     color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
+                f_p, f_t = row.get(find_col(data[sh], ['MO', 'PUR']), 0), row.get(find_col(data[sh], ['MO', 'TER']), 0)
+                f_r = row.get(find_col(data[sh], ['FACT', 'REP']), 0) if nom == 'Salta' else 0
+                st.metric(f"Facturación Total {nom}", f"${(f_p+f_t+f_r):,.0f}")
+                st.plotly_chart(px.pie(values=[f_p, f_t, f_r] if f_r>0 else [f_p, f_t], names=["Pura", "Terceros", "Repuestos"] if f_r>0 else ["Pura", "Terceros"], hole=0.4, color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
                 
                 c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
-                st.markdown(f"""<div style='background:#f1f3f6; padding:15px; border-radius:10px; border-left: 5px solid #00235d;'>
-                <b>Terceros {nom}:</b> Fact: ${f_ter:,.0f} | Mg: ${(f_ter-c_ter):,.0f}</div>""", unsafe_allow_html=True)
+                st.markdown(f"<div style='background:#f1f3f6; padding:10px; border-radius:8px; border-left: 5px solid #00235d;'><b>Terceros:</b> Fact: ${f_t:,.0f} | Mg: ${(f_t-c_ter):,.0f}</div>", unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Error técnico detectado: {e}")
+    st.error(f"Error detectado: {e}")
