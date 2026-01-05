@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CORPORATIVO (Mantenido) ---
+# --- ESTILO CORPORATIVO ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
@@ -85,8 +85,8 @@ try:
         
         canales_totales = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
         r_rep = 0
-        for canal_rep in canales_totales:
-            col_v = find_col(data['REPUESTOS'], ["VENTA", canal_rep], exclude_keywords=["OBJ"])
+        for c in canales_totales:
+            col_v = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
             if col_v: r_rep += r_r.get(col_v, 0)
         
         metas = [
@@ -117,21 +117,15 @@ try:
         st.header("Performance y Tickets")
         k1, k2, k3, k4 = st.columns(4)
         c_cpus_real = find_col(data['SERVICIOS'], ["CPUS"], exclude_keywords=["OBJ", "META"])
-        c_tus_real = find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], exclude_keywords=["OBJ"])
+        real_tus = s_r.get(c_cpus_real, 0) + s_r.get(find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], exclude_keywords=["OBJ"]), 0)
         
-        real_tus = s_r.get(c_cpus_real, 0) + s_r.get(c_tus_real, 0)
-        obj_tus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'TUS']), 1)
         real_cpus = s_r.get(c_cpus_real, 0)
+        obj_tus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'TUS']), 1)
         obj_cpus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'CPUS']), 1)
 
-        p_tus = (real_tus/d_t)*d_h if d_t > 0 else 0; alc_tus = p_tus/obj_tus if obj_tus > 0 else 0
-        p_cpus = (real_cpus/d_t)*d_h if d_t > 0 else 0; alc_cpus = p_cpus/obj_cpus if obj_cpus > 0 else 0
+        with k1: st.metric("TUS Total", f"{real_tus:,.0f}", f"Obj: {obj_tus:,.0f}")
+        with k2: st.metric("CPUS Cliente", f"{real_cpus:,.0f}", f"Obj: {obj_cpus:,.0f}")
 
-        # Tarjetas de flujo
-        with k1: st.metric("TUS Total", f"{real_tus:,.0f}", f"Proy: {p_tus:,.0f}")
-        with k2: st.metric("CPUS Cliente", f"{real_cpus:,.0f}", f"Proy: {p_cpus:,.0f}")
-
-        # Ticket Promedio
         divisor = real_cpus if real_cpus > 0 else 1
         col_hs_cc = find_col(data['TALLER'], ["FACT", "CC"], exclude_keywords=["$", "PESOS", "OBJ"])
         col_hs_cg = find_col(data['TALLER'], ["FACT", "CG"], exclude_keywords=["$", "PESOS", "OBJ"])
@@ -142,53 +136,34 @@ try:
         with k4: st.metric("Ticket Promedio ($)", f"${tp_mo:,.0f}/CPUS")
         
         st.markdown("---")
-        # COMPOSICIÓN DE HORAS
         st.subheader("Composición de Horas")
         col_tr_cc = find_col(data['TALLER'], ["TRAB", "CC"], exclude_keywords=["$"])
         col_tr_cg = find_col(data['TALLER'], ["TRAB", "CG"], exclude_keywords=["$"])
         col_tr_ci = find_col(data['TALLER'], ["TRAB", "CI"], exclude_keywords=["$"])
-        col_ft_cc = find_col(data['TALLER'], ["FACT", "CC"], exclude_keywords=["$"])
-        col_ft_cg = find_col(data['TALLER'], ["FACT", "CG"], exclude_keywords=["$"])
+        col_ft_cc = col_hs_cc
+        col_ft_cg = col_hs_cg
         col_ft_ci = find_col(data['TALLER'], ["FACT", "CI"], exclude_keywords=["$"])
 
         g1, g2 = st.columns(2)
         with g1: st.plotly_chart(px.pie(values=[t_r.get(col_tr_cc, 0), t_r.get(col_tr_cg, 0), t_r.get(col_tr_ci, 0)], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
         with g2: st.plotly_chart(px.pie(values=[t_r.get(col_ft_cc, 0), t_r.get(col_ft_cg, 0), t_r.get(col_ft_ci, 0)], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
-        # INDICADORES DE TALLER
         st.subheader("Indicadores de Taller")
         hf_tot = t_r.get(col_ft_cc, 0) + t_r.get(col_ft_cg, 0) + t_r.get(col_ft_ci, 0)
         ht_tot = t_r.get(col_tr_cc, 0) + t_r.get(col_tr_cg, 0) + t_r.get(col_tr_ci, 0)
-        
-        ef_cc = t_r.get(col_ft_cc, 0) / t_r.get(col_tr_cc, 0) if t_r.get(col_tr_cc, 0) > 0 else 0
-        ef_cg = t_r.get(col_ft_cg, 0) / t_r.get(col_tr_cg, 0) if t_r.get(col_tr_cg, 0) > 0 else 0
-        ef_gl = hf_tot / ht_tot if ht_tot > 0 else 0
-        
         h_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
-        ocup = ht_tot / h_disp if h_disp > 0 else 0
-        prod = t_r.get(find_col(data['TALLER'], ["PRODUCTIVIDAD", "TALLER"]), 0)
-        if prod > 2: prod /= 100
-
-        e_cols = st.columns(3)
-        e_cols[0].metric("Eficiencia CC", f"{ef_cc:.1%}")
-        e_cols[1].metric("Eficiencia CG", f"{ef_cg:.1%}")
-        e_cols[2].metric("Eficiencia Global", f"{ef_gl:.1%}")
         
-        o_cols = st.columns(3)
-        o_cols[0].metric("Grado Presencia (Est.)", f"{(h_disp/(6*9*d_t)):.1%}" if d_t > 0 else "0%")
-        o_cols[1].metric("Grado Ocupación", f"{ocup:.1%}")
-        o_cols[2].metric("Productividad", f"{prod:.1%}")
+        e_cols = st.columns(3)
+        e_cols[0].metric("Eficiencia CC", f"{(t_r.get(col_ft_cc,0)/t_r.get(col_tr_cc,1)):.1%}")
+        e_cols[1].metric("Eficiencia Global", f"{(hf_tot/ht_tot if ht_tot>0 else 0):.1%}")
+        e_cols[2].metric("Grado Ocupación", f"{(ht_tot/h_disp if h_disp>0 else 0):.1%}")
 
         st.markdown("---")
         st.subheader("Evolución de Indicadores")
         hist_t = data['TALLER'][data['TALLER']['Año'] == año_sel].copy().groupby('Mes').last().reset_index()
         if not hist_t.empty:
             hist_t['EF_GL'] = (hist_t[col_ft_cc]+hist_t[col_ft_cg]+hist_t[col_ft_ci]) / (hist_t[col_tr_cc]+hist_t[col_tr_cg]+hist_t[col_tr_ci]).replace(0,1)
-            hist_t['OCUP'] = (hist_t[col_tr_cc]+hist_t[col_tr_cg]+hist_t[col_tr_ci]) / hist_t[find_col(data['TALLER'],["DISP"])].replace(0,1)
-            fig_ev = go.Figure()
-            fig_ev.add_trace(go.Scatter(x=hist_t['Mes'], y=hist_t['EF_GL'], name='Eficiencia', mode='lines+markers'))
-            fig_ev.add_trace(go.Scatter(x=hist_t['Mes'], y=hist_t['OCUP'], name='Ocupación', mode='lines+markers'))
-            fig_ev.update_layout(yaxis_tickformat='.0%')
+            fig_ev = px.line(hist_t, x='Mes', y='EF_GL', markers=True, title="Evolución Eficiencia Global")
             st.plotly_chart(fig_ev, use_container_width=True)
 
     with tab3:
@@ -202,45 +177,38 @@ try:
                 d = r_r.get(find_col(data['REPUESTOS'], ["DESC", c]), 0)
                 cost = r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]), 0)
                 detalles.append({"Canal": c.replace("GAR", "GARANTÍA"), "Bruta": vb, "Desc": d, "Costo": cost, "Margen $": (vb-d-cost), "% Mg": ((vb-d-cost)/(vb-d) if (vb-d)>0 else 0)})
-        df_r = pd.DataFrame(detalles)
-        st.dataframe(df_r.style.format({"Bruta":"${:,.0f}","Desc":"${:,.0f}","Costo":"${:,.0f}","Margen $":"${:,.0f}","% Mg":"{:.1%}"}), use_container_width=True)
+        st.dataframe(pd.DataFrame(detalles).style.format({"Bruta":"${:,.0f}","Desc":"${:,.0f}","Costo":"${:,.0f}","Margen $":"${:,.0f}","% Mg":"{:.1%}"}), use_container_width=True)
         
-        r1, r2 = st.columns(2)
-        with r1: st.plotly_chart(px.pie(df_r, values="Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
-        with r2:
+        rg1, rg2 = st.columns(2)
+        with rg1: st.plotly_chart(px.pie(pd.DataFrame(detalles), values="Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
+        with rg2:
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             st.metric("Valor Total del Stock", f"${val_stock:,.0f}")
             st.plotly_chart(px.pie(values=[70, 20, 10], names=["Vivo", "Obsoleto", "Muerto"], hole=0.4, title="Estado Stock"), use_container_width=True)
 
     with tab4:
         st.header("Chapa y Pintura")
-        # --- LÓGICA DE PAÑOS POR TÉCNICO ---
         c1, c2 = st.columns(2)
         for i, (nom, row, sh) in enumerate([('Jujuy', cj_r, 'CyP JUJUY'), ('Salta', cs_r, 'CyP SALTA')]):
             with (c1 if i == 0 else c2):
                 st.subheader(f"Sede {nom}")
-                # 1. Obtener Paños Propios
-                col_p_prop = find_col(data[sh], ["PAÑOS", "PROP"], exclude_keywords=["OBJ", "META"])
-                paños_valor = row.get(col_p_prop, 0)
+                # --- CÁLCULO PAÑOS POR TÉCNICO ---
+                p_prop = row.get(find_col(data[sh], ["PAÑOS", "PROP"], exclude_keywords=["OBJ", "META"]), 0)
                 
-                # 2. Obtener Cantidad de Técnicos (Excluyendo Productividad %)
-                col_tec = find_col(data[sh], ["CANT", "TEC"], exclude_keywords=["OBJ", "META", "PROD", "%"])
-                if not col_tec: col_tec = find_col(data[sh], ["TECNICOS"], exclude_keywords=["OBJ", "PROD", "%"])
-                tec_valor = row.get(col_tec, 1) # Usamos 1 de fallback para no dividir por 0
+                # Buscamos técnicos excluyendo productividad %
+                col_t = find_col(data[sh], ["TEC"], exclude_keywords=["OBJ", "META", "PROD", "%"])
+                if not col_t: col_t = find_col(data[sh], ["PRODUCTIVOS"], exclude_keywords=["OBJ", "PROD", "%"])
+                cant_t = row.get(col_t, 1)
                 
-                # 3. Cálculo del Ratio
-                ratio = paños_valor / tec_valor if tec_valor > 0 else 0
-                
-                st.metric("Paños por Técnico", f"{ratio:.1f}")
-                st.caption(f"Calculado sobre {paños_valor:,.0f} paños y {tec_valor:g} técnicos.")
-                
-                # Facturación
+                ratio = p_prop / cant_t if cant_t > 0 else 0
+                st.metric("Paños por Técnico", f"{ratio:.2f}")
+                st.caption(f"Dato base: {p_prop:,.0f} paños / {cant_t:g} técnicos.")
+
                 f_p = row.get(find_col(data[sh], ['MO', 'PUR']), 0)
                 f_t = row.get(find_col(data[sh], ['MO', 'TER']), 0)
                 st.metric(f"Facturación Total {nom}", f"${(f_p+f_t):,.0f}")
                 
-                c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
-                st.markdown(f"<div style='background:#f1f3f6; padding:10px; border-radius:8px;'><b>Terceros:</b> Fact: ${f_t:,.0f} | Costo: ${c_ter:,.0f} | <b>Mg: ${(f_t-c_ter):,.0f}</b></div>", unsafe_allow_html=True)
+                st.plotly_chart(px.pie(values=[f_p, f_t], names=["Pura", "Terceros"], hole=0.4, title=f"Mix MO {nom}"), use_container_width=True)
 
 except Exception as e:
     st.error(f"Error técnico detectado: {e}")
