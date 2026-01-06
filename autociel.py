@@ -10,7 +10,7 @@ st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
     
-    /* Tarjetas de KPI Principales (Con borde y sombra suave) */
+    /* Tarjetas de KPI Principales */
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
@@ -21,7 +21,7 @@ st.markdown("""<style>
         min-height: 240px; 
     }
     
-    /* Tarjetas para indicadores secundarios (TUS, CPUS, KPIs Taller) */
+    /* Tarjetas para indicadores secundarios */
     .metric-card {
         background-color: white;
         border: 1px solid #eee;
@@ -254,7 +254,9 @@ try:
             col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
             cant_tecs = t_r.get(col_tecs, 6)
             if cant_tecs == 0: cant_tecs = 6
-            hs_teoricas = cant_tecs * 9 * d_t 
+            
+            # --- CÁLCULO DE PRESENCIA CORREGIDO (8hs) ---
+            hs_teoricas = cant_tecs * 8 * d_t 
             
             presencia = hs_disp / hs_teoricas if hs_teoricas > 0 else 0
             ocup = (ht_cc+ht_cg+ht_ci) / hs_disp if hs_disp > 0 else 0
