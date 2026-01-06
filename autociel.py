@@ -20,7 +20,7 @@ st.markdown("""<style>
     h3 { color: #00235d; font-size: 1.3rem; margin-top: 20px; margin-bottom: 15px; }
     
     /* Estilo para tablas de detalle CyP */
-    .cyp-detail { background-color: #f8f9fa; padding: 10px; border-radius: 8px; font-size: 0.9rem; margin-top: 10px; border-left: 4px solid #00235d; }
+    .cyp-detail { background-color: #f8f9fa; padding: 10px; border-radius: 8px; font-size: 0.85rem; margin-top: 10px; border-left: 4px solid #00235d; line-height: 1.5; }
 </style>""", unsafe_allow_html=True)
 
 # --- FUNCIÓN DE BÚSQUEDA ---
@@ -105,11 +105,11 @@ try:
         prog_t = min(prog_t, 1.0)
 
         # PORTADA
-        st.markdown(f"""<div class="portada-container"><h1>Autociel - Tablero Posventa</h1><h3 style="margin:0; color:white;">📅 {meses_nom.get(mes_sel)} {año_sel}</h3><div style="margin-top:10px; font-size: 1.2rem;">Avance: <b>{d_t:g}</b> de <b>{d_h:g}</b> días hábiles ({prog_t:.1%})</div><div style="background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; width: 50%; margin: 10px auto;"><div style="background: #fff; width: {prog_t*100}%; height: 100%; border-radius: 4px;"></div></div></div>""", unsafe_allow_html=True)
+        st.markdown(f'<div class="portada-container"><h1>Autociel - Tablero Posventa</h1><h3 style="margin:0; color:white;">📅 {meses_nom.get(mes_sel)} {año_sel}</h3><div style="margin-top:10px; font-size: 1.2rem;">Avance: <b>{d_t:g}</b> de <b>{d_h:g}</b> días hábiles ({prog_t:.1%})</div><div style="background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; width: 50%; margin: 10px auto;"><div style="background: #fff; width: {prog_t*100}%; height: 100%; border-radius: 4px;"></div></div></div>', unsafe_allow_html=True)
 
         tab1, tab2, tab3, tab4 = st.tabs(["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura"])
 
-        # --- FUNCIONES DE RENDERIZADO (MINIFICADAS PARA EVITAR ERRORES) ---
+        # --- FUNCIONES DE RENDERIZADO CORREGIDAS (SIN ESPACIOS EXTRA) ---
         def render_kpi_card(title, real, obj_mes, is_currency=True):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -119,8 +119,16 @@ try:
             icon = "✅" if real >= obj_parcial else "🔻"
             cumpl_parcial_pct = real / obj_parcial if obj_parcial > 0 else 0
 
-            # HTML Compacto
-            html = f"""<div class="kpi-card"><p style="font-weight:bold; color:#666; margin-bottom:5px;">{title}</p><h2 style="margin:0; color:#00235d;">{fmt.format(real)}</h2><p style="font-size:0.85rem; color:#666; margin-top:5px;">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{'#28a745' if real >= obj_parcial else '#dc3545'}">({cumpl_parcial_pct:.1%})</span> {icon}</p><hr style="margin:10px 0; border:0; border-top:1px solid #eee;"><div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:5px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div><div style="display:flex; justify-content:space-between; font-size:0.85rem; color:{color}; font-weight:bold;"><span>Proyección:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div><div style="margin-top:10px;"><div style="width:100%; background:#e0e0e0; height:6px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:6px; border-radius:10px;"></div></div></div></div>"""
+            # Construcción de string plana sin sangría
+            html = '<div class="kpi-card">'
+            html += f'<p style="font-weight:bold; color:#666; margin-bottom:5px;">{title}</p>'
+            html += f'<h2 style="margin:0; color:#00235d;">{fmt.format(real)}</h2>'
+            html += f'<p style="font-size:0.85rem; color:#666; margin-top:5px;">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</p>'
+            html += '<hr style="margin:10px 0; border:0; border-top:1px solid #eee;">'
+            html += f'<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:5px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
+            html += f'<div style="display:flex; justify-content:space-between; font-size:0.85rem; color:{color}; font-weight:bold;"><span>Proyección:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div>'
+            html += f'<div style="margin-top:10px;"><div style="width:100%; background:#e0e0e0; height:6px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:6px; border-radius:10px;"></div></div></div>'
+            html += '</div>'
             return html
 
         def render_kpi_small(title, val, target=None, format_str="{:.1%}"):
@@ -129,10 +137,13 @@ try:
                 delta = val - target
                 color = "#28a745" if delta >= 0 else "#dc3545"
                 icon = "▲" if delta >= 0 else "▼"
-                subtext_html = f"""<div style="margin-top:8px; display:flex; justify-content:center; align-items:center; gap:8px; font-size:0.8rem;"><span style="color:#888;">Obj: {format_str.format(target)}</span><span style="color:{color}; font-weight:bold; background-color:{color}15; padding:2px 6px; border-radius:4px;">{icon} {format_str.format(abs(delta))}</span></div>"""
+                subtext_html = f"<div style='margin-top:8px; display:flex; justify-content:center; align-items:center; gap:8px; font-size:0.8rem;'><span style='color:#888;'>Obj: {format_str.format(target)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:2px 6px; border-radius:4px;'>{icon} {format_str.format(abs(delta))}</span></div>"
             
-            # HTML Compacto
-            html = f"""<div class="metric-card"><p style="color:#666; font-size:0.9rem; margin-bottom:5px;">{title}</p><h3 style="color:#00235d; margin:0;">{format_str.format(val)}</h3>{subtext_html}</div>"""
+            html = '<div class="metric-card">'
+            html += f'<p style="color:#666; font-size:0.9rem; margin-bottom:5px;">{title}</p>'
+            html += f'<h3 style="color:#00235d; margin:0;">{format_str.format(val)}</h3>'
+            html += subtext_html
+            html += '</div>'
             return html
 
         with tab1:
@@ -282,16 +293,30 @@ try:
                     
                     st.plotly_chart(px.pie(values=vals, names=nams, hole=0.4, color_discrete_sequence=cols_pie), use_container_width=True)
                     
-                    # DETALLE MINIFICADO
+                    # CÁLCULOS DETALLE TERCEROS
                     c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
                     m_ter = f_t - c_ter
                     mg_ter_pct = m_ter/f_t if f_t > 0 else 0
                     
-                    html_det = f"""<div class="cyp-detail"><b>👨‍🔧 Terceros:</b><br>Fact: ${f_t:,.0f} | Costo: ${c_ter:,.0f}<br>Margen: <b>${m_ter:,.0f}</b> ({mg_ter_pct:.1%})</div>"""
-                    st.markdown(html_det, unsafe_allow_html=True)
+                    # HTML PLANO SIN SANGRÍA PARA EVITAR ERROR VISUAL
+                    html_ter = '<div class="cyp-detail">'
+                    html_ter += '<b>👨‍🔧 Terceros:</b><br>'
+                    html_ter += f'Fact: ${f_t:,.0f} | Costo: ${c_ter:,.0f}<br>'
+                    html_ter += f'Margen: <b>${m_ter:,.0f}</b> ({mg_ter_pct:.1%})'
+                    html_ter += '</div>'
+                    st.markdown(html_ter, unsafe_allow_html=True)
                     
+                    # CÁLCULOS DETALLE REPUESTOS (SOLO SALTA)
                     if is_salta and f_r > 0:
-                        html_rep = f"""<div class="cyp-detail" style="border-left-color: #28a745;"><b>📦 Repuestos:</b><br>Facturación: <b>${f_r:,.0f}</b></div>"""
+                        c_rep = row.get(find_col(data[sh], ['COSTO', 'REP']), 0)
+                        m_rep = f_r - c_rep
+                        mg_rep_pct = m_rep/f_r if f_r > 0 else 0
+                        
+                        html_rep = '<div class="cyp-detail" style="border-left-color: #28a745;">'
+                        html_rep += '<b>📦 Repuestos:</b><br>'
+                        html_rep += f'Fact: ${f_r:,.0f} | Costo: ${c_rep:,.0f}<br>'
+                        html_rep += f'Margen: <b>${m_rep:,.0f}</b> ({mg_rep_pct:.1%})'
+                        html_rep += '</div>'
                         st.markdown(html_rep, unsafe_allow_html=True)
 
             render_cyp_full(cf1, 'Jujuy', cj_r, 'CyP JUJUY', False)
