@@ -19,7 +19,7 @@ st.markdown("""<style>
         border-radius: 10px; 
         box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
         margin-bottom: 10px; 
-        min-height: 160px; /* Reducido de 240px */
+        min-height: 160px;
     }
     
     .kpi-card h2 { font-size: 1.8rem; margin: 5px 0; color: #00235d; }
@@ -117,7 +117,7 @@ try:
         prog_t = d_t / d_h if d_h > 0 else 0
         prog_t = min(prog_t, 1.0)
 
-        # DATA PREPARATION HISTORICO (CON CORRECCIÓN DE COLUMNAS VACÍAS)
+        # DATA PREPARATION HISTORICO
         def get_hist_data(sheet_name):
             df = data[sheet_name]
             df = df[df['Año'] == año_sel].sort_values('Mes')
@@ -137,7 +137,7 @@ try:
 
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"])
 
-        # --- HELPERS VISUALES (HTML COMPACTO) ---
+        # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit=""):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -198,9 +198,12 @@ try:
 
         with tab2:
             st.markdown("### 🛠️ Performance de Servicios")
+            
+            # 1. Facturación
             col_main, col_breakdown = st.columns([1, 2])
             real_mo_total = sum([s_r.get(c, 0) for c in c_mo if c])
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
+            
             with col_main: st.markdown(render_kpi_card("Facturación M.O. Total", real_mo_total, obj_mo_total), unsafe_allow_html=True)
             with col_breakdown:
                 mo_cli = s_r.get(find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"]), 0)
@@ -212,6 +215,37 @@ try:
                 fig_mo.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=250)
                 st.plotly_chart(fig_mo, use_container_width=True)
 
+            # 2. Tráfico y Tickets (LO QUE FALTABA)
+            st.markdown("---")
+            st.markdown("### 📊 Tráfico y Tickets")
+            k1, k2, k3, k4 = st.columns(4)
+            
+            # Datos
+            c_cpus = find_col(data['SERVICIOS'], ["CPUS"], exclude_keywords=["OBJ"])
+            c_tus_others = find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], exclude_keywords=["OBJ"])
+            real_cpus = s_r.get(c_cpus, 0)
+            real_tus = real_cpus + s_r.get(c_tus_others, 0)
+            obj_cpus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'CPUS']), 1)
+            obj_tus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'TUS']), 1)
+            
+            div = real_cpus if real_cpus > 0 else 1
+            tp_mo = real_mo_total / div
+            
+            hf_cc = t_r.get(find_col(data['TALLER'], ["FACT", "CC"]), 0)
+            hf_cg = t_r.get(find_col(data['TALLER'], ["FACT", "CG"]), 0)
+            hf_ci = t_r.get(find_col(data['TALLER'], ["FACT", "CI"]), 0)
+            total_hs_fact = hf_cc + hf_cg + hf_ci
+            tp_hs = total_hs_fact / div
+            
+            # Target implícito ticket $ (Obj MO / Obj CPUS)
+            tgt_tp_mo = obj_mo_total / obj_cpus if obj_cpus > 0 else 0
+
+            with k1: st.markdown(render_kpi_card("TUS Total", real_tus, obj_tus, is_currency=False), unsafe_allow_html=True)
+            with k2: st.markdown(render_kpi_card("CPUS (Entradas)", real_cpus, obj_cpus, is_currency=False), unsafe_allow_html=True)
+            with k3: st.markdown(render_kpi_small("Ticket Promedio (Hs)", tp_hs, None, "{:.2f} hs"), unsafe_allow_html=True)
+            with k4: st.markdown(render_kpi_small("Ticket Promedio ($)", tp_mo, tgt_tp_mo, "${:,.0f}"), unsafe_allow_html=True)
+
+            # 3. Indicadores de Taller
             st.markdown("---")
             st.markdown("### ⚙️ Indicadores de Taller")
             ht_cc = t_r.get(find_col(data['TALLER'], ["TRAB", "CC"]), 0)
