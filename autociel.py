@@ -16,6 +16,7 @@ st.markdown("""<style>
     
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
     h3 { color: #00235d; font-size: 1.3rem; margin-top: 20px; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    h4 { color: #666; font-size: 1.1rem; margin-top: 15px; margin-bottom: 10px; }
     
     .cyp-detail { background-color: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 0.9rem; margin-top: 10px; border-left: 5px solid #00235d; line-height: 1.6; }
     .cyp-header { font-weight: bold; color: #00235d; font-size: 1rem; margin-bottom: 5px; display: block; }
@@ -39,7 +40,7 @@ def cargar_datos(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
-            # LIMPIEZA INCLUYENDO LA LETRA Ñ -> N PARA EVITAR ERRORES DE LECTURA
+            # LIMPIEZA INCLUYENDO Ñ -> N
             df.columns = [
                 c.strip().upper()
                 .replace(".", "")
@@ -236,7 +237,6 @@ try:
             with u2: st.markdown(render_kpi_small("Grado de Ocupación", ocup, 0.95), unsafe_allow_html=True)
             with u3: st.markdown(render_kpi_small("Productividad", prod, 0.95), unsafe_allow_html=True)
 
-            # --- GRÁFICOS RESTAURADOS ---
             st.markdown("#### Distribución de Horas")
             g1, g2 = st.columns(2)
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
@@ -258,17 +258,18 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             
             df_r = pd.DataFrame(detalles)
+            
+            # Totales Generales para KPI (Calculados antes para usarlos arriba)
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
+            vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
+            util_total = df_r['Utilidad $'].sum() if not df_r.empty else 0
+            mg_total = util_total / vta_total_neta if vta_total_neta > 0 else 0
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             
             c_main, c_kpis = st.columns([1, 3])
             with c_main: st.markdown(render_kpi_card("Facturación Total (Bruta)", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
-                util_total = df_r['Utilidad $'].sum() if not df_r.empty else 0
-                vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
-                mg_total = util_total / vta_total_neta if vta_total_neta > 0 else 0
-                
                 real_cpus = s_r.get(find_col(data['SERVICIOS'], ["CPUS"], exclude_keywords=["OBJ"]), 0)
                 div = real_cpus if real_cpus > 0 else 1
                 v_taller_neta = df_r.loc[df_r['Canal'].isin(['TALLER', 'GAR', 'CYP']), 'Venta Neta'].sum() if not df_r.empty else 0
@@ -279,10 +280,42 @@ try:
                 with r4: st.markdown(render_kpi_small("Ticket Promedio", tp_rep, None, "${:,.0f}"), unsafe_allow_html=True)
 
             st.markdown("#### 📋 Detalle por Canal")
+            
+            # --- AGREGAR FILA DE TOTAL PARA VISUALIZACIÓN EN TABLA ---
             if not df_r.empty:
-                st.dataframe(df_r.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True)
+                # Calculamos sumas para la fila Total
+                t_vb = df_r['Venta Bruta'].sum()
+                t_desc = df_r['Desc.'].sum()
+                t_vn = df_r['Venta Neta'].sum()
+                t_cost = df_r['Costo'].sum()
+                t_ut = df_r['Utilidad $'].sum()
+                t_mg = t_ut / t_vn if t_vn != 0 else 0
+                
+                # Creamos el dataframe para mostrar (df_show)
+                df_show = pd.concat([
+                    df_r, 
+                    pd.DataFrame([{
+                        "Canal": "TOTAL", 
+                        "Venta Bruta": t_vb, 
+                        "Desc.": t_desc, 
+                        "Venta Neta": t_vn, 
+                        "Costo": t_cost, 
+                        "Utilidad $": t_ut, 
+                        "Margen %": t_mg
+                    }])
+                ], ignore_index=True)
+                
+                st.dataframe(df_show.style.format({
+                    "Venta Bruta": "${:,.0f}", 
+                    "Desc.": "${:,.0f}", 
+                    "Venta Neta": "${:,.0f}", 
+                    "Costo": "${:,.0f}", 
+                    "Utilidad $": "${:,.0f}", 
+                    "Margen %": "{:.1%}"
+                }), use_container_width=True)
             
             c1, c2 = st.columns(2)
+            # Usamos df_r (sin el total) para los gráficos
             with c1: 
                 if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación (Venta Bruta)"), use_container_width=True)
             with c2:
@@ -298,77 +331,110 @@ try:
         # --- TAB 4: CYP ---
         with tab4:
             st.markdown("### 🎨 Chapa y Pintura")
-            cf1, cf2 = st.columns(2)
             
-            def render_cyp_full(col, nom, row, sh, is_salta):
-                with col:
-                    st.subheader(f"Sede {nom}")
-                    
-                    # 1. KPI FACTURACIÓN GENERAL
-                    f_p = row.get(find_col(data[sh], ['MO', 'PUR']), 0)
-                    f_t = row.get(find_col(data[sh], ['MO', 'TER']), 0)
-                    f_r = row.get(find_col(data[sh], ['FACT', 'REP']), 0) if is_salta else 0
-                    total_fact = f_p + f_t + f_r
-                    obj_fact = row.get(find_col(data[sh], ["OBJ", "FACT"]), 1)
-                    st.markdown(render_kpi_card(f"Facturación Total {nom}", total_fact, obj_fact), unsafe_allow_html=True)
-                    
-                    # 2. KPI PAÑOS PROPIOS (Mejorada Búsqueda)
-                    # Busca PANOS excluyendo Terceros y Obj para hallar los Propios
-                    col_panos = find_col(data[sh], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
-                    panos_prop = row.get(col_panos, 0)
-                    
-                    col_obj_panos = find_col(data[sh], ['OBJ', 'PANOS'])
-                    obj_panos = row.get(col_obj_panos, 1)
-                    st.markdown(render_kpi_card(f"Paños Propios", panos_prop, obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
-                    
-                    # 3. METRICA PROMEDIO
-                    col_tecnicos = find_col(data[sh], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']) or find_col(data[sh], ['PRODUCTIVOS'])
-                    cant_tec = row.get(col_tecnicos, 1) if col_tecnicos else 1
-                    ratio = panos_prop / cant_tec if cant_tec > 0 else 0
-                    st.markdown(render_kpi_small("Promedio Paños por Técnico", ratio, None, "{:.1f}"), unsafe_allow_html=True)
+            # DATOS JUJUY
+            j_f_p = cj_r.get(find_col(data['CyP JUJUY'], ['MO', 'PUR']), 0)
+            j_f_t = cj_r.get(find_col(data['CyP JUJUY'], ['MO', 'TER']), 0)
+            j_total_fact = j_f_p + j_f_t
+            j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
+            
+            j_col_panos = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            j_panos_prop = cj_r.get(j_col_panos, 0)
+            j_col_obj_panos = find_col(data['CyP JUJUY'], ['OBJ', 'PANOS'])
+            j_obj_panos = cj_r.get(j_col_obj_panos, 1)
+            
+            j_col_tecnicos = find_col(data['CyP JUJUY'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']) or find_col(data['CyP JUJUY'], ['PRODUCTIVOS'])
+            j_cant_tec = cj_r.get(j_col_tecnicos, 1) if j_col_tecnicos else 1
+            j_ratio = j_panos_prop / j_cant_tec if j_cant_tec > 0 else 0
+            
+            j_col_panos_ter = find_col(data['CyP JUJUY'], ['PANOS', 'TER'])
+            j_panos_ter = cj_r.get(j_col_panos_ter, 0)
+            j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
+            j_m_ter = j_f_t - j_c_ter
+            j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
+            
+            # DATOS SALTA
+            s_f_p = cs_r.get(find_col(data['CyP SALTA'], ['MO', 'PUR']), 0)
+            s_f_t = cs_r.get(find_col(data['CyP SALTA'], ['MO', 'TER']), 0)
+            s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
+            s_total_fact = s_f_p + s_f_t + s_f_r
+            s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
+            
+            s_col_panos = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            s_panos_prop = cs_r.get(s_col_panos, 0)
+            s_col_obj_panos = find_col(data['CyP SALTA'], ['OBJ', 'PANOS'])
+            s_obj_panos = cs_r.get(s_col_obj_panos, 1)
+            
+            s_col_tecnicos = find_col(data['CyP SALTA'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']) or find_col(data['CyP SALTA'], ['PRODUCTIVOS'])
+            s_cant_tec = cs_r.get(s_col_tecnicos, 1) if s_col_tecnicos else 1
+            s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
+            
+            s_col_panos_ter = find_col(data['CyP SALTA'], ['PANOS', 'TER'])
+            s_panos_ter = cs_r.get(s_col_panos_ter, 0)
+            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER']), 0)
+            s_m_ter = s_f_t - s_c_ter
+            s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
+            
+            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP']), 0)
+            s_m_rep = s_f_r - s_c_rep
+            s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
-                    # 4. UNIFICACIÓN DE TERCEROS
-                    # Busca columna de Paños Terceros explicitamente
-                    col_panos_ter = find_col(data[sh], ['PANOS', 'TER'])
-                    panos_ter = row.get(col_panos_ter, 0)
-                    
-                    c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
-                    m_ter = f_t - c_ter
-                    mg_ter_pct = m_ter/f_t if f_t > 0 else 0
-                    
-                    html_ter = '<div class="cyp-detail">'
-                    html_ter += '<span class="cyp-header">👨‍🔧 Gestión Terceros</span>'
-                    html_ter += f'Cantidad Paños: <b>{panos_ter:,.0f}</b><br>'
-                    html_ter += f'Facturación: ${f_t:,.0f}<br>'
-                    html_ter += f'Costo: ${c_ter:,.0f}<br>'
-                    html_ter += f'Margen: <b>${m_ter:,.0f}</b> ({mg_ter_pct:.1%})'
-                    html_ter += '</div>'
-                    st.markdown(html_ter, unsafe_allow_html=True)
-                    
-                    if is_salta and f_r > 0:
-                        c_rep = row.get(find_col(data[sh], ['COSTO', 'REP']), 0)
-                        m_rep = f_r - c_rep
-                        mg_rep_pct = m_rep/f_r if f_r > 0 else 0
-                        html_rep = '<div class="cyp-detail" style="border-left-color: #28a745;">'
-                        html_rep += '<span class="cyp-header" style="color:#28a745">📦 Repuestos Taller</span>'
-                        html_rep += f'Facturación: ${f_r:,.0f}<br>'
-                        html_rep += f'Costo: ${c_rep:,.0f}<br>'
-                        html_rep += f'Margen: <b>${m_rep:,.0f}</b> ({mg_rep_pct:.1%})'
-                        html_rep += '</div>'
-                        st.markdown(html_rep, unsafe_allow_html=True)
+            # VISUALIZACIÓN
+            c_jujuy, c_salta = st.columns(2)
+            
+            with c_jujuy:
+                st.subheader("Sede Jujuy")
+                st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Promedio Paños por Técnico", j_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                
+                html_ter_j = '<div class="cyp-detail">'
+                html_ter_j += '<span class="cyp-header">👨‍🔧 Gestión Terceros</span>'
+                html_ter_j += f'Cantidad Paños: <b>{j_panos_ter:,.0f}</b><br>'
+                html_ter_j += f'Facturación: ${j_f_t:,.0f}<br>'
+                html_ter_j += f'Costo: ${j_c_ter:,.0f}<br>'
+                html_ter_j += f'Margen: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})'
+                html_ter_j += '</div>'
+                st.markdown(html_ter_j, unsafe_allow_html=True)
 
-                    # 5. GRÁFICO
-                    vals = [f_p, f_t]
-                    nams = ["MO Pura", "Terceros"]
-                    cols_pie = ["#00235d", "#00A8E8"]
-                    if f_r > 0:
-                        vals.append(f_r); nams.append("Repuestos"); cols_pie.append("#28a745")
-                    
-                    st.markdown("#### Composición Facturación")
-                    st.plotly_chart(px.pie(values=vals, names=nams, hole=0.4, color_discrete_sequence=cols_pie), use_container_width=True)
+            with c_salta:
+                st.subheader("Sede Salta")
+                st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Promedio Paños por Técnico", s_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                
+                html_ter_s = '<div class="cyp-detail">'
+                html_ter_s += '<span class="cyp-header">👨‍🔧 Gestión Terceros</span>'
+                html_ter_s += f'Cantidad Paños: <b>{s_panos_ter:,.0f}</b><br>'
+                html_ter_s += f'Facturación: ${s_f_t:,.0f}<br>'
+                html_ter_s += f'Costo: ${s_c_ter:,.0f}<br>'
+                html_ter_s += f'Margen: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})'
+                html_ter_s += '</div>'
+                st.markdown(html_ter_s, unsafe_allow_html=True)
+                
+                if s_f_r > 0:
+                    html_rep_s = '<div class="cyp-detail" style="border-left-color: #28a745;">'
+                    html_rep_s += '<span class="cyp-header" style="color:#28a745">📦 Repuestos Taller</span>'
+                    html_rep_s += f'Facturación: ${s_f_r:,.0f}<br>'
+                    html_rep_s += f'Costo: ${s_c_rep:,.0f}<br>'
+                    html_rep_s += f'Margen: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})'
+                    html_rep_s += '</div>'
+                    st.markdown(html_rep_s, unsafe_allow_html=True)
 
-            render_cyp_full(cf1, 'Jujuy', cj_r, 'CyP JUJUY', False)
-            render_cyp_full(cf2, 'Salta', cs_r, 'CyP SALTA', True)
+            st.markdown("---")
+            st.markdown("#### Composición Facturación")
+            g_jujuy, g_salta = st.columns(2)
+            with g_jujuy:
+                vals_j = [j_f_p, j_f_t]
+                nams_j = ["MO Pura", "Terceros"]
+                st.plotly_chart(px.pie(values=vals_j, names=nams_j, hole=0.4, color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
+            with g_salta:
+                vals_s = [s_f_p, s_f_t]
+                nams_s = ["MO Pura", "Terceros"]
+                cols_s = ["#00235d", "#00A8E8"]
+                if s_f_r > 0:
+                    vals_s.append(s_f_r); nams_s.append("Repuestos"); cols_s.append("#28a745")
+                st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, color_discrete_sequence=cols_s), use_container_width=True)
 
     else:
         st.warning("No se pudieron cargar los datos.")
