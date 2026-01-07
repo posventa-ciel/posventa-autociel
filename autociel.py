@@ -30,21 +30,23 @@ st.markdown("""<style>
     .portada-right { text-align: right; min-width: 200px; }
     .portada-right div { font-size: 0.9rem; margin-bottom: 5px; }
     
+    /* KPI CARD: Flex para igualar alturas */
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
-        padding: 12px 15px; /* Un poco más de padding */
+        padding: 15px; 
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        min-height: 160px; /* Forzamos altura mínima para igualar */
+        height: 100%; /* Ocupar todo el alto de la columna */
+        min-height: 220px; /* Altura mínima forzada */
         display: flex;
         flex-direction: column;
         justify-content: space-between;
     }
     
-    .kpi-card p { font-size: 0.8rem; margin: 0; color: #666; font-weight: 600; }
-    .kpi-card h2 { font-size: 1.6rem; margin: 5px 0; color: #00235d; } 
+    .kpi-card p { font-size: 0.85rem; margin: 0; color: #666; font-weight: 600; }
+    .kpi-card h2 { font-size: 2rem; margin: 5px 0; color: #00235d; } 
     .kpi-subtext { font-size: 0.75rem; color: #888; }
     
     .metric-card { 
@@ -231,20 +233,20 @@ try:
             html += '</div>'
             return html
 
-        # --- LÓGICA DE COLUMNAS ROBUSTA ---
-        # Definimos las columnas exactas para sumar la MO TOTAL
+        # --- LÓGICA DE COLUMNAS ROBUSTA (SERVICIOS) ---
         # 1. Cliente
         c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
         # 2. Garantía
         c_gar = find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"])
-        # 3. Interna (Agregada recientemente)
+        # 3. Interna
         c_int = find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"])
-        if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"]) # Intento alternativo
-        # 4. Terceros (A veces dice MO TERCEROS, a veces solo TERCEROS)
+        if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"])
+        # 4. Terceros (Búsqueda Múltiple para asegurar encontrarla)
         c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
-        if not c_ter: c_ter = find_col(data['SERVICIOS'], ["TERCEROS"], exclude_keywords=["OBJ", "MO", "COSTO"])
+        if not c_ter: c_ter = find_col(data['SERVICIOS'], ["TERCEROS"], exclude_keywords=["OBJ", "COSTO"])
+        if not c_ter: c_ter = find_col(data['SERVICIOS'], ["3ROS"], exclude_keywords=["OBJ", "COSTO"])
+        if not c_ter: c_ter = find_col(data['SERVICIOS'], ["TERC"], exclude_keywords=["OBJ", "COSTO"])
 
-        # Calculamos valores individuales
         val_cli = s_r.get(c_cli, 0) if c_cli else 0
         val_gar = s_r.get(c_gar, 0) if c_gar else 0
         val_int = s_r.get(c_int, 0) if c_int else 0
@@ -272,10 +274,19 @@ try:
                 with cols[i]: st.markdown(render_kpi_card(tit, real, obj, True), unsafe_allow_html=True)
 
         with tab2:
+            # --- SECCION DIAGNOSTICO ---
+            with st.expander("🕵️ DIAGNÓSTICO (Click aquí si faltan datos en MO)"):
+                st.info("Aquí puedes ver qué columnas está detectando el sistema:")
+                st.write(f"**MO CLIENTE:** Columna: `{c_cli}` | Valor: ${val_cli:,.0f}")
+                st.write(f"**MO GARANTÍA:** Columna: `{c_gar}` | Valor: ${val_gar:,.0f}")
+                st.write(f"**MO INTERNA:** Columna: `{c_int}` | Valor: ${val_int:,.0f}")
+                st.write(f"**MO TERCEROS:** Columna: `{c_ter}` | Valor: ${val_ter:,.0f}")
+                if c_ter == "":
+                    st.error("⚠️ NO SE ENCONTRÓ la columna de Terceros. Verifica que el nombre contenga 'TER', 'TERCEROS' o '3ROS'.")
+            
             col_main, col_breakdown = st.columns([1, 2])
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
             
-            # Ahora agregamos show_daily=True para que se vea más completa la tarjeta
             with col_main: st.markdown(render_kpi_card("Facturación M.O.", real_mo_total, obj_mo_total, show_daily=True), unsafe_allow_html=True)
             
             with col_breakdown:
@@ -284,7 +295,7 @@ try:
                     "Facturación": [val_cli, val_gar, val_int, val_ter]
                 })
                 fig_mo = px.bar(df_mo, x="Facturación", y="Cargo", orientation='h', text_auto='.2s', title="", color="Cargo", color_discrete_sequence=["#00235d", "#28a745", "#ffc107", "#17a2b8"])
-                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) # Altura ajustada
+                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=220) # Altura ajustada
                 st.plotly_chart(fig_mo, use_container_width=True)
 
             k1, k2, k3, k4 = st.columns(4)
