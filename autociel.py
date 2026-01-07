@@ -259,7 +259,7 @@ try:
             
             df_r = pd.DataFrame(detalles)
             
-            # Totales Generales para KPI (Calculados antes para usarlos arriba)
+            # Totales Generales para KPI
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total = df_r['Utilidad $'].sum() if not df_r.empty else 0
@@ -281,9 +281,8 @@ try:
 
             st.markdown("#### 📋 Detalle por Canal")
             
-            # --- AGREGAR FILA DE TOTAL PARA VISUALIZACIÓN EN TABLA ---
+            # --- AGREGAR FILA DE TOTAL Y OCULTAR ÍNDICE ---
             if not df_r.empty:
-                # Calculamos sumas para la fila Total
                 t_vb = df_r['Venta Bruta'].sum()
                 t_desc = df_r['Desc.'].sum()
                 t_vn = df_r['Venta Neta'].sum()
@@ -291,7 +290,6 @@ try:
                 t_ut = df_r['Utilidad $'].sum()
                 t_mg = t_ut / t_vn if t_vn != 0 else 0
                 
-                # Creamos el dataframe para mostrar (df_show)
                 df_show = pd.concat([
                     df_r, 
                     pd.DataFrame([{
@@ -305,6 +303,7 @@ try:
                     }])
                 ], ignore_index=True)
                 
+                # Se agrega .hide(axis="index") para eliminar la columna numérica izquierda
                 st.dataframe(df_show.style.format({
                     "Venta Bruta": "${:,.0f}", 
                     "Desc.": "${:,.0f}", 
@@ -312,10 +311,9 @@ try:
                     "Costo": "${:,.0f}", 
                     "Utilidad $": "${:,.0f}", 
                     "Margen %": "{:.1%}"
-                }), use_container_width=True)
+                }).hide(axis="index"), use_container_width=True)
             
             c1, c2 = st.columns(2)
-            # Usamos df_r (sin el total) para los gráficos
             with c1: 
                 if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación (Venta Bruta)"), use_container_width=True)
             with c2:
