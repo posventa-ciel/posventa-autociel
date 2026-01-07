@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
@@ -36,7 +37,7 @@ st.markdown("""<style>
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        min-height: 145px; /* Ajustado levemente para el dato extra */
+        min-height: 145px;
     }
     
     .kpi-card p { font-size: 0.75rem; margin: 0; color: #666; font-weight: 600; }
@@ -114,6 +115,13 @@ try:
         canales_repuestos = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
 
         with st.sidebar:
+            # --- LOGO AUTOCIEL ---
+            # Asegúrate de subir 'logo.png' a tu GitHub junto a este archivo .py
+            if os.path.exists("logo.png"):
+                st.image("logo.png", use_container_width=True)
+            else:
+                st.info("Sube 'logo.png' al repositorio")
+                
             st.header("Filtros")
             años_disp = sorted([int(a) for a in data['CALENDARIO']['Año'].unique() if a > 0], reverse=True)
             año_sel = st.selectbox("📅 Año", años_disp)
@@ -161,7 +169,7 @@ try:
         h_cyp_j = get_hist_data('CyP JUJUY')
         h_cyp_s = get_hist_data('CyP SALTA')
 
-        # PORTADA
+        # --- PORTADA COMPACTA (HORIZONTAL) ---
         st.markdown(f'''
         <div class="portada-container">
             <div class="portada-left">
@@ -179,7 +187,7 @@ try:
 
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"])
 
-        # --- HELPERS VISUALES ACTUALIZADOS ---
+        # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -190,7 +198,6 @@ try:
             icon = "✅" if real >= obj_parcial else "🔻"
             cumpl_parcial_pct = real / obj_parcial if obj_parcial > 0 else 0
             
-            # HTML para el promedio diario si se solicita
             daily_html = ""
             if show_daily:
                 daily_val = real / d_t if d_t > 0 else 0
@@ -275,7 +282,6 @@ try:
             tp_hs = (hf_cc+hf_cg+hf_ci) / div
             tgt_tp_mo = obj_mo_total / obj_cpus if obj_cpus > 0 else 0
 
-            # --- AQUI SE AGREGA EL PROMEDIO DIARIO ---
             with k1: st.markdown(render_kpi_card("TUS Total", real_tus, obj_tus, is_currency=False, show_daily=True), unsafe_allow_html=True)
             with k2: st.markdown(render_kpi_card("CPUS (Entradas)", real_cpus, obj_cpus, is_currency=False, show_daily=True), unsafe_allow_html=True)
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, "{:.2f} hs"), unsafe_allow_html=True)
@@ -366,6 +372,8 @@ try:
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+                # --- RECUPERADO: VALOR TOTAL STOCK ---
+                st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
 
         with tab4:
             st.markdown("### 🎨 Chapa y Pintura")
