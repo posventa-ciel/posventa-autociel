@@ -115,12 +115,8 @@ try:
         canales_repuestos = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
 
         with st.sidebar:
-            # --- LOGO AUTOCIEL ---
-            # Asegúrate de subir 'logo.png' a tu GitHub junto a este archivo .py
             if os.path.exists("logo.png"):
                 st.image("logo.png", use_container_width=True)
-            else:
-                st.info("Sube 'logo.png' al repositorio")
                 
             st.header("Filtros")
             años_disp = sorted([int(a) for a in data['CALENDARIO']['Año'].unique() if a > 0], reverse=True)
@@ -169,7 +165,7 @@ try:
         h_cyp_j = get_hist_data('CyP JUJUY')
         h_cyp_s = get_hist_data('CyP SALTA')
 
-        # --- PORTADA COMPACTA (HORIZONTAL) ---
+        # --- PORTADA COMPACTA ---
         st.markdown(f'''
         <div class="portada-container">
             <div class="portada-left">
@@ -234,7 +230,8 @@ try:
         # --- TAB 1: OBJETIVOS ---
         with tab1:
             cols = st.columns(4)
-            c_mo = [find_col(data['SERVICIOS'], ["MO", k], exclude_keywords=["OBJ"]) for k in ["CLI", "GAR", "TER"]]
+            # CORRECCIÓN: Ahora buscamos CLI, GAR, INT y TER para la suma total
+            c_mo = [find_col(data['SERVICIOS'], ["MO", k], exclude_keywords=["OBJ"]) for k in ["CLI", "GAR", "INT", "TER"]]
             real_mo = sum([s_r.get(c, 0) for c in c_mo if c])
             real_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]), 0) for c in canales_repuestos])
             
@@ -254,8 +251,10 @@ try:
 
         with tab2:
             col_main, col_breakdown = st.columns([1, 2])
+            # La suma real_mo_total ahora incluye la columna INTERNA (c_mo tiene "INT")
             real_mo_total = sum([s_r.get(c, 0) for c in c_mo if c])
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
+            
             with col_main: st.markdown(render_kpi_card("Facturación M.O.", real_mo_total, obj_mo_total), unsafe_allow_html=True)
             with col_breakdown:
                 mo_cli = s_r.get(find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"]), 0)
@@ -372,7 +371,6 @@ try:
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
-                # --- RECUPERADO: VALOR TOTAL STOCK ---
                 st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
 
         with tab4:
