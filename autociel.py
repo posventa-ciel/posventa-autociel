@@ -6,21 +6,32 @@ from datetime import datetime
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS ---
+# --- ESTILO CSS (Compacto) ---
 st.markdown("""<style>
     .main { background-color: #f4f7f9; }
-    .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
+    .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 1.5rem; border-radius: 12px; text-align: center; margin-bottom: 1.5rem; }
     
-    .kpi-card { background-color: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; min-height: 240px; }
+    /* KPI CARD: Más compacto */
+    .kpi-card { 
+        background-color: white; 
+        border: 1px solid #e0e0e0; 
+        padding: 15px; 
+        border-radius: 10px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+        margin-bottom: 10px; 
+        min-height: 160px; /* Reducido de 240px */
+    }
     
-    .metric-card { background-color: white; border: 1px solid #eee; padding: 15px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; min-height: 130px; }
+    .kpi-card h2 { font-size: 1.8rem; margin: 5px 0; color: #00235d; }
+    .kpi-card p { font-size: 0.85rem; margin: 0; }
+    
+    .metric-card { background-color: white; border: 1px solid #eee; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; min-height: 110px; }
     
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
-    h3 { color: #00235d; font-size: 1.3rem; margin-top: 20px; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-    h4 { color: #666; font-size: 1.1rem; margin-top: 15px; margin-bottom: 10px; }
+    h3 { color: #00235d; font-size: 1.2rem; margin-top: 15px; margin-bottom: 10px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
     
-    .cyp-detail { background-color: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 0.9rem; margin-top: 10px; border-left: 5px solid #00235d; line-height: 1.6; }
-    .cyp-header { font-weight: bold; color: #00235d; font-size: 1rem; margin-bottom: 5px; display: block; }
+    .cyp-detail { background-color: #f8f9fa; padding: 10px; border-radius: 6px; font-size: 0.85rem; margin-top: 8px; border-left: 4px solid #00235d; line-height: 1.4; }
+    .cyp-header { font-weight: bold; color: #00235d; font-size: 0.9rem; margin-bottom: 3px; display: block; }
 </style>""", unsafe_allow_html=True)
 
 # --- FUNCIÓN DE BÚSQUEDA ---
@@ -83,7 +94,6 @@ try:
             meses_disp = sorted(df_year['Mes'].unique(), reverse=True)
             mes_sel = st.selectbox("📅 Mes", meses_disp, format_func=lambda x: meses_nom.get(x, "N/A"))
 
-        # DATA FILTERING FOR SELECTED MONTH (OPERATIVO)
         def get_row(df):
             res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
             return res.iloc[-1] if not res.empty else pd.Series(dtype='object')
@@ -107,12 +117,10 @@ try:
         prog_t = d_t / d_h if d_h > 0 else 0
         prog_t = min(prog_t, 1.0)
 
-        # DATA PREPARATION FOR HISTORICAL (ANUAL)
-        # Filtramos por el año seleccionado para ver la evolución de ese año
+        # DATA PREPARATION HISTORICO (CON CORRECCIÓN DE COLUMNAS VACÍAS)
         def get_hist_data(sheet_name):
             df = data[sheet_name]
             df = df[df['Año'] == año_sel].sort_values('Mes')
-            # Agrupar por mes en caso de múltiples entradas (toma la última entrada del mes que suele ser el cierre)
             df = df.groupby('Mes').last().reset_index()
             df['NombreMes'] = df['Mes'].map(meses_nom)
             return df
@@ -129,7 +137,7 @@ try:
 
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"])
 
-        # --- HELPERS VISUALES ---
+        # --- HELPERS VISUALES (HTML COMPACTO) ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit=""):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -142,31 +150,31 @@ try:
 
             html = '<div class="kpi-card">'
             html += f'<p style="font-weight:bold; color:#666; margin-bottom:5px;">{title}</p>'
-            html += f'<h2 style="margin:0; color:#00235d;">{fmt.format(real)}</h2>'
-            html += f'<p style="font-size:0.85rem; color:#666; margin-top:5px;">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</p>'
-            html += '<hr style="margin:10px 0; border:0; border-top:1px solid #eee;">'
-            html += f'<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:5px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
-            html += f'<div style="display:flex; justify-content:space-between; font-size:0.85rem; color:{color}; font-weight:bold;"><span>Proyección:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div>'
-            html += f'<div style="margin-top:10px;"><div style="width:100%; background:#e0e0e0; height:6px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:6px; border-radius:10px;"></div></div></div>'
+            html += f'<h2>{fmt.format(real)}</h2>'
+            html += f'<p style="font-size:0.8rem; color:#666; margin-top:2px;">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</p>'
+            html += '<hr style="margin:8px 0; border:0; border-top:1px solid #eee;">'
+            html += f'<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:3px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
+            html += f'<div style="display:flex; justify-content:space-between; font-size:0.8rem; color:{color}; font-weight:bold;"><span>Proyección:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div>'
+            html += f'<div style="margin-top:8px;"><div style="width:100%; background:#e0e0e0; height:6px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:6px; border-radius:10px;"></div></div></div>'
             html += '</div>'
             return html
 
         def render_kpi_small(title, val, target=None, format_str="{:.1%}"):
-            subtext_html = "<div style='height:24px;'></div>"
+            subtext_html = "<div style='height:20px;'></div>"
             if target is not None:
                 delta = val - target
                 color = "#28a745" if delta >= 0 else "#dc3545"
                 icon = "▲" if delta >= 0 else "▼"
-                subtext_html = f"<div style='margin-top:8px; display:flex; justify-content:center; align-items:center; gap:8px; font-size:0.8rem;'><span style='color:#888;'>Obj: {format_str.format(target)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:2px 6px; border-radius:4px;'>{icon} {format_str.format(abs(delta))}</span></div>"
+                subtext_html = f"<div style='margin-top:6px; display:flex; justify-content:center; align-items:center; gap:6px; font-size:0.75rem;'><span style='color:#888;'>Obj: {format_str.format(target)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:1px 5px; border-radius:4px;'>{icon} {format_str.format(abs(delta))}</span></div>"
             
             html = '<div class="metric-card">'
-            html += f'<p style="color:#666; font-size:0.9rem; margin-bottom:5px;">{title}</p>'
-            html += f'<h3 style="color:#00235d; margin:0;">{format_str.format(val)}</h3>'
+            html += f'<p style="color:#666; font-size:0.85rem; margin-bottom:4px;">{title}</p>'
+            html += f'<h3 style="color:#00235d; margin:0; font-size:1.4rem;">{format_str.format(val)}</h3>'
             html += subtext_html
             html += '</div>'
             return html
 
-        # --- TAB 1 a TAB 4 (CÓDIGO EXISTENTE) ---
+        # --- TAB 1: OBJETIVOS ---
         with tab1:
             st.markdown("### 🎯 Control de Objetivos General")
             cols = st.columns(4)
@@ -358,26 +366,20 @@ try:
                 if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
                 st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
 
-        # --- TAB 5: HISTÓRICO ---
         with tab5:
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             
-            # --- SECCIÓN SERVICIOS ---
             st.markdown("#### 🛠️ Servicios: Capacidad y Eficiencia")
-            
-            # 1. Gráfico de Hs Facturadas vs Disponibles
             h_tal['Hs Disponibles'] = h_tal[find_col(h_tal, ["DISPONIBLES", "REAL"])]
             
-            # Calculamos MO Total de Servicios para histórico
-            # Necesitamos sumar MO CLI, GAR, INT, TER
-            cols_mo_hist = [find_col(h_ser, ["MO", k], exclude_keywords=["OBJ"]) for k in ["CLI", "GAR", "INT", "TER"]]
-            h_ser['Hs Facturadas'] = h_ser[cols_mo_hist].sum(axis=1) # Ojo: Esto suma Pesos si las columnas son pesos. 
-            # Corrección: El gráfico de horas debe usar HORAS (TRAB o FACT del Taller).
-            # Usaremos del Taller: FACT CC + FACT CG + FACT CI
+            # FIX: Filtrar columnas vacías para evitar error "[''] not in index"
             cols_hs_fact = [find_col(h_tal, ["FACT", k]) for k in ["CC", "CG", "CI"]]
-            h_tal['Hs Vendidas'] = h_tal[cols_hs_fact].sum(axis=1)
-            
-            # Merge para gráfico
+            cols_hs_fact = [c for c in cols_hs_fact if c] # Filter empty
+            if cols_hs_fact:
+                h_tal['Hs Vendidas'] = h_tal[cols_hs_fact].sum(axis=1)
+            else:
+                h_tal['Hs Vendidas'] = 0
+
             df_hs = pd.merge(h_tal[['Mes', 'NombreMes', 'Hs Disponibles', 'Hs Vendidas']], h_ser[['Mes']], on='Mes')
             
             fig_hs = go.Figure()
@@ -386,14 +388,19 @@ try:
             fig_hs.update_layout(title="Hs Vendidas vs Capacidad", height=350)
             st.plotly_chart(fig_hs, use_container_width=True)
 
-            # 2. Eficiencia y Productividad
             col_prod = find_col(h_tal, ["PRODUCTIVIDAD", "TALLER"])
-            h_tal['Productividad'] = h_tal[col_prod].apply(lambda x: x/100 if x > 2 else x) # Ajuste %
+            if col_prod:
+                h_tal['Productividad'] = h_tal[col_prod].apply(lambda x: x/100 if x > 2 else x)
+            else:
+                h_tal['Productividad'] = 0
             
-            # Eficiencia Global (Calculada)
             cols_trab = [find_col(h_tal, ["TRAB", k]) for k in ["CC", "CG", "CI"]]
-            h_tal['Hs Trabajadas'] = h_tal[cols_trab].sum(axis=1)
-            h_tal['Eficiencia Global'] = h_tal['Hs Vendidas'] / h_tal['Hs Trabajadas']
+            cols_trab = [c for c in cols_trab if c]
+            if cols_trab:
+                h_tal['Hs Trabajadas'] = h_tal[cols_trab].sum(axis=1)
+                h_tal['Eficiencia Global'] = h_tal.apply(lambda row: row['Hs Vendidas'] / row['Hs Trabajadas'] if row['Hs Trabajadas'] > 0 else 0, axis=1)
+            else:
+                h_tal['Eficiencia Global'] = 0
             
             fig_efi = go.Figure()
             fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Eficiencia Global'], name='Efic. Global', mode='lines+markers', line=dict(color='#28a745')))
@@ -402,67 +409,54 @@ try:
             st.plotly_chart(fig_efi, use_container_width=True)
 
             c_h1, c_h2 = st.columns(2)
-            # 3. CPUS (Entradas)
             col_cpus = find_col(h_ser, ["CPUS"], exclude_keywords=["OBJ"])
-            fig_cpus = px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas de Taller (CPUS)", color_discrete_sequence=['#00235d'])
-            c_h1.plotly_chart(fig_cpus, use_container_width=True)
-            
-            # 4. Ticket Promedio (Hs)
-            h_ser_tal = pd.merge(h_ser, h_tal, on="Mes")
-            h_ser_tal['Ticket Hs'] = h_ser_tal['Hs Vendidas'] / h_ser_tal[col_cpus]
-            fig_tick = px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Horas)", color_discrete_sequence=['#6c757d'])
-            c_h2.plotly_chart(fig_tick, use_container_width=True)
+            if col_cpus:
+                fig_cpus = px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas de Taller (CPUS)", color_discrete_sequence=['#00235d'])
+                c_h1.plotly_chart(fig_cpus, use_container_width=True)
+                
+                h_ser_tal = pd.merge(h_ser, h_tal, on="Mes")
+                h_ser_tal['Ticket Hs'] = h_ser_tal.apply(lambda row: row['Hs Vendidas'] / row[col_cpus] if row[col_cpus] > 0 else 0, axis=1)
+                fig_tick = px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Horas)", color_discrete_sequence=['#6c757d'])
+                c_h2.plotly_chart(fig_tick, use_container_width=True)
 
-
-            # --- SECCIÓN REPUESTOS ---
             st.markdown("---")
             st.markdown("#### 📦 Repuestos: Salud de Stock y Canales")
-            
-            # 1. Salud de Stock (Stacked 100%)
             col_vivo = find_col(h_rep, ["VIVO"])
             col_obs = find_col(h_rep, ["OBSOLETO"])
             col_muerto = find_col(h_rep, ["MUERTO"])
             
-            # Normalizar a 100% por si viene en monto absoluto o %
-            h_rep['Total Stock'] = h_rep[col_vivo] + h_rep[col_obs] + h_rep[col_muerto]
-            # Si suma > 100 (son montos), calculamos %. Si suma aprox 100 o 1, ya está.
-            # Asumiremos montos para el gráfico apilado, Plotly lo maneja.
-            
             fig_stk = go.Figure()
-            fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
-            fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_obs], name='Obsoleto', marker_color='#ffc107'))
-            fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
+            if col_vivo: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
+            if col_obs: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_obs], name='Obsoleto', marker_color='#ffc107'))
+            if col_muerto: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
             fig_stk.update_layout(barmode='stack', title="Composición de Stock (Evolución)", height=350)
             st.plotly_chart(fig_stk, use_container_width=True)
 
-            # 2. Mix Canales (Mostrador vs Taller)
             col_vta_most = find_col(h_rep, ["VENTA", "MOSTRADOR"])
             col_vta_tall = find_col(h_rep, ["VENTA", "TALLER"])
             
             fig_mix = go.Figure()
-            fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta_most], name='Mostrador', marker_color='#17a2b8'))
-            fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta_tall], name='Taller', marker_color='#00235d'))
+            if col_vta_most: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta_most], name='Mostrador', marker_color='#17a2b8'))
+            if col_vta_tall: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta_tall], name='Taller', marker_color='#00235d'))
             fig_mix.update_layout(barmode='group', title="Venta Mostrador vs Taller ($)", height=350)
             st.plotly_chart(fig_mix, use_container_width=True)
 
-
-            # --- SECCIÓN CYP ---
             st.markdown("---")
             st.markdown("#### 🎨 Chapa y Pintura: Producción Física")
-            
-            # Unificar Jujuy y Salta
             h_cyp = pd.merge(h_cyp_j, h_cyp_s, on="Mes", suffixes=('_J', '_S'))
             h_cyp['NombreMes'] = h_cyp['NombreMes_J']
             
-            # Paños Propios Totales
             col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
-            h_cyp['Paños Propios Total'] = h_cyp[f'{col_pp_j}_J'] + h_cyp[f'{col_pp_s}_S']
+            val_pp_j = h_cyp[f'{col_pp_j}_J'] if col_pp_j else 0
+            val_pp_s = h_cyp[f'{col_pp_s}_S'] if col_pp_s else 0
+            h_cyp['Paños Propios Total'] = val_pp_j + val_pp_s
             
-            # Paños Terceros Totales
             col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER'])
             col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER'])
-            h_cyp['Paños Terceros Total'] = h_cyp[f'{col_pt_j}_J'] + h_cyp[f'{col_pt_s}_S']
+            val_pt_j = h_cyp[f'{col_pt_j}_J'] if col_pt_j else 0
+            val_pt_s = h_cyp[f'{col_pt_s}_S'] if col_pt_s else 0
+            h_cyp['Paños Terceros Total'] = val_pt_j + val_pt_s
             
             fig_panos = go.Figure()
             fig_panos.add_trace(go.Bar(x=h_cyp['NombreMes'], y=h_cyp['Paños Propios Total'], name='Propios', marker_color='#00235d'))
@@ -470,12 +464,13 @@ try:
             fig_panos.update_layout(barmode='stack', title="Producción Total de Paños (Jujuy + Salta)", height=350)
             st.plotly_chart(fig_panos, use_container_width=True)
             
-            # Productividad (Paños / Tecnicos)
             col_tec_j = find_col(h_cyp_j, ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']) or find_col(h_cyp_j, ['PRODUCTIVOS'])
             col_tec_s = find_col(h_cyp_s, ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']) or find_col(h_cyp_s, ['PRODUCTIVOS'])
+            val_tec_j = h_cyp[f'{col_tec_j}_J'] if col_tec_j else 0
+            val_tec_s = h_cyp[f'{col_tec_s}_S'] if col_tec_s else 0
             
-            h_cyp['Tecnicos Total'] = h_cyp[f'{col_tec_j}_J'] + h_cyp[f'{col_tec_s}_S']
-            h_cyp['Prod Promedio'] = h_cyp['Paños Propios Total'] / h_cyp['Tecnicos Total'].replace(0, 1)
+            h_cyp['Tecnicos Total'] = val_tec_j + val_tec_s
+            h_cyp['Prod Promedio'] = h_cyp.apply(lambda row: row['Paños Propios Total'] / row['Tecnicos Total'] if row['Tecnicos Total'] > 0 else 0, axis=1)
             
             fig_prod_cyp = px.line(h_cyp, x="NombreMes", y="Prod Promedio", title="Paños por Técnico (Promedio Grupo)", markers=True)
             fig_prod_cyp.update_traces(line_color='#28a745', line_width=3)
