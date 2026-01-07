@@ -7,7 +7,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS ---
+# --- ESTILO CSS (COMPACTO) ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -30,23 +30,23 @@ st.markdown("""<style>
     .portada-right { text-align: right; min-width: 200px; }
     .portada-right div { font-size: 0.9rem; margin-bottom: 5px; }
     
-    /* KPI CARD: Altura forzada para igualar al gráfico */
+    /* KPI CARD: Volvemos al tamaño compacto y elegante */
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
-        padding: 15px; 
+        padding: 12px 15px; 
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        height: 250px; 
+        min-height: 145px; /* Altura compacta */
         display: flex;
         flex-direction: column;
         justify-content: space-between;
     }
     
-    .kpi-card p { font-size: 0.9rem; margin: 0; color: #666; font-weight: 600; }
-    .kpi-card h2 { font-size: 2.2rem; margin: 5px 0; color: #00235d; } 
-    .kpi-subtext { font-size: 0.8rem; color: #888; }
+    .kpi-card p { font-size: 0.85rem; margin: 0; color: #666; font-weight: 600; }
+    .kpi-card h2 { font-size: 1.8rem; margin: 4px 0; color: #00235d; } 
+    .kpi-subtext { font-size: 0.75rem; color: #888; }
     
     .metric-card { 
         background-color: white; 
@@ -59,7 +59,7 @@ st.markdown("""<style>
         display: flex; 
         flex-direction: column; 
         justify-content: center; 
-        min-height: 100px; 
+        min-height: 90px; 
     }
     
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
@@ -87,7 +87,6 @@ def cargar_datos(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
-            # LIMPIEZA DE COLUMNAS
             df.columns = [
                 c.strip().upper()
                 .replace(".", "")
@@ -234,12 +233,15 @@ try:
             return html
 
         # --- LÓGICA DE COLUMNAS ROBUSTA (SERVICIOS) ---
+        # 1. Cliente
         c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
+        # 2. Garantía
         c_gar = find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"])
+        # 3. Interna
         c_int = find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"])
         if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"])
         
-        # PRIORIDAD: MO TERCERO (Singular)
+        # 4. Terceros (Prioridad Singular)
         c_ter = find_col(data['SERVICIOS'], ["MO", "TERCERO"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TERCEROS"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
@@ -283,7 +285,7 @@ try:
                     "Facturación": [val_cli, val_gar, val_int, val_ter]
                 })
                 fig_mo = px.bar(df_mo, x="Facturación", y="Cargo", orientation='h', text_auto='.2s', title="", color="Cargo", color_discrete_sequence=["#00235d", "#28a745", "#ffc107", "#17a2b8"])
-                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=250)
+                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) # Ajustado a altura compacta
                 st.plotly_chart(fig_mo, use_container_width=True)
 
             k1, k2, k3, k4 = st.columns(4)
