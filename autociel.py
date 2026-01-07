@@ -7,7 +7,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS (ULTRA COMPACTO) ---
+# --- ESTILO CSS ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -33,15 +33,18 @@ st.markdown("""<style>
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
-        padding: 10px 12px; 
+        padding: 12px 15px; /* Un poco más de padding */
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        min-height: 145px;
+        min-height: 160px; /* Forzamos altura mínima para igualar */
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     
-    .kpi-card p { font-size: 0.75rem; margin: 0; color: #666; font-weight: 600; }
-    .kpi-card h2 { font-size: 1.5rem; margin: 3px 0; color: #00235d; } 
+    .kpi-card p { font-size: 0.8rem; margin: 0; color: #666; font-weight: 600; }
+    .kpi-card h2 { font-size: 1.6rem; margin: 5px 0; color: #00235d; } 
     .kpi-subtext { font-size: 0.75rem; color: #888; }
     
     .metric-card { 
@@ -55,7 +58,7 @@ st.markdown("""<style>
         display: flex; 
         flex-direction: column; 
         justify-content: center; 
-        min-height: 90px; 
+        min-height: 100px; 
     }
     
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
@@ -165,7 +168,7 @@ try:
         h_cyp_j = get_hist_data('CyP JUJUY')
         h_cyp_s = get_hist_data('CyP SALTA')
 
-        # --- PORTADA COMPACTA ---
+        # --- PORTADA ---
         st.markdown(f'''
         <div class="portada-container">
             <div class="portada-left">
@@ -201,14 +204,15 @@ try:
                 daily_html = f'<div style="font-size:0.75rem; color:#00235d; background-color:#eef2f7; padding: 1px 6px; border-radius:4px; display:inline-block; margin-bottom:4px;">Prom: <b>{fmt_daily.format(daily_val)}</b> /día</div>'
 
             html = '<div class="kpi-card">'
-            html += f'<p>{title}</p>'
+            html += f'<div><p>{title}</p>'
             html += f'<h2>{fmt.format(real)}</h2>'
-            html += daily_html
-            html += f'<div class="kpi-subtext">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
+            html += daily_html 
+            html += '</div>'
+            html += f'<div><div class="kpi-subtext">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
             html += '<hr style="margin:5px 0; border:0; border-top:1px solid #eee;">'
             html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:2px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
             html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:{color}; font-weight:bold;"><span>Proyección:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div>'
-            html += f'<div style="margin-top:5px;"><div style="width:100%; background:#e0e0e0; height:5px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:5px; border-radius:10px;"></div></div></div>'
+            html += f'<div style="margin-top:5px;"><div style="width:100%; background:#e0e0e0; height:5px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:5px; border-radius:10px;"></div></div></div></div>'
             html += '</div>'
             return html
 
@@ -227,12 +231,30 @@ try:
             html += '</div>'
             return html
 
+        # --- LÓGICA DE COLUMNAS ROBUSTA ---
+        # Definimos las columnas exactas para sumar la MO TOTAL
+        # 1. Cliente
+        c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
+        # 2. Garantía
+        c_gar = find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"])
+        # 3. Interna (Agregada recientemente)
+        c_int = find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"])
+        if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"]) # Intento alternativo
+        # 4. Terceros (A veces dice MO TERCEROS, a veces solo TERCEROS)
+        c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
+        if not c_ter: c_ter = find_col(data['SERVICIOS'], ["TERCEROS"], exclude_keywords=["OBJ", "MO", "COSTO"])
+
+        # Calculamos valores individuales
+        val_cli = s_r.get(c_cli, 0) if c_cli else 0
+        val_gar = s_r.get(c_gar, 0) if c_gar else 0
+        val_int = s_r.get(c_int, 0) if c_int else 0
+        val_ter = s_r.get(c_ter, 0) if c_ter else 0
+        
+        real_mo_total = val_cli + val_gar + val_int + val_ter
+        
         # --- TAB 1: OBJETIVOS ---
         with tab1:
             cols = st.columns(4)
-            # CORRECCIÓN: Ahora buscamos CLI, GAR, INT y TER para la suma total
-            c_mo = [find_col(data['SERVICIOS'], ["MO", k], exclude_keywords=["OBJ"]) for k in ["CLI", "GAR", "INT", "TER"]]
-            real_mo = sum([s_r.get(c, 0) for c in c_mo if c])
             real_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]), 0) for c in canales_repuestos])
             
             def get_cyp_total(row, df_nom):
@@ -241,7 +263,7 @@ try:
                 return mo + rep
 
             metas = [
-                ("M.O. Servicios", real_mo, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
+                ("M.O. Servicios", real_mo_total, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
                 ("Repuestos", real_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
                 ("CyP Jujuy", get_cyp_total(cj_r, 'CyP JUJUY'), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
                 ("CyP Salta", get_cyp_total(cs_r, 'CyP SALTA'), cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
@@ -251,19 +273,18 @@ try:
 
         with tab2:
             col_main, col_breakdown = st.columns([1, 2])
-            # La suma real_mo_total ahora incluye la columna INTERNA (c_mo tiene "INT")
-            real_mo_total = sum([s_r.get(c, 0) for c in c_mo if c])
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
             
-            with col_main: st.markdown(render_kpi_card("Facturación M.O.", real_mo_total, obj_mo_total), unsafe_allow_html=True)
+            # Ahora agregamos show_daily=True para que se vea más completa la tarjeta
+            with col_main: st.markdown(render_kpi_card("Facturación M.O.", real_mo_total, obj_mo_total, show_daily=True), unsafe_allow_html=True)
+            
             with col_breakdown:
-                mo_cli = s_r.get(find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"]), 0)
-                mo_gar = s_r.get(find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"]), 0)
-                mo_int = s_r.get(find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"]), 0)
-                mo_ter = s_r.get(find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"]), 0)
-                df_mo = pd.DataFrame({"Cargo": ["Cliente", "Garantía", "Interno", "Terceros"], "Facturación": [mo_cli, mo_gar, mo_int, mo_ter]})
+                df_mo = pd.DataFrame({
+                    "Cargo": ["Cliente", "Garantía", "Interno", "Terceros"], 
+                    "Facturación": [val_cli, val_gar, val_int, val_ter]
+                })
                 fig_mo = px.bar(df_mo, x="Facturación", y="Cargo", orientation='h', text_auto='.2s', title="", color="Cargo", color_discrete_sequence=["#00235d", "#28a745", "#ffc107", "#17a2b8"])
-                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=140)
+                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) # Altura ajustada
                 st.plotly_chart(fig_mo, use_container_width=True)
 
             k1, k2, k3, k4 = st.columns(4)
