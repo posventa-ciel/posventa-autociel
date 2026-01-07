@@ -10,17 +10,13 @@ st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .portada-container { background: linear-gradient(90deg, #00235d 0%, #004080 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; margin-bottom: 2rem; }
     
-    /* Tarjetas KPI Grandes */
     .kpi-card { background-color: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; min-height: 240px; }
     
-    /* Tarjetas KPI Chicas */
     .metric-card { background-color: white; border: 1px solid #eee; padding: 15px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center; min-height: 130px; }
     
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
     h3 { color: #00235d; font-size: 1.3rem; margin-top: 20px; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-    h4 { color: #666; font-size: 1.1rem; margin-top: 15px; }
     
-    /* Estilo para tablas de detalle CyP */
     .cyp-detail { background-color: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 0.9rem; margin-top: 10px; border-left: 5px solid #00235d; line-height: 1.6; }
     .cyp-header { font-weight: bold; color: #00235d; font-size: 1rem; margin-bottom: 5px; display: block; }
 </style>""", unsafe_allow_html=True)
@@ -43,10 +39,12 @@ def cargar_datos(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
+            # LIMPIEZA INCLUYENDO LA LETRA Ñ -> N PARA EVITAR ERRORES DE LECTURA
             df.columns = [
                 c.strip().upper()
                 .replace(".", "")
-                .replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U") 
+                .replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
+                .replace("Ñ", "N") 
                 for c in df.columns
             ]
             for col in df.columns:
@@ -111,7 +109,7 @@ try:
 
         tab1, tab2, tab3, tab4 = st.tabs(["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura"])
 
-        # --- HELPERS VISUALES (MINIFICADOS) ---
+        # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit=""):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -176,20 +174,15 @@ try:
         with tab2:
             st.markdown("### 🛠️ Performance de Servicios")
             
-            # --- 1. Facturación General y Desglose ---
             col_main, col_breakdown = st.columns([1, 2])
             
-            # Cálculo Facturación Servicios Total (MO + TUS + Cargos varios)
             real_mo_total = sum([s_r.get(c, 0) for c in c_mo if c])
-            # Podríamos sumar TUS si el objetivo de MO lo incluye, por ahora usamos MO puro como "Facturación General"
-            # O mejor, usamos el objetivo definido de MO.
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
             
             with col_main:
                 st.markdown(render_kpi_card("Facturación M.O. Total", real_mo_total, obj_mo_total), unsafe_allow_html=True)
             
             with col_breakdown:
-                # Datos para el gráfico de cargos
                 mo_cli = s_r.get(find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"]), 0)
                 mo_gar = s_r.get(find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"]), 0)
                 mo_int = s_r.get(find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"]), 0)
@@ -208,7 +201,6 @@ try:
             st.markdown("---")
             st.markdown("### ⚙️ Indicadores de Taller")
             
-            # --- Variables Taller ---
             ht_cc = t_r.get(find_col(data['TALLER'], ["TRAB", "CC"]), 0)
             ht_cg = t_r.get(find_col(data['TALLER'], ["TRAB", "CG"]), 0)
             ht_ci = t_r.get(find_col(data['TALLER'], ["TRAB", "CI"]), 0)
@@ -217,13 +209,11 @@ try:
             hf_cg = t_r.get(find_col(data['TALLER'], ["FACT", "CG"]), 0)
             hf_ci = t_r.get(find_col(data['TALLER'], ["FACT", "CI"]), 0)
 
-            # Eficiencias
             ef_cc = hf_cc / ht_cc if ht_cc > 0 else 0
             ef_cg = hf_cg / ht_cg if ht_cg > 0 else 0
             ef_ci = hf_ci / ht_ci if ht_ci > 0 else 0
             ef_gl = (hf_cc+hf_cg+hf_ci) / (ht_cc+ht_cg+ht_ci) if (ht_cc+ht_cg+ht_ci) > 0 else 0
             
-            # KPIs Taller
             hs_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
             col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
             cant_tecs = t_r.get(col_tecs, 6)
@@ -235,18 +225,23 @@ try:
             prod = t_r.get(find_col(data['TALLER'], ["PRODUCTIVIDAD", "TALLER"]), 0)
             if prod > 2: prod /= 100
 
-            # --- FILA 1: EFICIENCIAS (4 columnas) ---
             e1, e2, e3, e4 = st.columns(4)
             with e1: st.markdown(render_kpi_small("Eficiencia Cargo Cliente", ef_cc, 1.0), unsafe_allow_html=True)
             with e2: st.markdown(render_kpi_small("Eficiencia Garantía", ef_cg, 1.0), unsafe_allow_html=True)
-            with e3: st.markdown(render_kpi_small("Eficiencia Interna", ef_ci, 0.20), unsafe_allow_html=True) # Target 20%
+            with e3: st.markdown(render_kpi_small("Eficiencia Interna", ef_ci, 0.20), unsafe_allow_html=True)
             with e4: st.markdown(render_kpi_small("Eficiencia Global", ef_gl, 0.85), unsafe_allow_html=True)
 
-            # --- FILA 2: UTILIZACIÓN (3 columnas) ---
             u1, u2, u3 = st.columns(3)
             with u1: st.markdown(render_kpi_small("Grado de Presencia", presencia, 0.95), unsafe_allow_html=True)
             with u2: st.markdown(render_kpi_small("Grado de Ocupación", ocup, 0.95), unsafe_allow_html=True)
             with u3: st.markdown(render_kpi_small("Productividad", prod, 0.95), unsafe_allow_html=True)
+
+            # --- GRÁFICOS RESTAURADOS ---
+            st.markdown("#### Distribución de Horas")
+            g1, g2 = st.columns(2)
+            with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
+            with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
+
 
         # --- TAB 3: REPUESTOS ---
         with tab3:
@@ -287,7 +282,6 @@ try:
             if not df_r.empty:
                 st.dataframe(df_r.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True)
             
-            # Gráficos Stock y Canales
             c1, c2 = st.columns(2)
             with c1: 
                 if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación (Venta Bruta)"), use_container_width=True)
@@ -310,35 +304,41 @@ try:
                 with col:
                     st.subheader(f"Sede {nom}")
                     
-                    # 1. KPI FACTURACIÓN GENERAL (Igual a pestaña 1)
+                    # 1. KPI FACTURACIÓN GENERAL
                     f_p = row.get(find_col(data[sh], ['MO', 'PUR']), 0)
                     f_t = row.get(find_col(data[sh], ['MO', 'TER']), 0)
                     f_r = row.get(find_col(data[sh], ['FACT', 'REP']), 0) if is_salta else 0
                     total_fact = f_p + f_t + f_r
                     obj_fact = row.get(find_col(data[sh], ["OBJ", "FACT"]), 1)
-                    
                     st.markdown(render_kpi_card(f"Facturación Total {nom}", total_fact, obj_fact), unsafe_allow_html=True)
                     
-                    # 2. KPI PAÑOS PROPIOS (Target y Proyección)
-                    panos_prop = row.get(find_col(data[sh], ['PANOS', 'PROP']), 0)
-                    obj_panos = row.get(find_col(data[sh], ['OBJ', 'PANOS']) or find_col(data[sh], ['OBJ', 'PAÑOS']), 1)
+                    # 2. KPI PAÑOS PROPIOS (Mejorada Búsqueda)
+                    # Busca PANOS excluyendo Terceros y Obj para hallar los Propios
+                    col_panos = find_col(data[sh], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+                    panos_prop = row.get(col_panos, 0)
+                    
+                    col_obj_panos = find_col(data[sh], ['OBJ', 'PANOS'])
+                    obj_panos = row.get(col_obj_panos, 1)
                     st.markdown(render_kpi_card(f"Paños Propios", panos_prop, obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
                     
-                    # 3. METRICA PROMEDIO PAÑOS X TECNICO
+                    # 3. METRICA PROMEDIO
                     col_tecnicos = find_col(data[sh], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']) or find_col(data[sh], ['PRODUCTIVOS'])
                     cant_tec = row.get(col_tecnicos, 1) if col_tecnicos else 1
                     ratio = panos_prop / cant_tec if cant_tec > 0 else 0
                     st.markdown(render_kpi_small("Promedio Paños por Técnico", ratio, None, "{:.1f}"), unsafe_allow_html=True)
 
                     # 4. UNIFICACIÓN DE TERCEROS
-                    panos_ter = row.get(find_col(data[sh], ['PANOS', 'TER']), 0)
+                    # Busca columna de Paños Terceros explicitamente
+                    col_panos_ter = find_col(data[sh], ['PANOS', 'TER'])
+                    panos_ter = row.get(col_panos_ter, 0)
+                    
                     c_ter = row.get(find_col(data[sh], ['COSTO', 'TER']), 0)
                     m_ter = f_t - c_ter
                     mg_ter_pct = m_ter/f_t if f_t > 0 else 0
                     
                     html_ter = '<div class="cyp-detail">'
                     html_ter += '<span class="cyp-header">👨‍🔧 Gestión Terceros</span>'
-                    html_ter += f'Paños: <b>{panos_ter:,.0f}</b><br>'
+                    html_ter += f'Cantidad Paños: <b>{panos_ter:,.0f}</b><br>'
                     html_ter += f'Facturación: ${f_t:,.0f}<br>'
                     html_ter += f'Costo: ${c_ter:,.0f}<br>'
                     html_ter += f'Margen: <b>${m_ter:,.0f}</b> ({mg_ter_pct:.1%})'
@@ -357,7 +357,7 @@ try:
                         html_rep += '</div>'
                         st.markdown(html_rep, unsafe_allow_html=True)
 
-                    # 5. GRÁFICO (AL FINAL)
+                    # 5. GRÁFICO
                     vals = [f_p, f_t]
                     nams = ["MO Pura", "Terceros"]
                     cols_pie = ["#00235d", "#00A8E8"]
