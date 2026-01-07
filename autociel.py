@@ -38,7 +38,7 @@ st.markdown("""<style>
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        height: 250px; /* Altura fija para alinear con el gráfico de al lado */
+        height: 250px; 
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -87,6 +87,7 @@ def cargar_datos(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
+            # LIMPIEZA DE COLUMNAS
             df.columns = [
                 c.strip().upper()
                 .replace(".", "")
@@ -233,18 +234,16 @@ try:
             return html
 
         # --- LÓGICA DE COLUMNAS ROBUSTA (SERVICIOS) ---
-        # 1. Cliente
         c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
-        # 2. Garantía
         c_gar = find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"])
-        # 3. Interna
         c_int = find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"])
         if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"])
         
-        # 4. Terceros (CORREGIDO: Priorizamos SINGULAR "TERCERO")
+        # PRIORIDAD: MO TERCERO (Singular)
         c_ter = find_col(data['SERVICIOS'], ["MO", "TERCERO"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TERCEROS"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
+        if not c_ter: c_ter = find_col(data['SERVICIOS'], ["TERCERO"], exclude_keywords=["OBJ", "MO", "COSTO"])
 
         val_cli = s_r.get(c_cli, 0) if c_cli else 0
         val_gar = s_r.get(c_gar, 0) if c_gar else 0
@@ -413,4 +412,111 @@ try:
             
             # SALTA
             s_f_p = cs_r.get(find_col(data['CyP SALTA'], ['MO', 'PUR']), 0)
-            s_f_t = cs_
+            s_f_t = cs_r.get(find_col(data['CyP SALTA'], ['MO', 'TER']), 0)
+            s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
+            s_total_fact = s_f_p + s_f_t + s_f_r
+            s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
+            s_panos_prop = cs_r.get(find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']), 0)
+            s_obj_panos = cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'PANOS']), 1)
+            s_cant_tec = cs_r.get(find_col(data['CyP SALTA'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']), 1)
+            s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
+            s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
+            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER']), 0)
+            s_m_ter = s_f_t - s_c_ter
+            s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
+            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP']), 0)
+            s_m_rep = s_f_r - s_c_rep
+            s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
+
+            c_jujuy, c_salta = st.columns(2)
+            with c_jujuy:
+                st.subheader("Sede Jujuy")
+                st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_j, unsafe_allow_html=True)
+            with c_salta:
+                st.subheader("Sede Salta")
+                st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_s, unsafe_allow_html=True)
+                if s_f_r > 0: st.markdown(f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Mg: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})</div>', unsafe_allow_html=True)
+
+            g_jujuy, g_salta = st.columns(2)
+            with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
+            with g_salta: 
+                vals_s, nams_s = [s_f_p, s_f_t], ["MO Pura", "Terceros"]
+                if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
+                st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
+
+        with tab5:
+            st.markdown(f"### 📈 Evolución Anual {año_sel}")
+            st.markdown("#### 🛠️ Servicios")
+            h_tal['Hs Disponibles'] = h_tal[find_col(h_tal, ["DISPONIBLES", "REAL"])]
+            cols_hs_fact = [c for c in [find_col(h_tal, ["FACT", k]) for k in ["CC", "CG", "CI"]] if c]
+            h_tal['Hs Vendidas'] = h_tal[cols_hs_fact].sum(axis=1) if cols_hs_fact else 0
+            df_hs = pd.merge(h_tal[['Mes', 'NombreMes', 'Hs Disponibles', 'Hs Vendidas']], h_ser[['Mes']], on='Mes')
+            fig_hs = go.Figure()
+            fig_hs.add_trace(go.Bar(x=df_hs['NombreMes'], y=df_hs['Hs Vendidas'], name='Hs Vendidas', marker_color='#00235d'))
+            fig_hs.add_trace(go.Scatter(x=df_hs['NombreMes'], y=df_hs['Hs Disponibles'], name='Hs Disponibles', mode='lines+markers', line=dict(color='#ffc107', width=3)))
+            fig_hs.update_layout(title="Hs Vendidas vs Capacidad", height=300)
+            st.plotly_chart(fig_hs, use_container_width=True)
+
+            col_prod = find_col(h_tal, ["PRODUCTIVIDAD", "TALLER"])
+            h_tal['Productividad'] = h_tal[col_prod].apply(lambda x: x/100 if x > 2 else x) if col_prod else 0
+            cols_trab = [c for c in [find_col(h_tal, ["TRAB", k]) for k in ["CC", "CG", "CI"]] if c]
+            h_tal['Hs Trabajadas'] = h_tal[cols_trab].sum(axis=1) if cols_trab else 0
+            h_tal['Eficiencia Global'] = h_tal.apply(lambda row: row['Hs Vendidas'] / row['Hs Trabajadas'] if row['Hs Trabajadas'] > 0 else 0, axis=1)
+            fig_efi = go.Figure()
+            fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Eficiencia Global'], name='Efic. Global', mode='lines+markers', line=dict(color='#28a745')))
+            fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Productividad'], name='Productividad', mode='lines+markers', line=dict(color='#17a2b8', dash='dot')))
+            fig_efi.update_layout(title="Eficiencia y Productividad", yaxis_tickformat='.0%', height=300)
+            st.plotly_chart(fig_efi, use_container_width=True)
+
+            c_h1, c_h2 = st.columns(2)
+            col_cpus = find_col(h_ser, ["CPUS"], exclude_keywords=["OBJ"])
+            if col_cpus:
+                c_h1.plotly_chart(px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas (CPUS)", color_discrete_sequence=['#00235d']), use_container_width=True)
+                h_ser_tal = pd.merge(h_ser, h_tal, on="Mes")
+                h_ser_tal['Ticket Hs'] = h_ser_tal.apply(lambda row: row['Hs Vendidas'] / row[col_cpus] if row[col_cpus] > 0 else 0, axis=1)
+                c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### 📦 Repuestos")
+            col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
+            fig_stk = go.Figure()
+            if col_vivo: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
+            if col_obs: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_obs], name='Obsoleto', marker_color='#ffc107'))
+            if col_muerto: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
+            fig_stk.update_layout(barmode='stack', title="Salud de Stock", height=300)
+            st.plotly_chart(fig_stk, use_container_width=True)
+
+            col_vta_most, col_vta_tall = find_col(h_rep, ["VENTA", "MOSTRADOR"]), find_col(h_rep, ["VENTA", "TALLER"])
+            fig_mix = go.Figure()
+            if col_vta_most: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta_most], name='Mostrador', marker_color='#17a2b8'))
+            if col_vta_tall: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta_tall], name='Taller', marker_color='#00235d'))
+            fig_mix.update_layout(barmode='group', title="Venta por Canal ($)", height=300)
+            st.plotly_chart(fig_mix, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### 🎨 Chapa y Pintura")
+            h_cyp = pd.merge(h_cyp_j, h_cyp_s, on="Mes", suffixes=('_J', '_S'))
+            h_cyp['NombreMes'] = h_cyp['NombreMes_J']
+            col_pp_j, col_pp_s = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ']), find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            h_cyp['Paños Propios'] = (h_cyp[f'{col_pp_j}_J'] if col_pp_j else 0) + (h_cyp[f'{col_pp_s}_S'] if col_pp_s else 0)
+            col_pt_j, col_pt_s = find_col(h_cyp_j, ['PANOS', 'TER']), find_col(h_cyp_s, ['PANOS', 'TER'])
+            h_cyp['Paños Terceros'] = (h_cyp[f'{col_pt_j}_J'] if col_pt_j else 0) + (h_cyp[f'{col_pt_s}_S'] if col_pt_s else 0)
+            
+            fig_panos = go.Figure()
+            fig_panos.add_trace(go.Bar(x=h_cyp['NombreMes'], y=h_cyp['Paños Propios'], name='Propios', marker_color='#00235d'))
+            fig_panos.add_trace(go.Bar(x=h_cyp['NombreMes'], y=h_cyp['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+            fig_panos.update_layout(barmode='stack', title="Producción de Paños (Grupo)", height=300)
+            st.plotly_chart(fig_panos, use_container_width=True)
+
+    else:
+        st.warning("No se pudieron cargar los datos.")
+except Exception as e:
+    st.error(f"Error global: {e}")
