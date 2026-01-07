@@ -303,7 +303,7 @@ try:
                     }])
                 ], ignore_index=True)
                 
-                # Se agrega .hide(axis="index") para eliminar la columna numérica izquierda
+                # Se agrega hide_index=True directamente en st.dataframe
                 st.dataframe(df_show.style.format({
                     "Venta Bruta": "${:,.0f}", 
                     "Desc.": "${:,.0f}", 
@@ -311,7 +311,7 @@ try:
                     "Costo": "${:,.0f}", 
                     "Utilidad $": "${:,.0f}", 
                     "Margen %": "{:.1%}"
-                }).hide(axis="index"), use_container_width=True)
+                }), use_container_width=True, hide_index=True)
             
             c1, c2 = st.columns(2)
             with c1: 
