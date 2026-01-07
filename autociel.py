@@ -8,12 +8,9 @@ st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
 # --- ESTILO CSS (ULTRA COMPACTO) ---
 st.markdown("""<style>
-    /* Reducir espacio blanco superior de Streamlit */
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-    
     .main { background-color: #f4f7f9; }
     
-    /* PORTADA: Ahora es horizontal (Flex) para ahorrar altura */
     .portada-container { 
         background: linear-gradient(90deg, #00235d 0%, #004080 100%); 
         color: white; 
@@ -27,14 +24,11 @@ st.markdown("""<style>
         gap: 15px;
     }
     
-    /* Textos Portada más chicos */
     .portada-left h1 { font-size: 1.4rem; margin: 0; line-height: 1.2; }
     .portada-left h3 { font-size: 1rem; margin: 0; color: #cbd5e1; font-weight: normal; }
-    
     .portada-right { text-align: right; min-width: 200px; }
     .portada-right div { font-size: 0.9rem; margin-bottom: 5px; }
     
-    /* KPI CARD: Compacto */
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
@@ -42,11 +36,11 @@ st.markdown("""<style>
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        min-height: 130px; /* Altura reducida */
+        min-height: 145px; /* Ajustado levemente para el dato extra */
     }
     
     .kpi-card p { font-size: 0.75rem; margin: 0; color: #666; font-weight: 600; }
-    .kpi-card h2 { font-size: 1.5rem; margin: 3px 0; color: #00235d; } /* Numero más chico */
+    .kpi-card h2 { font-size: 1.5rem; margin: 3px 0; color: #00235d; } 
     .kpi-subtext { font-size: 0.75rem; color: #888; }
     
     .metric-card { 
@@ -167,7 +161,7 @@ try:
         h_cyp_j = get_hist_data('CyP JUJUY')
         h_cyp_s = get_hist_data('CyP SALTA')
 
-        # --- PORTADA COMPACTA (HORIZONTAL) ---
+        # PORTADA
         st.markdown(f'''
         <div class="portada-container">
             <div class="portada-left">
@@ -185,8 +179,8 @@ try:
 
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"])
 
-        # --- HELPERS VISUALES ---
-        def render_kpi_card(title, real, obj_mes, is_currency=True, unit=""):
+        # --- HELPERS VISUALES ACTUALIZADOS ---
+        def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
             cumpl_proy = proy / obj_mes if obj_mes > 0 else 0
@@ -195,10 +189,18 @@ try:
             color = "#dc3545" if cumpl_proy < 0.90 else ("#ffc107" if cumpl_proy < 0.98 else "#28a745")
             icon = "✅" if real >= obj_parcial else "🔻"
             cumpl_parcial_pct = real / obj_parcial if obj_parcial > 0 else 0
+            
+            # HTML para el promedio diario si se solicita
+            daily_html = ""
+            if show_daily:
+                daily_val = real / d_t if d_t > 0 else 0
+                fmt_daily = "${:,.0f}" if is_currency else "{:,.1f}"
+                daily_html = f'<div style="font-size:0.75rem; color:#00235d; background-color:#eef2f7; padding: 1px 6px; border-radius:4px; display:inline-block; margin-bottom:4px;">Prom: <b>{fmt_daily.format(daily_val)}</b> /día</div>'
 
             html = '<div class="kpi-card">'
             html += f'<p>{title}</p>'
             html += f'<h2>{fmt.format(real)}</h2>'
+            html += daily_html
             html += f'<div class="kpi-subtext">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
             html += '<hr style="margin:5px 0; border:0; border-top:1px solid #eee;">'
             html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:2px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
@@ -273,8 +275,9 @@ try:
             tp_hs = (hf_cc+hf_cg+hf_ci) / div
             tgt_tp_mo = obj_mo_total / obj_cpus if obj_cpus > 0 else 0
 
-            with k1: st.markdown(render_kpi_card("TUS Total", real_tus, obj_tus, is_currency=False), unsafe_allow_html=True)
-            with k2: st.markdown(render_kpi_card("CPUS (Entradas)", real_cpus, obj_cpus, is_currency=False), unsafe_allow_html=True)
+            # --- AQUI SE AGREGA EL PROMEDIO DIARIO ---
+            with k1: st.markdown(render_kpi_card("TUS Total", real_tus, obj_tus, is_currency=False, show_daily=True), unsafe_allow_html=True)
+            with k2: st.markdown(render_kpi_card("CPUS (Entradas)", real_cpus, obj_cpus, is_currency=False, show_daily=True), unsafe_allow_html=True)
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, "{:.2f} hs"), unsafe_allow_html=True)
             with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, "${:,.0f}"), unsafe_allow_html=True)
 
