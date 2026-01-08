@@ -334,4 +334,237 @@ try:
             with u3: st.markdown(render_kpi_small("Productividad", prod, 0.95), unsafe_allow_html=True)
 
             g1, g2 = st.columns(2)
-            with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC",
+            with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
+            with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
+
+        with tab3:
+            st.markdown("### 📦 Repuestos")
+            detalles = []
+            for c in canales_repuestos:
+                v_col = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
+                if v_col:
+                    vb = r_r.get(v_col, 0)
+                    d = r_r.get(find_col(data['REPUESTOS'], ["DESC", c]), 0)
+                    cost = r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]), 0)
+                    vn = vb - d
+                    ut = vn - cost
+                    detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
+            df_r = pd.DataFrame(detalles)
+            vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
+            obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
+            
+            # Calculo de meses de stock (Rotación) para el mes actual
+            # Necesitamos costos de este mes y 2 anteriores para promedio
+            costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
+            
+            # Simulamos logica rapida: si no tengo los datos del objeto, uso el actual como proxy o intento buscar en historico si está cargado
+            # Para hacerlo robusto usaremos el dataframe historico h_rep
+            
+            val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+            
+            c_main, c_kpis = st.columns([1, 3])
+            with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
+            with c_kpis:
+                r2, r3, r4 = st.columns(3)
+                util_total = df_r['Utilidad $'].sum() if not df_r.empty else 0
+                vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
+                mg_total = util_total / vta_total_neta if vta_total_neta > 0 else 0
+                
+                # Meses de Stock: Valor Stock / Costo Promedio 3 meses
+                # Aqui lo calculamos 'al vuelo' simple con el dato actual si no hay historia, 
+                # pero idealmente usamos el historico (lo haremos en el grafico)
+                # Para la tarjeta usamos Costo Actual como aproximacion si es el unico dato
+                meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
+                
+                with r2: st.markdown(render_kpi_small("Utilidad Total", util_total, None, "${:,.0f}"), unsafe_allow_html=True)
+                with r3: st.markdown(render_kpi_small("Margen Global", mg_total, None, "{:.1%}"), unsafe_allow_html=True)
+                with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, "{:.1f}"), unsafe_allow_html=True) # Target ejemplo 4 meses
+
+            if not df_r.empty:
+                t_vb = df_r['Venta Bruta'].sum()
+                t_desc = df_r['Desc.'].sum()
+                t_vn = df_r['Venta Neta'].sum()
+                t_cost = df_r['Costo'].sum()
+                t_ut = df_r['Utilidad $'].sum()
+                t_mg = t_ut / t_vn if t_vn != 0 else 0
+                df_show = pd.concat([df_r, pd.DataFrame([{"Canal": "TOTAL", "Venta Bruta": t_vb, "Desc.": t_desc, "Venta Neta": t_vn, "Costo": t_cost, "Utilidad $": t_ut, "Margen %": t_mg}])], ignore_index=True)
+                st.dataframe(df_show.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+            
+            c1, c2 = st.columns(2)
+            with c1: 
+                if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
+            with c2:
+                p_vivo = float(r_r.get(find_col(data['REPUESTOS'], ["VIVO"]), 0))
+                p_obs = float(r_r.get(find_col(data['REPUESTOS'], ["OBSOLETO"]), 0))
+                p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
+                f = 1 if p_vivo <= 1 else 100
+                df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
+                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+                st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
+
+        with tab4:
+            st.markdown("### 🎨 Chapa y Pintura")
+            # JUJUY
+            j_f_p = cj_r.get(find_col(data['CyP JUJUY'], ['MO', 'PUR']), 0)
+            j_f_t = cj_r.get(find_col(data['CyP JUJUY'], ['MO', 'TER']), 0)
+            j_total_fact = j_f_p + j_f_t
+            j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
+            j_col_panos = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            j_panos_prop = cj_r.get(j_col_panos, 0)
+            j_obj_panos = cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'PANOS']), 1)
+            j_cant_tec = cj_r.get(find_col(data['CyP JUJUY'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']), 1)
+            j_ratio = j_panos_prop / j_cant_tec if j_cant_tec > 0 else 0
+            j_panos_ter = cj_r.get(find_col(data['CyP JUJUY'], ['PANOS', 'TER']), 0)
+            j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
+            j_m_ter = j_f_t - j_c_ter
+            j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
+            
+            # SALTA
+            s_f_p = cs_r.get(find_col(data['CyP SALTA'], ['MO', 'PUR']), 0)
+            s_f_t = cs_r.get(find_col(data['CyP SALTA'], ['MO', 'TER']), 0)
+            s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
+            s_total_fact = s_f_p + s_f_t + s_f_r
+            s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
+            s_panos_prop = cs_r.get(find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']), 0)
+            s_obj_panos = cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'PANOS']), 1)
+            s_cant_tec = cs_r.get(find_col(data['CyP SALTA'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD']), 1)
+            s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
+            s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
+            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER']), 0)
+            s_m_ter = s_f_t - s_c_ter
+            s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
+            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP']), 0)
+            s_m_rep = s_f_r - s_c_rep
+            s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
+
+            c_jujuy, c_salta = st.columns(2)
+            with c_jujuy:
+                st.subheader("Sede Jujuy")
+                st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_j, unsafe_allow_html=True)
+            with c_salta:
+                st.subheader("Sede Salta")
+                st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_s, unsafe_allow_html=True)
+                if s_f_r > 0: st.markdown(f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Mg: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})</div>', unsafe_allow_html=True)
+
+            g_jujuy, g_salta = st.columns(2)
+            with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
+            with g_salta: 
+                vals_s, nams_s = [s_f_p, s_f_t], ["MO Pura", "Terceros"]
+                if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
+                st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
+
+        with tab5:
+            st.markdown(f"### 📈 Evolución Anual {año_sel}")
+            st.markdown("#### 🛠️ Servicios")
+            h_tal['Hs Disponibles'] = h_tal[find_col(h_tal, ["DISPONIBLES", "REAL"])]
+            cols_hs_fact = [c for c in [find_col(h_tal, ["FACT", k]) for k in ["CC", "CG", "CI"]] if c]
+            h_tal['Hs Vendidas'] = h_tal[cols_hs_fact].sum(axis=1) if cols_hs_fact else 0
+            df_hs = pd.merge(h_tal[['Mes', 'NombreMes', 'Hs Disponibles', 'Hs Vendidas']], h_ser[['Mes']], on='Mes')
+            fig_hs = go.Figure()
+            fig_hs.add_trace(go.Bar(x=df_hs['NombreMes'], y=df_hs['Hs Vendidas'], name='Hs Vendidas', marker_color='#00235d'))
+            fig_hs.add_trace(go.Scatter(x=df_hs['NombreMes'], y=df_hs['Hs Disponibles'], name='Hs Disponibles', mode='lines+markers', line=dict(color='#ffc107', width=3)))
+            fig_hs.update_layout(title="Hs Vendidas vs Capacidad", height=300)
+            st.plotly_chart(fig_hs, use_container_width=True)
+
+            col_prod = find_col(h_tal, ["PRODUCTIVIDAD", "TALLER"])
+            h_tal['Productividad'] = h_tal[col_prod].apply(lambda x: x/100 if x > 2 else x) if col_prod else 0
+            cols_trab = [c for c in [find_col(h_tal, ["TRAB", k]) for k in ["CC", "CG", "CI"]] if c]
+            h_tal['Hs Trabajadas'] = h_tal[cols_trab].sum(axis=1) if cols_trab else 0
+            h_tal['Eficiencia Global'] = h_tal.apply(lambda row: row['Hs Vendidas'] / row['Hs Trabajadas'] if row['Hs Trabajadas'] > 0 else 0, axis=1)
+            fig_efi = go.Figure()
+            fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Eficiencia Global'], name='Efic. Global', mode='lines+markers', line=dict(color='#28a745')))
+            fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Productividad'], name='Productividad', mode='lines+markers', line=dict(color='#17a2b8', dash='dot')))
+            fig_efi.update_layout(title="Eficiencia y Productividad", yaxis_tickformat='.0%', height=300)
+            st.plotly_chart(fig_efi, use_container_width=True)
+
+            c_h1, c_h2 = st.columns(2)
+            col_cpus = find_col(h_ser, ["CPUS"], exclude_keywords=["OBJ"])
+            if col_cpus:
+                c_h1.plotly_chart(px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas (CPUS)", color_discrete_sequence=['#00235d']), use_container_width=True)
+                h_ser_tal = pd.merge(h_ser, h_tal, on="Mes")
+                h_ser_tal['Ticket Hs'] = h_ser_tal.apply(lambda row: row['Hs Vendidas'] / row[col_cpus] if row[col_cpus] > 0 else 0, axis=1)
+                c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### 📦 Repuestos")
+            col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
+            fig_stk = go.Figure()
+            if col_vivo: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
+            if col_obs: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_obs], name='Obsoleto', marker_color='#ffc107'))
+            if col_muerto: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
+            fig_stk.update_layout(barmode='stack', title="Salud de Stock", height=300)
+            st.plotly_chart(fig_stk, use_container_width=True)
+
+            # NUEVO GRÁFICO APILADO PARA CANALES (Loop completo)
+            fig_mix = go.Figure()
+            for c in canales_repuestos:
+                col_vta = find_col(h_rep, ["VENTA", c], exclude_keywords=["OBJ"])
+                if col_vta:
+                    fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c))
+            
+            fig_mix.update_layout(barmode='stack', title="Venta Total por Canal (Apilado)", height=300)
+            st.plotly_chart(fig_mix, use_container_width=True)
+            
+            # NUEVO GRÁFICO: MESES DE STOCK (Rotación)
+            # Calculamos Costo Total por mes en el historico
+            h_rep['CostoTotalMes'] = 0
+            for c in canales_repuestos:
+                 col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
+                 if col_costo:
+                     h_rep['CostoTotalMes'] += h_rep[col_costo]
+            
+            # Media movil de 3 meses (minimo 1 dato para empezar)
+            h_rep['CostoPromedio3M'] = h_rep['CostoTotalMes'].rolling(window=3, min_periods=1).mean()
+            col_val_stock = find_col(h_rep, ["VALOR", "STOCK"])
+            
+            if col_val_stock:
+                h_rep['MesesStock'] = h_rep.apply(lambda row: row[col_val_stock] / row['CostoPromedio3M'] if row['CostoPromedio3M'] > 0 else 0, axis=1)
+                
+                fig_rot = go.Figure()
+                fig_rot.add_trace(go.Scatter(x=h_rep['NombreMes'], y=h_rep['MesesStock'], name='Meses Stock', mode='lines+markers', line=dict(color='#6610f2', width=3)))
+                fig_rot.update_layout(title="Evolución Meses de Stock (Stock / Costo Prom. 3 meses)", height=300)
+                st.plotly_chart(fig_rot, use_container_width=True)
+
+
+            st.markdown("---")
+            st.markdown("#### 🎨 Chapa y Pintura - Desglose por Sede")
+            # Preparar datos JUJUY
+            col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER'])
+            h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
+            h_cyp_j['Paños Terceros'] = h_cyp_j[col_pt_j] if col_pt_j else 0
+            
+            # Preparar datos SALTA
+            col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER'])
+            h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
+            h_cyp_s['Paños Terceros'] = h_cyp_s[col_pt_s] if col_pt_s else 0
+            
+            c_hist_j, c_hist_s = st.columns(2)
+            
+            with c_hist_j:
+                fig_pj = go.Figure()
+                fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Propios'], name='Propios', marker_color='#00235d'))
+                fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+                fig_pj.update_layout(barmode='stack', title="Evolución Jujuy (Paños)", height=300)
+                st.plotly_chart(fig_pj, use_container_width=True)
+                
+            with c_hist_s:
+                fig_ps = go.Figure()
+                fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Propios'], name='Propios', marker_color='#00235d'))
+                fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+                fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=300)
+                st.plotly_chart(fig_ps, use_container_width=True)
+
+    else:
+        st.warning("No se pudieron cargar los datos.")
+except Exception as e:
+    st.error(f"Error global: {e}")
