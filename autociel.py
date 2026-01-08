@@ -7,7 +7,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS (COMPACTO) ---
+# --- ESTILO CSS ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -30,7 +30,7 @@ st.markdown("""<style>
     .portada-right { text-align: right; min-width: 200px; }
     .portada-right div { font-size: 0.9rem; margin-bottom: 5px; }
     
-    /* KPI CARD: Volvemos al tamaño compacto y elegante */
+    /* KPI CARD: Altura compacta */
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
@@ -38,7 +38,7 @@ st.markdown("""<style>
         border-radius: 8px; 
         box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
         margin-bottom: 8px; 
-        min-height: 145px; /* Altura compacta */
+        min-height: 145px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -233,15 +233,11 @@ try:
             return html
 
         # --- LÓGICA DE COLUMNAS ROBUSTA (SERVICIOS) ---
-        # 1. Cliente
         c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
-        # 2. Garantía
         c_gar = find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"])
-        # 3. Interna
         c_int = find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"])
         if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"])
         
-        # 4. Terceros (Prioridad Singular)
         c_ter = find_col(data['SERVICIOS'], ["MO", "TERCERO"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TERCEROS"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
@@ -285,7 +281,7 @@ try:
                     "Facturación": [val_cli, val_gar, val_int, val_ter]
                 })
                 fig_mo = px.bar(df_mo, x="Facturación", y="Cargo", orientation='h', text_auto='.2s', title="", color="Cargo", color_discrete_sequence=["#00235d", "#28a745", "#ffc107", "#17a2b8"])
-                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) # Ajustado a altura compacta
+                fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) 
                 st.plotly_chart(fig_mo, use_container_width=True)
 
             k1, k2, k3, k4 = st.columns(4)
@@ -504,19 +500,34 @@ try:
             st.plotly_chart(fig_mix, use_container_width=True)
 
             st.markdown("---")
-            st.markdown("#### 🎨 Chapa y Pintura")
-            h_cyp = pd.merge(h_cyp_j, h_cyp_s, on="Mes", suffixes=('_J', '_S'))
-            h_cyp['NombreMes'] = h_cyp['NombreMes_J']
-            col_pp_j, col_pp_s = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ']), find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
-            h_cyp['Paños Propios'] = (h_cyp[f'{col_pp_j}_J'] if col_pp_j else 0) + (h_cyp[f'{col_pp_s}_S'] if col_pp_s else 0)
-            col_pt_j, col_pt_s = find_col(h_cyp_j, ['PANOS', 'TER']), find_col(h_cyp_s, ['PANOS', 'TER'])
-            h_cyp['Paños Terceros'] = (h_cyp[f'{col_pt_j}_J'] if col_pt_j else 0) + (h_cyp[f'{col_pt_s}_S'] if col_pt_s else 0)
+            st.markdown("#### 🎨 Chapa y Pintura - Desglose por Sede")
+            # Preparar datos JUJUY
+            col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER'])
+            h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
+            h_cyp_j['Paños Terceros'] = h_cyp_j[col_pt_j] if col_pt_j else 0
             
-            fig_panos = go.Figure()
-            fig_panos.add_trace(go.Bar(x=h_cyp['NombreMes'], y=h_cyp['Paños Propios'], name='Propios', marker_color='#00235d'))
-            fig_panos.add_trace(go.Bar(x=h_cyp['NombreMes'], y=h_cyp['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
-            fig_panos.update_layout(barmode='stack', title="Producción de Paños (Grupo)", height=300)
-            st.plotly_chart(fig_panos, use_container_width=True)
+            # Preparar datos SALTA
+            col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER'])
+            h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
+            h_cyp_s['Paños Terceros'] = h_cyp_s[col_pt_s] if col_pt_s else 0
+            
+            c_hist_j, c_hist_s = st.columns(2)
+            
+            with c_hist_j:
+                fig_pj = go.Figure()
+                fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Propios'], name='Propios', marker_color='#00235d'))
+                fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+                fig_pj.update_layout(barmode='stack', title="Evolución Jujuy (Paños)", height=300)
+                st.plotly_chart(fig_pj, use_container_width=True)
+                
+            with c_hist_s:
+                fig_ps = go.Figure()
+                fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Propios'], name='Propios', marker_color='#00235d'))
+                fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+                fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=300)
+                st.plotly_chart(fig_ps, use_container_width=True)
 
     else:
         st.warning("No se pudieron cargar los datos.")
