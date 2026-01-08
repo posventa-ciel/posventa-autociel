@@ -305,6 +305,13 @@ try:
             with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, "${:,.0f}"), unsafe_allow_html=True)
 
             st.markdown("### ⚙️ Taller")
+            # --- TALLER CARD LOGIC ---
+            col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
+            if not col_tecs: col_tecs = find_col(data['TALLER'], ["DOTACION"])
+            
+            cant_tecs = t_r.get(col_tecs, 6) # Si no encuentra, usa 6 por defecto
+            if cant_tecs == 0: cant_tecs = 6
+
             ht_cc = t_r.get(find_col(data['TALLER'], ["TRAB", "CC"]), 0)
             ht_cg = t_r.get(find_col(data['TALLER'], ["TRAB", "CG"]), 0)
             ht_ci = t_r.get(find_col(data['TALLER'], ["TRAB", "CI"]), 0)
@@ -312,10 +319,8 @@ try:
             ef_cg = hf_cg / ht_cg if ht_cg > 0 else 0
             ef_ci = hf_ci / ht_ci if ht_ci > 0 else 0
             ef_gl = (hf_cc+hf_cg+hf_ci) / (ht_cc+ht_cg+ht_ci) if (ht_cc+ht_cg+ht_ci) > 0 else 0
+            
             hs_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
-            col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
-            cant_tecs = t_r.get(col_tecs, 6)
-            if cant_tecs == 0: cant_tecs = 6
             hs_teoricas = cant_tecs * 8 * d_t 
             presencia = hs_disp / hs_teoricas if hs_teoricas > 0 else 0
             ocup = (ht_cc+ht_cg+ht_ci) / hs_disp if hs_disp > 0 else 0
@@ -394,9 +399,7 @@ try:
             st.markdown("### 🎨 Chapa y Pintura")
             
             # --- BÚSQUEDA ROBUSTA PARA JUJUY ---
-            # MO Pura: Busca "MO" excluyendo "TERCEROS" y "OBJETIVO"
             c_mo_j = find_col(data['CyP JUJUY'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
-            # MO Terceros: Busca "MO" + "TERCERO"
             c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
             if not c_mo_t_j: c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
             
@@ -405,14 +408,14 @@ try:
             j_total_fact = j_f_p + j_f_t
             j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
             
-            # Paños: Busca "PANOS" o "PAÑOS"
+            # Paños
             c_panos_j = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_j: c_panos_j = find_col(data['CyP JUJUY'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             
             j_panos_prop = cj_r.get(c_panos_j, 0)
             j_obj_panos = cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'PANOS']), 1)
             
-            # Tecnicos: Busca "TECNICO" o "DOTACION"
+            # Tecnicos (Solo para KPI card actual)
             c_tec_j = find_col(data['CyP JUJUY'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
             if not c_tec_j: c_tec_j = find_col(data['CyP JUJUY'], ['DOTACION'])
             j_cant_tec = cj_r.get(c_tec_j, 1)
@@ -486,21 +489,27 @@ try:
             # --- NUEVO GRÁFICO: IDEAL VS REAL VS OCUPADO ---
             col_hab_hist = find_col(h_cal, ["HAB"])
             
-            # Búsqueda Robusta TECNICOS
-            col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "OBJ", "MET"])
-            if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["TEC"], exclude_keywords=["PROD", "OBJ"])
-            if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["DOTACION"])
+            # INTENTAMOS BUSCAR COLUMNA DE TÉCNICOS, SINO USAMOS 6 FIJO
+            col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "EFIC"])
+            if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["MECANICOS"], exclude_keywords=["PROD"])
             
-            # Búsqueda Robusta DISPONIBLES REAL
+            # BUSQUEDA FLEXIBLE PARA DISPONIBLES (Requerido)
             col_disp_hist = find_col(h_tal, ["DISPONIBLES", "REAL"])
             if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISP", "REAL"])
-            if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISPONIBLE"]) # Si solo dice "DISPONIBLE"
+            if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISPONIBLE"]) 
             
-            if col_hab_hist and col_tecs_hist and col_disp_hist:
+            # SOLO NECESITAMOS HAB Y DISP (TECNICOS ES OPCIONAL, DEFAULT 6)
+            if col_hab_hist and col_disp_hist:
                 df_capacidad = pd.merge(h_tal, h_cal[['Mes', col_hab_hist]], on='Mes', suffixes=('', '_cal'))
                 
                 # Calculo de Hs Ideales = Tecnicos * 8 * Dias Habiles
-                df_capacidad['Hs Ideales'] = df_capacidad[col_tecs_hist].astype(float) * 8 * df_capacidad[col_hab_hist].astype(float)
+                # Si existe columna de tecnicos la usa, sino usa 6
+                if col_tecs_hist:
+                    cant_tecnicos_series = df_capacidad[col_tecs_hist].astype(float)
+                else:
+                    cant_tecnicos_series = 6
+                
+                df_capacidad['Hs Ideales'] = cant_tecnicos_series * 8 * df_capacidad[col_hab_hist].astype(float)
                 df_capacidad['Hs Reales'] = df_capacidad[col_disp_hist].astype(float)
                 
                 # Hs Ocupadas (Trabajadas)
@@ -515,7 +524,7 @@ try:
                 fig_cap.update_layout(title="Análisis de Capacidad: Ideal vs Real vs Ocupación", barmode='group', height=350)
                 st.plotly_chart(fig_cap, use_container_width=True)
             else:
-                st.warning(f"⚠️ No se pudo generar el gráfico de Capacidad. Faltan columnas: {'Dias Habiles' if not col_hab_hist else ''} {'Tecnicos' if not col_tecs_hist else ''} {'Disponibles' if not col_disp_hist else ''}")
+                st.warning(f"⚠️ No se pudo generar el gráfico de Capacidad. Faltan columnas: {'Dias Habiles' if not col_hab_hist else ''} {'Disponibles' if not col_disp_hist else ''}")
             
             # ------------------------------------------------
             
