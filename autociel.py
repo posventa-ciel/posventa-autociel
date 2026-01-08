@@ -7,7 +7,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS (COMPACTO) ---
+# --- ESTILO CSS ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -30,7 +30,6 @@ st.markdown("""<style>
     .portada-right { text-align: right; min-width: 200px; }
     .portada-right div { font-size: 0.9rem; margin-bottom: 5px; }
     
-    /* KPI CARD */
     .kpi-card { 
         background-color: white; 
         border: 1px solid #e0e0e0; 
@@ -71,6 +70,7 @@ st.markdown("""<style>
 
 # --- FUNCIÓN DE BÚSQUEDA ---
 def find_col(df, include_keywords, exclude_keywords=[]):
+    if df is None: return ""
     for col in df.columns:
         col_upper = col.upper()
         if all(k.upper() in col_upper for k in include_keywords):
@@ -390,14 +390,111 @@ try:
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
 
+        with tab4:
+            st.markdown("### 🎨 Chapa y Pintura")
+            
+            # --- BÚSQUEDA ROBUSTA PARA JUJUY ---
+            # MO Pura: Busca "MO" excluyendo "TERCEROS" y "OBJETIVO"
+            c_mo_j = find_col(data['CyP JUJUY'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            # MO Terceros: Busca "MO" + "TERCERO"
+            c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
+            if not c_mo_t_j: c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
+            
+            j_f_p = cj_r.get(c_mo_j, 0)
+            j_f_t = cj_r.get(c_mo_t_j, 0)
+            j_total_fact = j_f_p + j_f_t
+            j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
+            
+            # Paños: Busca "PANOS" o "PAÑOS"
+            c_panos_j = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            if not c_panos_j: c_panos_j = find_col(data['CyP JUJUY'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            
+            j_panos_prop = cj_r.get(c_panos_j, 0)
+            j_obj_panos = cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'PANOS']), 1)
+            
+            # Tecnicos: Busca "TECNICO" o "DOTACION"
+            c_tec_j = find_col(data['CyP JUJUY'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
+            if not c_tec_j: c_tec_j = find_col(data['CyP JUJUY'], ['DOTACION'])
+            j_cant_tec = cj_r.get(c_tec_j, 1)
+            
+            j_ratio = j_panos_prop / j_cant_tec if j_cant_tec > 0 else 0
+            
+            # Terceros Panos y Costos
+            j_panos_ter = cj_r.get(find_col(data['CyP JUJUY'], ['PANOS', 'TER']), 0)
+            j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
+            j_m_ter = j_f_t - j_c_ter
+            j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
+            
+            # --- BÚSQUEDA ROBUSTA PARA SALTA ---
+            c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
+            if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ'])
+            
+            s_f_p = cs_r.get(c_mo_s, 0)
+            s_f_t = cs_r.get(c_mo_t_s, 0)
+            s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
+            s_total_fact = s_f_p + s_f_t + s_f_r
+            s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
+            
+            c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            
+            s_panos_prop = cs_r.get(c_panos_s, 0)
+            s_obj_panos = cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'PANOS']), 1)
+            
+            c_tec_s = find_col(data['CyP SALTA'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
+            if not c_tec_s: c_tec_s = find_col(data['CyP SALTA'], ['DOTACION'])
+            s_cant_tec = cs_r.get(c_tec_s, 1)
+            
+            s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
+            s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
+            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER']), 0)
+            s_m_ter = s_f_t - s_c_ter
+            s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
+            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP']), 0)
+            s_m_rep = s_f_r - s_c_rep
+            s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
+
+            c_jujuy, c_salta = st.columns(2)
+            with c_jujuy:
+                st.subheader("Sede Jujuy")
+                st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_j, unsafe_allow_html=True)
+            with c_salta:
+                st.subheader("Sede Salta")
+                st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_s, unsafe_allow_html=True)
+                if s_f_r > 0: st.markdown(f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Mg: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})</div>', unsafe_allow_html=True)
+
+            g_jujuy, g_salta = st.columns(2)
+            with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
+            with g_salta: 
+                vals_s, nams_s = [s_f_p, s_f_t], ["MO Pura", "Terceros"]
+                if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
+                st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
+
         with tab5:
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             st.markdown("#### 🛠️ Servicios")
             
             # --- NUEVO GRÁFICO: IDEAL VS REAL VS OCUPADO ---
             col_hab_hist = find_col(h_cal, ["HAB"])
-            col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD"])
+            
+            # Búsqueda Robusta TECNICOS
+            col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "OBJ", "MET"])
+            if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["TEC"], exclude_keywords=["PROD", "OBJ"])
+            if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["DOTACION"])
+            
+            # Búsqueda Robusta DISPONIBLES REAL
             col_disp_hist = find_col(h_tal, ["DISPONIBLES", "REAL"])
+            if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISP", "REAL"])
+            if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISPONIBLE"]) # Si solo dice "DISPONIBLE"
             
             if col_hab_hist and col_tecs_hist and col_disp_hist:
                 df_capacidad = pd.merge(h_tal, h_cal[['Mes', col_hab_hist]], on='Mes', suffixes=('', '_cal'))
@@ -417,6 +514,8 @@ try:
                 
                 fig_cap.update_layout(title="Análisis de Capacidad: Ideal vs Real vs Ocupación", barmode='group', height=350)
                 st.plotly_chart(fig_cap, use_container_width=True)
+            else:
+                st.warning(f"⚠️ No se pudo generar el gráfico de Capacidad. Faltan columnas: {'Dias Habiles' if not col_hab_hist else ''} {'Tecnicos' if not col_tecs_hist else ''} {'Disponibles' if not col_disp_hist else ''}")
             
             # ------------------------------------------------
             
@@ -485,13 +584,23 @@ try:
 
             st.markdown("---")
             st.markdown("#### 🎨 Chapa y Pintura - Desglose por Sede")
-            col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            
+            # --- BÚSQUEDA ROBUSTA HISTÓRICO CyP ---
+            col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            if not col_pp_j: col_pp_j = find_col(h_cyp_j, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
+            
             col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER'])
+            if not col_pt_j: col_pt_j = find_col(h_cyp_j, ['PAÑOS', 'TER'])
+            
             h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
             h_cyp_j['Paños Terceros'] = h_cyp_j[col_pt_j] if col_pt_j else 0
             
             col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ'])
+            if not col_pp_s: col_pp_s = find_col(h_cyp_s, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
+            
             col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER'])
+            if not col_pt_s: col_pt_s = find_col(h_cyp_s, ['PAÑOS', 'TER'])
+            
             h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
             h_cyp_s['Paños Terceros'] = h_cyp_s[col_pt_s] if col_pt_s else 0
             
