@@ -50,17 +50,27 @@ st.markdown("""<style>
     .metric-card { 
         background-color: white; 
         border: 1px solid #eee; 
-        padding: 10px; 
+        padding: 10px 10px 6px 10px; /* Padding ajustado */
         border-radius: 8px; 
         box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
         text-align: center; 
         height: 100%; 
         display: flex; 
         flex-direction: column; 
-        justify-content: center; 
-        min-height: 90px; 
+        justify-content: space-between; /* Para empujar el footer abajo */
+        min-height: 110px; 
     }
     
+    .metric-footer {
+        border-top: 1px solid #f0f0f0;
+        margin-top: 8px;
+        padding-top: 6px;
+        font-size: 0.7rem;
+        display: flex;
+        justify-content: space-between;
+        color: #666;
+    }
+
     .stTabs [aria-selected="true"] { background-color: #00235d !important; color: white !important; font-weight: bold; }
     h3 { color: #00235d; font-size: 1.1rem; margin-top: 10px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
     
@@ -217,18 +227,34 @@ try:
             html += '</div>'
             return html
 
-        def render_kpi_small(title, val, target=None, format_str="{:.1%}"):
+        def render_kpi_small(title, val, target_parcial=None, target_mensual=None, projection=None, format_str="{:.1%}"):
             subtext_html = "<div style='height:15px;'></div>"
-            if target is not None:
-                delta = val - target
+            footer_html = ""
+            
+            # Subtext: Delta vs Objetivo Parcial
+            if target_parcial is not None:
+                delta = val - target_parcial
                 color = "#28a745" if delta >= 0 else "#dc3545"
                 icon = "▲" if delta >= 0 else "▼"
-                subtext_html = f"<div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'><span style='color:#888;'>Obj: {format_str.format(target)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:1px 4px; border-radius:3px;'>{icon} {format_str.format(abs(delta))}</span></div>"
+                subtext_html = f"<div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'><span style='color:#888;'>Obj. Parcial: {format_str.format(target_parcial)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:1px 4px; border-radius:3px;'>{icon} {format_str.format(abs(delta))}</span></div>"
+            
+            # Footer: Obj Mensual y Proyección
+            if target_mensual is not None and projection is not None:
+                proy_delta = projection - target_mensual
+                color_proy = "#28a745" if proy_delta >= 0 else "#dc3545"
+                footer_html = f'''
+                <div class="metric-footer">
+                    <div>Obj. Mes: <b>{format_str.format(target_mensual)}</b></div>
+                    <div style="color:{color_proy}">Proy: <b>{format_str.format(projection)}</b></div>
+                </div>
+                '''
             
             html = '<div class="metric-card">'
-            html += f'<p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p>'
+            html += f'<div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p>'
             html += f'<h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>'
             html += subtext_html
+            html += '</div>'
+            html += footer_html
             html += '</div>'
             return html
 
@@ -301,8 +327,8 @@ try:
 
             with k1: st.markdown(render_kpi_card("TUS Total", real_tus, obj_tus, is_currency=False, show_daily=True), unsafe_allow_html=True)
             with k2: st.markdown(render_kpi_card("CPUS (Entradas)", real_cpus, obj_cpus, is_currency=False, show_daily=True), unsafe_allow_html=True)
-            with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, "{:.2f} hs"), unsafe_allow_html=True)
-            with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, "${:,.0f}"), unsafe_allow_html=True)
+            with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, None, None, "{:.2f} hs"), unsafe_allow_html=True)
+            with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, None, None, "${:,.0f}"), unsafe_allow_html=True)
 
             # --- SECCIÓN: CALIDAD Y REQUERIMIENTOS ---
             st.markdown("---")
@@ -313,50 +339,60 @@ try:
                 c_real = find_col(data['SERVICIOS'], [keyword_main, brand], exclude_keywords=["OBJ"])
                 
                 # 2. Buscamos el OBJETIVO (FALLBACK LOGIC)
+                # Primero buscamos el especifico por marca "OBJ NPS PEUGEOT"
                 c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
+                # Si no existe, buscamos el genérico "OBJ NPS" (Compartido)
                 if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 
                 val_real = s_r.get(c_real, 0)
-                val_obj = s_r.get(c_obj, 0)
+                val_obj_mensual = s_r.get(c_obj, 0)
                 
+                # Proyección = (Real / Avance)
+                val_proyeccion = val_real / prog_t if prog_t > 0 else 0
+
                 # --- AJUSTE OBJETIVOS PARCIALES (PRORRATEO) ---
                 if prorate_target:
                     # Si es una métrica acumulativa (Volumen), multiplicamos el Obj Mensual x Avance de Días
-                    val_obj = val_obj * prog_t
+                    val_obj_parcial = val_obj_mensual * prog_t
+                else:
+                    # Si es NPS (Promedio), el objetivo parcial es igual al mensual
+                    val_obj_parcial = val_obj_mensual
+                    val_proyeccion = val_real # En NPS la proyección suele ser el valor actual (no se acumula)
                 
                 if is_percent:
                     if val_real > 1.0: val_real /= 100
-                    if val_obj > 1.0: val_obj /= 100
+                    if val_obj_parcial > 1.0: val_obj_parcial /= 100
+                    if val_obj_mensual > 1.0: val_obj_mensual /= 100
+                    if val_proyeccion > 1.0: val_proyeccion /= 100
                     fmt = "{:.1%}"
                 else:
                     # Si NO es porcentaje (Cantidad o NPS), usamos formato entero/decimal
                     fmt = "{:,.0f}" if not prorate_target else "{:,.1f}" 
-                    # Nota: si prorrateamos, a veces queda decimal (ej: objetivo 5.5 autos), usamos 1 decimal
                     
-                return val_real, val_obj, fmt
+                return val_real, val_obj_parcial, val_obj_mensual, val_proyeccion, fmt
 
-            # NPS (Sin porcentaje, SIN prorrateo porque es promedio)
-            nps_p_r, nps_p_o, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False, prorate_target=False)
-            nps_c_r, nps_c_o, _ = get_calidad_data("NPS", "CITROEN", is_percent=False, prorate_target=False)
+            # NPS (Sin porcentaje, SIN prorrateo)
+            nps_p_r, nps_p_p, nps_p_m, nps_p_proy, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False, prorate_target=False)
+            nps_c_r, nps_c_p, nps_c_m, nps_c_proy, _ = get_calidad_data("NPS", "CITROEN", is_percent=False, prorate_target=False)
             
             # VIDEOCHECK (Sin porcentaje, cantidad, CON prorrateo)
-            vc_p_r, vc_p_o, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False, prorate_target=True)
-            vc_c_r, vc_c_o, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False, prorate_target=True)
+            vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False, prorate_target=True)
+            vc_c_r, vc_c_p, vc_c_m, vc_c_proy, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False, prorate_target=True)
             
             # FORFAIT (Sin porcentaje, cantidad, CON prorrateo)
-            ff_p_r, ff_p_o, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False, prorate_target=True)
-            ff_c_r, ff_c_o, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
+            ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False, prorate_target=True)
+            ff_c_r, ff_c_p, ff_c_m, ff_c_proy, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
 
             # Layout: 
             q1, q2 = st.columns(2)
-            with q1: st.markdown(render_kpi_small("NPS Peugeot", nps_p_r, nps_p_o, fmt_nps), unsafe_allow_html=True)
-            with q2: st.markdown(render_kpi_small("NPS Citroën", nps_c_r, nps_c_o, fmt_nps), unsafe_allow_html=True)
+            with q1: st.markdown(render_kpi_small("NPS Peugeot", nps_p_r, nps_p_p, nps_p_m, nps_p_proy, fmt_nps), unsafe_allow_html=True)
+            with q2: st.markdown(render_kpi_small("NPS Citroën", nps_c_r, nps_c_p, nps_c_m, nps_c_proy, fmt_nps), unsafe_allow_html=True)
             
             p1, p2, p3, p4 = st.columns(4)
-            with p1: st.markdown(render_kpi_small("Videocheck Peug.", vc_p_r, vc_p_o, fmt_vc), unsafe_allow_html=True)
-            with p2: st.markdown(render_kpi_small("Videocheck Citr.", vc_c_r, vc_c_o, fmt_vc), unsafe_allow_html=True)
-            with p3: st.markdown(render_kpi_small("Forfait Peug.", ff_p_r, ff_p_o, fmt_ff), unsafe_allow_html=True)
-            with p4: st.markdown(render_kpi_small("Forfait Citr.", ff_c_r, ff_c_o, fmt_ff), unsafe_allow_html=True)
+            with p1: st.markdown(render_kpi_small("Videocheck Peug.", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
+            with p2: st.markdown(render_kpi_small("Videocheck Citr.", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
+            with p3: st.markdown(render_kpi_small("Forfait Peug.", ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff), unsafe_allow_html=True)
+            with p4: st.markdown(render_kpi_small("Forfait Citr.", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
             
             st.markdown("---")
 
@@ -425,9 +461,9 @@ try:
                 vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
                 mg_total = util_total / vta_total_neta if vta_total_neta > 0 else 0
                 meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
-                with r2: st.markdown(render_kpi_small("Utilidad Total", util_total, None, "${:,.0f}"), unsafe_allow_html=True)
-                with r3: st.markdown(render_kpi_small("Margen Global", mg_total, None, "{:.1%}"), unsafe_allow_html=True)
-                with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, "{:.1f}"), unsafe_allow_html=True)
+                with r2: st.markdown(render_kpi_small("Utilidad Total", util_total, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
+                with r3: st.markdown(render_kpi_small("Margen Global", mg_total, None, None, None, "{:.1%}"), unsafe_allow_html=True)
+                with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
 
             if not df_r.empty:
                 t_vb = df_r['Venta Bruta'].sum()
@@ -519,14 +555,14 @@ try:
                 st.subheader("Sede Jujuy")
                 st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
                 st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
-                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
                 html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
                 st.markdown(html_ter_j, unsafe_allow_html=True)
             with c_salta:
                 st.subheader("Sede Salta")
                 st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
                 st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
-                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, "{:.1f}"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
                 html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
                 st.markdown(html_ter_s, unsafe_allow_html=True)
                 if s_f_r > 0: st.markdown(f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Mg: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})</div>', unsafe_allow_html=True)
