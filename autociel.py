@@ -304,6 +304,55 @@ try:
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, "{:.2f} hs"), unsafe_allow_html=True)
             with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, "${:,.0f}"), unsafe_allow_html=True)
 
+            # --- NUEVA SECCIÓN: CALIDAD Y REQUERIMIENTOS ---
+            st.markdown("---")
+            st.markdown("### 🏆 Calidad y Requerimientos de Marca")
+            
+            # Helper interno para no repetir código de búsqueda
+            def get_calidad_data(keywords_real, keywords_obj, is_percent=False):
+                c_real = find_col(data['SERVICIOS'], keywords_real, exclude_keywords=["OBJ"])
+                c_obj = find_col(data['SERVICIOS'], ["OBJ"] + keywords_obj)
+                
+                val_real = s_r.get(c_real, 0)
+                val_obj = s_r.get(c_obj, 0)
+                
+                # Ajuste porcentajes si vienen como 80 en vez de 0.8
+                if is_percent:
+                    if val_real > 1.0: val_real /= 100
+                    if val_obj > 1.0: val_obj /= 100
+                    fmt = "{:.1%}"
+                else:
+                    fmt = "{:.0f}" # NPS suele ser entero
+                    
+                return val_real, val_obj, fmt
+
+            # NPS
+            nps_p_r, nps_p_o, fmt_nps = get_calidad_data(["NPS", "PEUGEOT"], ["NPS", "PEUGEOT"])
+            nps_c_r, nps_c_o, _ = get_calidad_data(["NPS", "CITROEN"], ["NPS", "CITROEN"])
+            
+            # VIDEOCHECK
+            vc_p_r, vc_p_o, fmt_vc = get_calidad_data(["VIDEO", "PEUGEOT"], ["VIDEO", "PEUGEOT"], True)
+            vc_c_r, vc_c_o, _ = get_calidad_data(["VIDEO", "CITROEN"], ["VIDEO", "CITROEN"], True)
+            
+            # FORFAIT
+            ff_p_r, ff_p_o, fmt_ff = get_calidad_data(["FORFAIT", "PEUGEOT"], ["FORFAIT", "PEUGEOT"], True)
+            ff_c_r, ff_c_o, _ = get_calidad_data(["FORFAIT", "CITROEN"], ["FORFAIT", "CITROEN"], True)
+
+            # Layout: 
+            # Fila 1: NPS (2 col)
+            q1, q2 = st.columns(2)
+            with q1: st.markdown(render_kpi_small("NPS Peugeot", nps_p_r, nps_p_o, fmt_nps), unsafe_allow_html=True)
+            with q2: st.markdown(render_kpi_small("NPS Citroën", nps_c_r, nps_c_o, fmt_nps), unsafe_allow_html=True)
+            
+            # Fila 2: Procesos (4 col)
+            p1, p2, p3, p4 = st.columns(4)
+            with p1: st.markdown(render_kpi_small("Videocheck Peug.", vc_p_r, vc_p_o, fmt_vc), unsafe_allow_html=True)
+            with p2: st.markdown(render_kpi_small("Videocheck Citr.", vc_c_r, vc_c_o, fmt_vc), unsafe_allow_html=True)
+            with p3: st.markdown(render_kpi_small("Forfait Peug.", ff_p_r, ff_p_o, fmt_ff), unsafe_allow_html=True)
+            with p4: st.markdown(render_kpi_small("Forfait Citr.", ff_c_r, ff_c_o, fmt_ff), unsafe_allow_html=True)
+            
+            st.markdown("---")
+
             st.markdown("### ⚙️ Taller")
             # --- TALLER CARD LOGIC ---
             col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
