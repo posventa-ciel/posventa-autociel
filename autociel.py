@@ -304,47 +304,50 @@ try:
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, "{:.2f} hs"), unsafe_allow_html=True)
             with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, "${:,.0f}"), unsafe_allow_html=True)
 
-            # --- NUEVA SECCIÓN: CALIDAD Y REQUERIMIENTOS ---
+            # --- SECCIÓN: CALIDAD Y REQUERIMIENTOS ---
             st.markdown("---")
             st.markdown("### 🏆 Calidad y Requerimientos de Marca")
             
-            # Helper interno para no repetir código de búsqueda
-            def get_calidad_data(keywords_real, keywords_obj, is_percent=False):
-                c_real = find_col(data['SERVICIOS'], keywords_real, exclude_keywords=["OBJ"])
-                c_obj = find_col(data['SERVICIOS'], ["OBJ"] + keywords_obj)
+            def get_calidad_data(keyword_main, brand, is_percent=False):
+                # 1. Buscamos el REAL (ej: NPS + PEUGEOT)
+                c_real = find_col(data['SERVICIOS'], [keyword_main, brand], exclude_keywords=["OBJ"])
+                
+                # 2. Buscamos el OBJETIVO (FALLBACK LOGIC)
+                # Intento 1: "OBJ" + "NPS" + "PEUGEOT" (Obj específico por marca)
+                c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
+                # Intento 2: "OBJ" + "NPS" (Obj genérico para ambas marcas, ej: "Obj NPS")
+                if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 
                 val_real = s_r.get(c_real, 0)
                 val_obj = s_r.get(c_obj, 0)
                 
-                # Ajuste porcentajes si vienen como 80 en vez de 0.8
                 if is_percent:
                     if val_real > 1.0: val_real /= 100
                     if val_obj > 1.0: val_obj /= 100
                     fmt = "{:.1%}"
                 else:
-                    fmt = "{:.0f}" # NPS suele ser entero
+                    # Si NO es porcentaje, usamos formato entero (ej: NPS 80, Videocheck 5)
+                    fmt = "{:,.0f}" 
                     
                 return val_real, val_obj, fmt
 
-            # NPS
-            nps_p_r, nps_p_o, fmt_nps = get_calidad_data(["NPS", "PEUGEOT"], ["NPS", "PEUGEOT"])
-            nps_c_r, nps_c_o, _ = get_calidad_data(["NPS", "CITROEN"], ["NPS", "CITROEN"])
+            # NPS (Sin porcentaje)
+            nps_p_r, nps_p_o, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False)
+            nps_c_r, nps_c_o, _ = get_calidad_data("NPS", "CITROEN", is_percent=False)
             
-            # VIDEOCHECK
-            vc_p_r, vc_p_o, fmt_vc = get_calidad_data(["VIDEO", "PEUGEOT"], ["VIDEO", "PEUGEOT"], True)
-            vc_c_r, vc_c_o, _ = get_calidad_data(["VIDEO", "CITROEN"], ["VIDEO", "CITROEN"], True)
+            # VIDEOCHECK (Sin porcentaje, cantidad)
+            vc_p_r, vc_p_o, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False)
+            vc_c_r, vc_c_o, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False)
             
-            # FORFAIT
-            ff_p_r, ff_p_o, fmt_ff = get_calidad_data(["FORFAIT", "PEUGEOT"], ["FORFAIT", "PEUGEOT"], True)
-            ff_c_r, ff_c_o, _ = get_calidad_data(["FORFAIT", "CITROEN"], ["FORFAIT", "CITROEN"], True)
+            # FORFAIT (Sin porcentaje, cantidad)
+            ff_p_r, ff_p_o, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False)
+            ff_c_r, ff_c_o, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False)
 
             # Layout: 
-            # Fila 1: NPS (2 col)
             q1, q2 = st.columns(2)
             with q1: st.markdown(render_kpi_small("NPS Peugeot", nps_p_r, nps_p_o, fmt_nps), unsafe_allow_html=True)
             with q2: st.markdown(render_kpi_small("NPS Citroën", nps_c_r, nps_c_o, fmt_nps), unsafe_allow_html=True)
             
-            # Fila 2: Procesos (4 col)
             p1, p2, p3, p4 = st.columns(4)
             with p1: st.markdown(render_kpi_small("Videocheck Peug.", vc_p_r, vc_p_o, fmt_vc), unsafe_allow_html=True)
             with p2: st.markdown(render_kpi_small("Videocheck Citr.", vc_c_r, vc_c_o, fmt_vc), unsafe_allow_html=True)
