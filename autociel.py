@@ -50,14 +50,14 @@ st.markdown("""<style>
     .metric-card { 
         background-color: white; 
         border: 1px solid #eee; 
-        padding: 10px 10px 6px 10px; /* Padding ajustado */
+        padding: 10px 10px 6px 10px;
         border-radius: 8px; 
         box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
         text-align: center; 
         height: 100%; 
         display: flex; 
         flex-direction: column; 
-        justify-content: space-between; /* Para empujar el footer abajo */
+        justify-content: space-between; 
         min-height: 110px; 
     }
     
@@ -227,18 +227,18 @@ try:
             html += '</div>'
             return html
 
-        def render_kpi_small(title, val, target_parcial=None, target_mensual=None, projection=None, format_str="{:.1%}"):
+        def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial"):
             subtext_html = "<div style='height:15px;'></div>"
             footer_html = ""
             
-            # Subtext: Delta vs Objetivo Parcial
-            if target_parcial is not None:
-                delta = val - target_parcial
+            # Subtext: Delta vs Objetivo Parcial (o Fijo en caso de NPS)
+            if target is not None:
+                delta = val - target
                 color = "#28a745" if delta >= 0 else "#dc3545"
                 icon = "▲" if delta >= 0 else "▼"
-                subtext_html = f"<div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'><span style='color:#888;'>Obj. Parcial: {format_str.format(target_parcial)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:1px 4px; border-radius:3px;'>{icon} {format_str.format(abs(delta))}</span></div>"
+                subtext_html = f"<div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'><span style='color:#888;'>{label_target}: {format_str.format(target)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:1px 4px; border-radius:3px;'>{icon} {format_str.format(abs(delta))}</span></div>"
             
-            # Footer: Obj Mensual y Proyección
+            # Footer: Solo se muestra si pasamos un objetivo mensual y proyección (Para NPS enviaremos None)
             if target_mensual is not None and projection is not None:
                 proy_delta = projection - target_mensual
                 color_proy = "#28a745" if proy_delta >= 0 else "#dc3545"
@@ -357,7 +357,7 @@ try:
                 else:
                     # Si es NPS (Promedio), el objetivo parcial es igual al mensual
                     val_obj_parcial = val_obj_mensual
-                    val_proyeccion = val_real # En NPS la proyección suele ser el valor actual (no se acumula)
+                    val_proyeccion = val_real # En NPS la proyección no se calcula como volumen
                 
                 if is_percent:
                     if val_real > 1.0: val_real /= 100
@@ -371,22 +371,24 @@ try:
                     
                 return val_real, val_obj_parcial, val_obj_mensual, val_proyeccion, fmt
 
-            # NPS (Sin porcentaje, SIN prorrateo)
+            # NPS (Sin porcentaje, SIN prorrateo, SIN footer)
             nps_p_r, nps_p_p, nps_p_m, nps_p_proy, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False, prorate_target=False)
             nps_c_r, nps_c_p, nps_c_m, nps_c_proy, _ = get_calidad_data("NPS", "CITROEN", is_percent=False, prorate_target=False)
             
-            # VIDEOCHECK (Sin porcentaje, cantidad, CON prorrateo)
+            # VIDEOCHECK (Sin porcentaje, cantidad, CON prorrateo y footer)
             vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False, prorate_target=True)
             vc_c_r, vc_c_p, vc_c_m, vc_c_proy, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False, prorate_target=True)
             
-            # FORFAIT (Sin porcentaje, cantidad, CON prorrateo)
+            # FORFAIT (Sin porcentaje, cantidad, CON prorrateo y footer)
             ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False, prorate_target=True)
             ff_c_r, ff_c_p, ff_c_m, ff_c_proy, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
 
             # Layout: 
             q1, q2 = st.columns(2)
-            with q1: st.markdown(render_kpi_small("NPS Peugeot", nps_p_r, nps_p_p, nps_p_m, nps_p_proy, fmt_nps), unsafe_allow_html=True)
-            with q2: st.markdown(render_kpi_small("NPS Citroën", nps_c_r, nps_c_p, nps_c_m, nps_c_proy, fmt_nps), unsafe_allow_html=True)
+            # Pasamos None para obj_mensual y proyeccion en NPS para ocultar el footer
+            # Cambiamos etiqueta a "Obj" en lugar de "Obj. Parcial" para NPS
+            with q1: st.markdown(render_kpi_small("NPS Peugeot", nps_p_r, nps_p_p, None, None, fmt_nps, label_target="Obj"), unsafe_allow_html=True)
+            with q2: st.markdown(render_kpi_small("NPS Citroën", nps_c_r, nps_c_p, None, None, fmt_nps, label_target="Obj"), unsafe_allow_html=True)
             
             p1, p2, p3, p4 = st.columns(4)
             with p1: st.markdown(render_kpi_small("Videocheck Peug.", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
