@@ -308,40 +308,44 @@ try:
             st.markdown("---")
             st.markdown("### 🏆 Calidad y Requerimientos de Marca")
             
-            def get_calidad_data(keyword_main, brand, is_percent=False):
+            def get_calidad_data(keyword_main, brand, is_percent=False, prorate_target=False):
                 # 1. Buscamos el REAL (ej: NPS + PEUGEOT)
                 c_real = find_col(data['SERVICIOS'], [keyword_main, brand], exclude_keywords=["OBJ"])
                 
                 # 2. Buscamos el OBJETIVO (FALLBACK LOGIC)
-                # Intento 1: "OBJ" + "NPS" + "PEUGEOT" (Obj específico por marca)
                 c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
-                # Intento 2: "OBJ" + "NPS" (Obj genérico para ambas marcas, ej: "Obj NPS")
                 if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 
                 val_real = s_r.get(c_real, 0)
                 val_obj = s_r.get(c_obj, 0)
+                
+                # --- AJUSTE OBJETIVOS PARCIALES (PRORRATEO) ---
+                if prorate_target:
+                    # Si es una métrica acumulativa (Volumen), multiplicamos el Obj Mensual x Avance de Días
+                    val_obj = val_obj * prog_t
                 
                 if is_percent:
                     if val_real > 1.0: val_real /= 100
                     if val_obj > 1.0: val_obj /= 100
                     fmt = "{:.1%}"
                 else:
-                    # Si NO es porcentaje, usamos formato entero (ej: NPS 80, Videocheck 5)
-                    fmt = "{:,.0f}" 
+                    # Si NO es porcentaje (Cantidad o NPS), usamos formato entero/decimal
+                    fmt = "{:,.0f}" if not prorate_target else "{:,.1f}" 
+                    # Nota: si prorrateamos, a veces queda decimal (ej: objetivo 5.5 autos), usamos 1 decimal
                     
                 return val_real, val_obj, fmt
 
-            # NPS (Sin porcentaje)
-            nps_p_r, nps_p_o, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False)
-            nps_c_r, nps_c_o, _ = get_calidad_data("NPS", "CITROEN", is_percent=False)
+            # NPS (Sin porcentaje, SIN prorrateo porque es promedio)
+            nps_p_r, nps_p_o, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False, prorate_target=False)
+            nps_c_r, nps_c_o, _ = get_calidad_data("NPS", "CITROEN", is_percent=False, prorate_target=False)
             
-            # VIDEOCHECK (Sin porcentaje, cantidad)
-            vc_p_r, vc_p_o, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False)
-            vc_c_r, vc_c_o, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False)
+            # VIDEOCHECK (Sin porcentaje, cantidad, CON prorrateo)
+            vc_p_r, vc_p_o, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False, prorate_target=True)
+            vc_c_r, vc_c_o, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False, prorate_target=True)
             
-            # FORFAIT (Sin porcentaje, cantidad)
-            ff_p_r, ff_p_o, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False)
-            ff_c_r, ff_c_o, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False)
+            # FORFAIT (Sin porcentaje, cantidad, CON prorrateo)
+            ff_p_r, ff_p_o, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False, prorate_target=True)
+            ff_c_r, ff_c_o, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
 
             # Layout: 
             q1, q2 = st.columns(2)
