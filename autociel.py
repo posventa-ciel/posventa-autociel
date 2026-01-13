@@ -441,13 +441,7 @@ try:
             # --- 1. INPUT DE PRIMAS / BONOS ---
             col_primas, col_vacia = st.columns([1, 3])
             with col_primas:
-                primas_input = st.number_input(
-                    "💰 Ingresar Primas/Rappels Estimados ($)", 
-                    min_value=0.0, 
-                    step=10000.0, 
-                    format="%.0f", 
-                    help="Este valor se sumará a la utilidad para calcular el margen real final."
-                )
+                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
 
             detalles = []
             for c in canales_repuestos:
@@ -479,12 +473,8 @@ try:
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
                 meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
-                with r2: 
-                    # Mostramos Utilidad Final con Primas
-                    st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
-                with r3: 
-                    # Mostramos Margen Final con Primas
-                    st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
+                with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
+                with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
 
             if not df_r.empty:
@@ -511,44 +501,73 @@ try:
             st.markdown("---")
             
             # --- 2. CALCULADORA DE MIX IDEAL ---
-            st.markdown("### 🎯 Calculadora de Mix Ideal")
-            st.info("Define tu participación ideal por canal (histórica o deseada) para ver cuánto deberías vender en cada uno para alcanzar el Objetivo del Mes.")
+            st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
+            st.info("Define tu participación ideal por canal y el margen al que aspiras vender. El sistema te mostrará qué tan rentable es esa estrategia globalmente.")
             
-            col_mix_input, col_mix_res = st.columns([1, 1])
+            col_mix_input, col_mix_res = st.columns([3, 2])
             
-            # Valores por defecto basados en la realidad actual para facilitar la carga
+            # Valores por defecto
             default_mix = {}
+            default_margin = {}
             if vta_total_neta > 0:
                 for idx, row in df_r.iterrows():
                     default_mix[row['Canal']] = (row['Venta Neta'] / vta_total_neta) * 100
+                    default_margin[row['Canal']] = row['Margen %'] * 100
             
             mix_ideal = {}
+            margin_ideal = {}
             sum_mix = 0
             
             with col_mix_input:
                 for c in canales_repuestos:
-                    val_def = float(default_mix.get(c, 0.0))
-                    val_mix = st.slider(f"Participación % {c}", 0.0, 100.0, val_def, 0.5, key=f"mix_{c}")
+                    val_def_mix = float(default_mix.get(c, 0.0))
+                    val_def_marg = float(default_margin.get(c, 25.0))
+                    
+                    c1_s, c2_s = st.columns([2, 1])
+                    with c1_s:
+                        val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
+                    with c2_s:
+                        val_marg = st.number_input(f"% Margen {c}", 0.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
+                    
                     mix_ideal[c] = val_mix / 100
+                    margin_ideal[c] = val_marg / 100
                     sum_mix += val_mix
                 
-                if abs(sum_mix - 100.0) > 1.0:
-                    st.warning(f"⚠️ La suma de porcentajes es {sum_mix:.1f}%. Asegúrate de que sume 100%.")
-
             with col_mix_res:
                 st.markdown(f"#### Objetivo Mensual: ${obj_rep_total:,.0f}")
+                
+                # Indicador de Suma
+                delta_sum = sum_mix - 100.0
+                color_sum = "off"
+                if abs(delta_sum) < 0.1: color_sum = "normal" # Verde por defecto en metric
+                else: color_sum = "inverse" # Rojo por defecto en error
+                
+                st.metric("Suma del Mix Total", f"{sum_mix:.1f}%", f"{delta_sum:.1f}%", delta_color=color_sum)
+                if abs(delta_sum) > 0.1:
+                    st.error(f"⚠️ El mix debe sumar 100% (Actual: {sum_mix:.1f}%)")
+                
+                # Calculo de Estrategia
                 ideal_data = []
+                total_profit_ideal = 0
                 for c, share in mix_ideal.items():
                     target_vta = obj_rep_total * share
-                    ideal_data.append({"Canal": c, "Mix Ideal": share, "Venta Objetivo": target_vta})
+                    target_marg = margin_ideal.get(c, 0)
+                    profit = target_vta * target_marg
+                    total_profit_ideal += profit
+                    ideal_data.append({"Canal": c, "Mix": share, "Venta Obj": target_vta, "Mg Ideal": target_marg, "Utilidad": profit})
+                
+                global_margin_ideal = total_profit_ideal / obj_rep_total if obj_rep_total > 0 else 0
+                
+                st.markdown("#### Resultado Estratégico:")
+                st.info(f"Con esta estrategia, tu **Margen Global Promedio** sería del **{global_margin_ideal:.1%}**")
                 
                 df_ideal = pd.DataFrame(ideal_data)
-                st.dataframe(df_ideal.style.format({"Mix Ideal": "{:.1%}", "Venta Objetivo": "${:,.0f}"}), hide_index=True)
+                st.dataframe(df_ideal.style.format({"Mix": "{:.1%}", "Venta Obj": "${:,.0f}", "Mg Ideal": "{:.1%}", "Utilidad": "${:,.0f}"}), hide_index=True)
+
 
             # --- 3. SIMULADOR DE MARGEN (CON PRIMAS) ---
             st.markdown("---")
-            st.markdown("### 🎛️ Simulador de Estrategia (Efecto Mix + Primas)")
-            st.info("Ajusta ventas y márgenes. Las Primas ingresadas arriba se suman al resultado final.")
+            st.markdown("### 🎛️ Simulador What-If (Efecto Mix + Primas)")
 
             sim_data = []
             if not df_r.empty:
@@ -576,7 +595,7 @@ try:
 
             df_sim = pd.DataFrame(proyecciones)
             total_v_sim = df_sim['Venta Proy'].sum()
-            total_u_sim = df_sim['Utilidad Proy'].sum() + primas_input # SUMAMOS PRIMAS AQUI
+            total_u_sim = df_sim['Utilidad Proy'].sum() + primas_input
             margen_global_sim = total_u_sim / total_v_sim if total_v_sim > 0 else 0
             
             with col_sim_kpis:
@@ -604,12 +623,10 @@ try:
             c_mo_j = find_col(data['CyP JUJUY'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
             if not c_mo_t_j: c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
-            
             j_f_p = cj_r.get(c_mo_j, 0)
             j_f_t = cj_r.get(c_mo_t_j, 0)
             j_total_fact = j_f_p + j_f_t
             j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
-            
             c_panos_j = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_j: c_panos_j = find_col(data['CyP JUJUY'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             j_panos_prop = cj_r.get(c_panos_j, 0)
@@ -618,12 +635,10 @@ try:
             if not c_tec_j: c_tec_j = find_col(data['CyP JUJUY'], ['DOTACION'])
             j_cant_tec = cj_r.get(c_tec_j, 1)
             j_ratio = j_panos_prop / j_cant_tec if j_cant_tec > 0 else 0
-            
             j_panos_ter = cj_r.get(find_col(data['CyP JUJUY'], ['PANOS', 'TER']), 0)
             j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
             j_m_ter = j_f_t - j_c_ter
             j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
-            
             c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
             if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ'])
@@ -632,7 +647,6 @@ try:
             s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
             s_total_fact = s_f_p + s_f_t + s_f_r
             s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
-            
             c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             s_panos_prop = cs_r.get(c_panos_s, 0)
@@ -754,7 +768,6 @@ try:
             col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER']) or find_col(h_cyp_j, ['PAÑOS', 'TER'])
             h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
             h_cyp_j['Paños Terceros'] = h_cyp_j[col_pt_j] if col_pt_j else 0
-            
             col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ']) or find_col(h_cyp_s, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
             col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER']) or find_col(h_cyp_s, ['PAÑOS', 'TER'])
             h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
