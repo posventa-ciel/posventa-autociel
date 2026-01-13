@@ -5,64 +5,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 import os
 
-# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ---
-@st.cache_data(ttl=3600)
-def calcular_irpv_local(archivo_ventas, archivo_taller):
-    try:
-        # 1. Cargar Ventas (0km)
-        # Ajusta el nombre del archivo si es necesario
-        df_v = pd.read_csv(archivo_ventas)
-        
-        # Función auxiliar para fechas Excel
-        def excel_date(serial):
-            if pd.isna(serial) or serial == '': return None
-            try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(serial))
-            except: return None
-
-        df_v['Fecha_Entrega'] = df_v['Fec.entr'].apply(excel_date)
-        df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
-        df_v['VIN'] = df_v['Bastidor'].astype(str).str.strip().str.upper()
-        df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
-
-        # 2. Cargar Taller (Servicios)
-        df_t = pd.read_csv(archivo_taller)
-        df_t['Fecha_Servicio'] = df_t['F.cierre'].apply(excel_date)
-        df_t['VIN'] = df_t['Bastidor'].astype(str).str.strip().str.upper()
-        df_t['Km'] = pd.to_numeric(df_t['Km'], errors='coerce').fillna(0)
-        
-        # Filtro: Solo mecánica (Excluir Chapa/Pintura)
-        mask_mec = ~df_t['Tipo O.R.'].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
-        df_t = df_t[mask_mec]
-
-        # 3. Clasificar Servicios por KM
-        def clasificar_km(k):
-            if 5000 <= k <= 15000: return "1er"
-            elif 15001 <= k <= 25000: return "2do"
-            elif 25001 <= k <= 35000: return "3er"
-            return None
-        
-        df_t['Servicio_Hito'] = df_t['Km'].apply(clasificar_km)
-        df_validos = df_t.dropna(subset=['Servicio_Hito'])
-
-        # 4. Cruzar y Calcular
-        # Obtenemos lista única de VINs vendidos y sus hitos cumplidos
-        df_merged = pd.merge(df_v, df_validos[['VIN', 'Servicio_Hito']], on='VIN', how='left')
-        
-        # Tabla dinámica: VIN vs Hito (1 si lo hizo, 0 si no)
-        pivot = df_merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Servicio_Hito', aggfunc='size', fill_value=0).reset_index()
-        
-        # Asegurar columnas
-        for col in ['1er', '2do', '3er']:
-            if col not in pivot.columns: pivot[col] = 0
-            else: pivot[col] = pivot[col].apply(lambda x: 1 if x > 0 else 0)
-
-        # Agrupar por Año de Venta (Cohorte)
-        df_irpv = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
-        return df_irpv
-
-    except Exception as e:
-        return None
-        
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
 # --- ESTILO CSS ---
@@ -158,7 +100,7 @@ def find_col(df, include_keywords, exclude_keywords=[]):
                 return col
     return ""
 
-# --- CARGA DE DATOS ---
+# --- CARGA DE DATOS GOOGLE SHEETS ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
@@ -183,6 +125,58 @@ def cargar_datos(sheet_id):
             st.error(f"Error cargando hoja {h}: {e}")
             return None
     return data_dict
+
+# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ---
+@st.cache_data(ttl=3600)
+def calcular_irpv_local(archivo_ventas, archivo_taller):
+    try:
+        # 1. Cargar Ventas (0km)
+        df_v = pd.read_csv(archivo_ventas)
+        
+        def excel_date(serial):
+            if pd.isna(serial) or serial == '': return None
+            try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(serial))
+            except: return None
+
+        df_v['Fecha_Entrega'] = df_v['Fec.entr'].apply(excel_date)
+        df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
+        df_v['VIN'] = df_v['Bastidor'].astype(str).str.strip().str.upper()
+        df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
+
+        # 2. Cargar Taller (Servicios)
+        df_t = pd.read_csv(archivo_taller)
+        df_t['Fecha_Servicio'] = df_t['F.cierre'].apply(excel_date)
+        df_t['VIN'] = df_t['Bastidor'].astype(str).str.strip().str.upper()
+        df_t['Km'] = pd.to_numeric(df_t['Km'], errors='coerce').fillna(0)
+        
+        # Filtro: Solo mecánica (Excluir Chapa/Pintura)
+        mask_mec = ~df_t['Tipo O.R.'].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
+        df_t = df_t[mask_mec]
+
+        # 3. Clasificar Servicios por KM
+        def clasificar_km(k):
+            if 5000 <= k <= 15000: return "1er"
+            elif 15001 <= k <= 25000: return "2do"
+            elif 25001 <= k <= 35000: return "3er"
+            return None
+        
+        df_t['Servicio_Hito'] = df_t['Km'].apply(clasificar_km)
+        df_validos = df_t.dropna(subset=['Servicio_Hito'])
+
+        # 4. Cruzar y Calcular
+        df_merged = pd.merge(df_v, df_validos[['VIN', 'Servicio_Hito']], on='VIN', how='left')
+        
+        pivot = df_merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Servicio_Hito', aggfunc='size', fill_value=0).reset_index()
+        
+        for col in ['1er', '2do', '3er']:
+            if col not in pivot.columns: pivot[col] = 0
+            else: pivot[col] = pivot[col].apply(lambda x: 1 if x > 0 else 0)
+
+        df_irpv = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
+        return df_irpv
+
+    except Exception as e:
+        return None
 
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
@@ -455,6 +449,34 @@ try:
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
             
+            # --- NUEVA SECCIÓN DE IRPV ---
+            st.markdown("---")
+            st.markdown("### 🔄 Fidelización (IRPV)")
+            st.caption(f"Cálculo sobre vehículos entregados en el año seleccionado ({año_sel})")
+
+            # Nombres exactos de tus archivos
+            file_ventas = "HISTORIAL ENTREGAS 0KM AUTOCIEL GEMINI.xls - Informe.csv"
+            file_taller = "NUEVO HISTORIAL AUTOCIEL TALLER - GEMINI.xls - Informe.csv"
+            
+            # Verificar si existen y calcular
+            if os.path.exists(file_ventas) and os.path.exists(file_taller):
+                df_irpv = calcular_irpv_local(file_ventas, file_taller)
+                
+                if df_irpv is not None and año_sel in df_irpv.index:
+                    tasas = df_irpv.loc[año_sel]
+                    irpv_1 = tasas['1er']
+                    irpv_2 = tasas['2do']
+                    irpv_3 = tasas['3er']
+                    
+                    col_i1, col_i2, col_i3 = st.columns(3)
+                    with col_i1: st.markdown(render_kpi_small("1er Servicio (10k)", irpv_1, 0.80, None, None, "{:.1%}", "Obj. Ideal"), unsafe_allow_html=True)
+                    with col_i2: st.markdown(render_kpi_small("2do Servicio (20k)", irpv_2, 0.60, None, None, "{:.1%}", "Obj. Ideal"), unsafe_allow_html=True)
+                    with col_i3: st.markdown(render_kpi_small("3er Servicio (30k)", irpv_3, 0.40, None, None, "{:.1%}", "Obj. Ideal"), unsafe_allow_html=True)
+                else:
+                    st.info(f"No hay suficientes datos de entregas para calcular retención del año {año_sel}.")
+            else:
+                st.warning("⚠️ Faltan los archivos de Historial para calcular el IRPV.")
+
             st.markdown("---")
             st.markdown("### ⚙️ Taller")
             # --- TALLER LOGIC ---
