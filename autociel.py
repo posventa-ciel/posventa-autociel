@@ -5,6 +5,64 @@ import plotly.graph_objects as go
 from datetime import datetime
 import os
 
+# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ---
+@st.cache_data(ttl=3600)
+def calcular_irpv_local(archivo_ventas, archivo_taller):
+    try:
+        # 1. Cargar Ventas (0km)
+        # Ajusta el nombre del archivo si es necesario
+        df_v = pd.read_csv(archivo_ventas)
+        
+        # Función auxiliar para fechas Excel
+        def excel_date(serial):
+            if pd.isna(serial) or serial == '': return None
+            try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(serial))
+            except: return None
+
+        df_v['Fecha_Entrega'] = df_v['Fec.entr'].apply(excel_date)
+        df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
+        df_v['VIN'] = df_v['Bastidor'].astype(str).str.strip().str.upper()
+        df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
+
+        # 2. Cargar Taller (Servicios)
+        df_t = pd.read_csv(archivo_taller)
+        df_t['Fecha_Servicio'] = df_t['F.cierre'].apply(excel_date)
+        df_t['VIN'] = df_t['Bastidor'].astype(str).str.strip().str.upper()
+        df_t['Km'] = pd.to_numeric(df_t['Km'], errors='coerce').fillna(0)
+        
+        # Filtro: Solo mecánica (Excluir Chapa/Pintura)
+        mask_mec = ~df_t['Tipo O.R.'].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
+        df_t = df_t[mask_mec]
+
+        # 3. Clasificar Servicios por KM
+        def clasificar_km(k):
+            if 5000 <= k <= 15000: return "1er"
+            elif 15001 <= k <= 25000: return "2do"
+            elif 25001 <= k <= 35000: return "3er"
+            return None
+        
+        df_t['Servicio_Hito'] = df_t['Km'].apply(clasificar_km)
+        df_validos = df_t.dropna(subset=['Servicio_Hito'])
+
+        # 4. Cruzar y Calcular
+        # Obtenemos lista única de VINs vendidos y sus hitos cumplidos
+        df_merged = pd.merge(df_v, df_validos[['VIN', 'Servicio_Hito']], on='VIN', how='left')
+        
+        # Tabla dinámica: VIN vs Hito (1 si lo hizo, 0 si no)
+        pivot = df_merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Servicio_Hito', aggfunc='size', fill_value=0).reset_index()
+        
+        # Asegurar columnas
+        for col in ['1er', '2do', '3er']:
+            if col not in pivot.columns: pivot[col] = 0
+            else: pivot[col] = pivot[col].apply(lambda x: 1 if x > 0 else 0)
+
+        # Agrupar por Año de Venta (Cohorte)
+        df_irpv = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
+        return df_irpv
+
+    except Exception as e:
+        return None
+        
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
 # --- ESTILO CSS ---
