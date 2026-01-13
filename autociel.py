@@ -504,7 +504,131 @@ try:
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
+st.markdown("---")
+            st.markdown("### 🎛️ Simulador de Estrategia (Efecto Mix)")
+            st.info("Ajusta las ventas y márgenes proyectados para ver cómo impactan en el Margen Global. El objetivo es mantener el Global por encima del 21%.")
 
+            # 1. Preparar datos base para el simulador
+            sim_data = []
+            if not df_r.empty:
+                for index, row in df_r.iterrows():
+                    sim_data.append({
+                        "Canal": row['Canal'],
+                        "VentaBase": row['Venta Neta'],
+                        "MargenBase": row['Margen %']
+                    })
+            else:
+                # Datos dummy por si falla la carga para que no rompa
+                for c in canales_repuestos:
+                    sim_data.append({"Canal": c, "VentaBase": 1000000, "MargenBase": 0.25})
+
+            # 2. Controles del Simulador
+            col_sim_inputs, col_sim_kpis = st.columns([1, 1])
+            
+            proyecciones = []
+            
+            with col_sim_inputs:
+                st.markdown("#### 🔧 Ajuste de Proyecciones")
+                with st.expander("Desplegar Controles por Canal", expanded=True):
+                    for item in sim_data:
+                        c_name = item['Canal']
+                        base_v = float(item['VentaBase'])
+                        base_m = float(item['MargenBase'])
+                        
+                        cols_ctrl = st.columns([2, 2])
+                        with cols_ctrl[0]:
+                            # Input de Venta: Permite aumentar/disminuir volumen
+                            new_v = st.number_input(
+                                f"Venta {c_name} ($)", 
+                                value=base_v, 
+                                min_value=0.0, 
+                                step=100000.0,
+                                format="%.0f",
+                                key=f"sim_v_{c_name}"
+                            )
+                        with cols_ctrl[1]:
+                            # Input de Margen: Permite ver qué pasa si sacrificamos o mejoramos margen
+                            new_m = st.number_input(
+                                f"Margen {c_name} (%)", 
+                                value=base_m * 100, # Mostrar en escala 0-100
+                                min_value=0.0, 
+                                max_value=100.0,
+                                step=0.5,
+                                format="%.1f",
+                                key=f"sim_m_{c_name}"
+                            ) / 100 # Volver a decimal
+                        
+                        new_util = new_v * new_m
+                        proyecciones.append({
+                            "Canal": c_name,
+                            "Venta Proy": new_v,
+                            "Margen % Proy": new_m,
+                            "Utilidad Proy": new_util
+                        })
+
+            # 3. Cálculos Globales Simulados
+            df_sim = pd.DataFrame(proyecciones)
+            total_v_sim = df_sim['Venta Proy'].sum()
+            total_u_sim = df_sim['Utilidad Proy'].sum()
+            margen_global_sim = total_u_sim / total_v_sim if total_v_sim > 0 else 0
+            
+            # 4. Visualización de Resultados
+            with col_sim_kpis:
+                st.markdown("#### 🎯 Resultado Simulado")
+                
+                # Gauge Chart para el Margen Global
+                fig_gauge = go.Figure(go.Indicator(
+                    mode = "gauge+number+delta",
+                    value = margen_global_sim * 100,
+                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    title = {'text': "Margen Global Proyectado", 'font': {'size': 20}},
+                    delta = {'reference': 21.0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+                    gauge = {
+                        'axis': {'range': [0, 40], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                        'bar': {'color': "#00235d"},
+                        'bgcolor': "white",
+                        'borderwidth': 2,
+                        'bordercolor': "gray",
+                        'steps': [
+                            {'range': [0, 18], 'color': '#dc3545'},  # Rojo: Peligro
+                            {'range': [18, 21], 'color': '#ffc107'}, # Amarillo: Cuidado
+                            {'range': [21, 40], 'color': 'rgba(40, 167, 69, 0.3)'} # Verde: Objetivo
+                        ],
+                        'threshold': {
+                            'line': {'color': "red", 'width': 4},
+                            'thickness': 0.75,
+                            'value': 21.0
+                        }
+                    }
+                ))
+                fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_gauge, use_container_width=True)
+                
+                # Resumen numérico
+                k1, k2 = st.columns(2)
+                delta_vta = total_v_sim - vta_total_neta
+                delta_util = total_u_sim - util_total
+                
+                with k1: 
+                    st.metric("Venta Total Proy.", f"${total_v_sim:,.0f}", f"{delta_vta:,.0f} vs Real")
+                with k2: 
+                    st.metric("Utilidad Total Proy.", f"${total_u_sim:,.0f}", f"{delta_util:,.0f} vs Real")
+                
+                # Gráfico de Contribución a la Utilidad
+                st.markdown("##### Contribución de Utilidad ($)")
+                fig_bar_sim = px.bar(
+                    df_sim, 
+                    x='Utilidad Proy', 
+                    y='Canal', 
+                    orientation='h', 
+                    text_auto='.2s',
+                    color='Margen % Proy',
+                    color_continuous_scale='RdYlGn', # Rojo a Verde según margen
+                    range_color=[0.10, 0.40] # Escala de color entre 10% y 40%
+                )
+                fig_bar_sim.update_layout(height=250, margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig_bar_sim, use_container_width=True)
+                
         with tab4:
             st.markdown("### 🎨 Chapa y Pintura")
             
