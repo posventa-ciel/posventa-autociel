@@ -486,7 +486,7 @@ try:
                     st.info(f"⚠️ Se cargaron los archivos, pero no hay suficientes datos de entregas para el año {año_sel} o hubo un error en la lectura.")
             else:
                 st.info("👆 Por favor, carga los dos archivos CSV para visualizar el IRPV.")
-else:
-        st.warning("No se pudieron cargar los datos.")
-except Exception as e:
-    st.error(f"Error global: {e}")
+            else:
+                st.warning("No se pudieron cargar los datos.")
+            except Exception as e:
+                st.error(f"Error global: {e}")
