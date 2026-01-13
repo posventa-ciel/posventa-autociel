@@ -504,7 +504,7 @@ try:
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
-st.markdown("---")
+            st.markdown("---")
             st.markdown("### 🎛️ Simulador de Estrategia (Efecto Mix)")
             st.info("Ajusta las ventas y márgenes proyectados para ver cómo impactan en el Margen Global. El objetivo es mantener el Global por encima del 21%.")
 
