@@ -71,7 +71,6 @@ st.markdown("""<style>
         color: #666;
     }
     
-    /* Estilo para el menú de radio horizontal para que parezcan botones */
     div.row-widget.stRadio > div { flex-direction: row; align-items: stretch; }
     div.row-widget.stRadio > div[role="radiogroup"] > label { 
         background-color: #ffffff; 
@@ -208,7 +207,6 @@ try:
         </div>
         ''', unsafe_allow_html=True)
 
-        # --- NAVEGACIÓN ROBUSTA (Reemplaza st.tabs) ---
         menu_opts = ["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"]
         selected_tab = st.radio("", menu_opts, horizontal=True, label_visibility="collapsed")
         st.markdown("---")
@@ -354,7 +352,6 @@ try:
                 if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 val_real = s_r.get(c_real, 0)
                 
-                # Obtener MAX del mes para evitar 0s en filas vacías
                 df_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == año_sel) & (data['SERVICIOS']['Mes'] == mes_sel)]
                 if not df_mes.empty and c_obj: val_obj_mensual = df_mes[c_obj].max() 
                 else: val_obj_mensual = 0
@@ -385,7 +382,6 @@ try:
             ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False, prorate_target=True)
             ff_c_r, ff_c_p, ff_c_m, ff_c_proy, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
 
-            # Layout AGRUPADO POR MARCA
             c_peugeot, c_citroen = st.columns(2)
             with c_peugeot:
                 st.markdown("#### 🦁 Peugeot")
@@ -441,6 +437,18 @@ try:
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
+            
+            # --- 1. INPUT DE PRIMAS / BONOS ---
+            col_primas, col_vacia = st.columns([1, 3])
+            with col_primas:
+                primas_input = st.number_input(
+                    "💰 Ingresar Primas/Rappels Estimados ($)", 
+                    min_value=0.0, 
+                    step=10000.0, 
+                    format="%.0f", 
+                    help="Este valor se sumará a la utilidad para calcular el margen real final."
+                )
+
             detalles = []
             for c in canales_repuestos:
                 v_col = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
@@ -452,9 +460,17 @@ try:
                     ut = vn - cost
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
-            vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
-            obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             
+            # TOTALES
+            vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
+            vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
+            util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
+            
+            # --- AJUSTE CON PRIMAS ---
+            util_total_final = util_total_operativa + primas_input
+            mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
+            
+            obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
@@ -462,12 +478,13 @@ try:
             with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
-                util_total = df_r['Utilidad $'].sum() if not df_r.empty else 0
-                vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
-                mg_total = util_total / vta_total_neta if vta_total_neta > 0 else 0
                 meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
-                with r2: st.markdown(render_kpi_small("Utilidad Total", util_total, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
-                with r3: st.markdown(render_kpi_small("Margen Global", mg_total, None, None, None, "{:.1%}"), unsafe_allow_html=True)
+                with r2: 
+                    # Mostramos Utilidad Final con Primas
+                    st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
+                with r3: 
+                    # Mostramos Margen Final con Primas
+                    st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
 
             if not df_r.empty:
@@ -477,7 +494,7 @@ try:
                 t_cost = df_r['Costo'].sum()
                 t_ut = df_r['Utilidad $'].sum()
                 t_mg = t_ut / t_vn if t_vn != 0 else 0
-                df_show = pd.concat([df_r, pd.DataFrame([{"Canal": "TOTAL", "Venta Bruta": t_vb, "Desc.": t_desc, "Venta Neta": t_vn, "Costo": t_cost, "Utilidad $": t_ut, "Margen %": t_mg}])], ignore_index=True)
+                df_show = pd.concat([df_r, pd.DataFrame([{"Canal": "TOTAL OPERATIVO", "Venta Bruta": t_vb, "Desc.": t_desc, "Venta Neta": t_vn, "Costo": t_cost, "Utilidad $": t_ut, "Margen %": t_mg}])], ignore_index=True)
                 st.dataframe(df_show.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
             
             c1, c2 = st.columns(2)
@@ -490,12 +507,48 @@ try:
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
-                st.markdown(f"<div style='text-align:center; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;'>💰 <b>Valor Total Stock:</b> ${val_stock:,.0f}</div>", unsafe_allow_html=True)
             
-            # --- SIMULADOR DE MARGEN ---
             st.markdown("---")
-            st.markdown("### 🎛️ Simulador de Estrategia (Efecto Mix)")
-            st.info("Ajusta las ventas y márgenes proyectados para ver cómo impactan en el Margen Global. El objetivo es mantener el Global por encima del 21%.")
+            
+            # --- 2. CALCULADORA DE MIX IDEAL ---
+            st.markdown("### 🎯 Calculadora de Mix Ideal")
+            st.info("Define tu participación ideal por canal (histórica o deseada) para ver cuánto deberías vender en cada uno para alcanzar el Objetivo del Mes.")
+            
+            col_mix_input, col_mix_res = st.columns([1, 1])
+            
+            # Valores por defecto basados en la realidad actual para facilitar la carga
+            default_mix = {}
+            if vta_total_neta > 0:
+                for idx, row in df_r.iterrows():
+                    default_mix[row['Canal']] = (row['Venta Neta'] / vta_total_neta) * 100
+            
+            mix_ideal = {}
+            sum_mix = 0
+            
+            with col_mix_input:
+                for c in canales_repuestos:
+                    val_def = float(default_mix.get(c, 0.0))
+                    val_mix = st.slider(f"Participación % {c}", 0.0, 100.0, val_def, 0.5, key=f"mix_{c}")
+                    mix_ideal[c] = val_mix / 100
+                    sum_mix += val_mix
+                
+                if abs(sum_mix - 100.0) > 1.0:
+                    st.warning(f"⚠️ La suma de porcentajes es {sum_mix:.1f}%. Asegúrate de que sume 100%.")
+
+            with col_mix_res:
+                st.markdown(f"#### Objetivo Mensual: ${obj_rep_total:,.0f}")
+                ideal_data = []
+                for c, share in mix_ideal.items():
+                    target_vta = obj_rep_total * share
+                    ideal_data.append({"Canal": c, "Mix Ideal": share, "Venta Objetivo": target_vta})
+                
+                df_ideal = pd.DataFrame(ideal_data)
+                st.dataframe(df_ideal.style.format({"Mix Ideal": "{:.1%}", "Venta Objetivo": "${:,.0f}"}), hide_index=True)
+
+            # --- 3. SIMULADOR DE MARGEN (CON PRIMAS) ---
+            st.markdown("---")
+            st.markdown("### 🎛️ Simulador de Estrategia (Efecto Mix + Primas)")
+            st.info("Ajusta ventas y márgenes. Las Primas ingresadas arriba se suman al resultado final.")
 
             sim_data = []
             if not df_r.empty:
@@ -523,15 +576,15 @@ try:
 
             df_sim = pd.DataFrame(proyecciones)
             total_v_sim = df_sim['Venta Proy'].sum()
-            total_u_sim = df_sim['Utilidad Proy'].sum()
+            total_u_sim = df_sim['Utilidad Proy'].sum() + primas_input # SUMAMOS PRIMAS AQUI
             margen_global_sim = total_u_sim / total_v_sim if total_v_sim > 0 else 0
             
             with col_sim_kpis:
-                st.markdown("#### 🎯 Resultado Simulado")
+                st.markdown("#### 🎯 Resultado Simulado (Inc. Primas)")
                 fig_gauge = go.Figure(go.Indicator(
                     mode = "gauge+number+delta", value = margen_global_sim * 100,
                     domain = {'x': [0, 1], 'y': [0, 1]},
-                    title = {'text': "Margen Global Proyectado", 'font': {'size': 20}},
+                    title = {'text': "Margen Global Real", 'font': {'size': 20}},
                     delta = {'reference': 21.0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
                     gauge = {'axis': {'range': [0, 40], 'tickwidth': 1}, 'bar': {'color': "#00235d"}, 'bgcolor': "white", 'steps': [{'range': [0, 18], 'color': '#dc3545'}, {'range': [18, 21], 'color': '#ffc107'}, {'range': [21, 40], 'color': 'rgba(40, 167, 69, 0.3)'}], 'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 21.0}}
                 ))
@@ -539,10 +592,8 @@ try:
                 st.plotly_chart(fig_gauge, use_container_width=True)
                 
                 k1, k2 = st.columns(2)
-                vta_total_neta_real = df_r['Venta Neta'].sum() if not df_r.empty else 0
-                util_total_real = df_r['Utilidad $'].sum() if not df_r.empty else 0
-                with k1: st.metric("Venta Total Proy.", f"${total_v_sim:,.0f}", f"{total_v_sim - vta_total_neta_real:,.0f} vs Real")
-                with k2: st.metric("Utilidad Total Proy.", f"${total_u_sim:,.0f}", f"{total_u_sim - util_total_real:,.0f} vs Real")
+                with k1: st.metric("Venta Total Proy.", f"${total_v_sim:,.0f}", f"{total_v_sim - vta_total_neta:,.0f} vs Real")
+                with k2: st.metric("Utilidad Total Proy.", f"${total_u_sim:,.0f}", f"{total_u_sim - util_total_final:,.0f} vs Real")
                 
                 st.markdown("##### Contribución de Utilidad ($)")
                 st.plotly_chart(px.bar(df_sim, x='Utilidad Proy', y='Canal', orientation='h', text_auto='.2s', color='Margen % Proy', color_continuous_scale='RdYlGn', range_color=[0.10, 0.40]).update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0)), use_container_width=True)
@@ -699,9 +750,6 @@ try:
                 st.plotly_chart(go.Figure(go.Scatter(x=h_rep['NombreMes'], y=h_rep['MesesStock'], name='Meses Stock', mode='lines+markers', line=dict(color='#6610f2', width=3))).update_layout(title="Evolución Meses de Stock (Stock / Costo Prom. 3 meses)", height=300), use_container_width=True)
             
             c_hist_j, c_hist_s = st.columns(2)
-            # LOGICA CyP (Resumida para ahorrar espacio visual, la lógica completa está arriba)
-            # ... (código gráficos CyP es idéntico a anterior, omitido por brevedad pero incluido en ejecución) ...
-            # NOTA: Para no romper el script, copio la logica de graficos cyp aqui rapido:
             col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']) or find_col(h_cyp_j, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
             col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER']) or find_col(h_cyp_j, ['PAÑOS', 'TER'])
             h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
