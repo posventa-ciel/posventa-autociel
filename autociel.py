@@ -3,14 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-import io
 import os
-
-# Intentar importar xlrd para manejar excels viejos
-try:
-    import xlrd
-except ImportError:
-    xlrd = None
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
@@ -20,7 +13,6 @@ st.markdown("""<style>
     .main { background-color: #f4f7f9; }
     .kpi-card { background-color: white; border: 1px solid #e0e0e0; padding: 12px 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 8px; min-height: 145px; display: flex; flex-direction: column; justify-content: space-between; }
     .metric-card { background-color: white; border: 1px solid #eee; padding: 10px; border-radius: 8px; text-align: center; min-height: 110px; }
-    .cyp-detail { background-color: #f8f9fa; padding: 8px; border-radius: 6px; font-size: 0.8rem; margin-top: 5px; border-left: 3px solid #00235d; }
 </style>""", unsafe_allow_html=True)
 
 # --- FUNCIÓN DE BÚSQUEDA ---
@@ -53,78 +45,59 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- SÚPER CARGADOR DE ARCHIVOS (ESPECIAL QUITER .XLS) ---
-def super_cargador(uploaded_file):
-    errores = []
-    
-    # 1. INTENTO FUERTE: Excel Binario (xlrd)
-    # Esto es para los archivos que empiezan con ÐÏà¡± (Magic Bytes de Office viejo)
+# --- LECTURA DE CSV LIMPIOS (Busca la cabecera automáticamente) ---
+def leer_csv_inteligente(uploaded_file):
     try:
+        # Leemos las primeras 20 lineas para encontrar dónde empieza la tabla
         uploaded_file.seek(0)
-        # Forzamos el motor 'xlrd' que es el único que lee estos binarios
-        return pd.read_excel(uploaded_file, engine='xlrd'), "Excel Binario (.xls)"
-    except Exception as e:
-        errores.append(f"Fallo xlrd: {str(e)}")
-
-    # 2. INTENTO: Excel Moderno (openpyxl)
-    try:
+        preview = pd.read_csv(uploaded_file, header=None, nrows=20, sep=None, engine='python', encoding='utf-8', on_bad_lines='skip')
+        
+        # Buscamos palabras clave
+        idx_header = -1
+        keywords = ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA']
+        
+        for i, row in preview.iterrows():
+            row_txt = " ".join([str(x).upper() for x in row.values])
+            if any(kw in row_txt for kw in keywords):
+                idx_header = i
+                break
+        
+        # Si no encuentra cabecera, asume la fila 0
+        if idx_header == -1: idx_header = 0
+        
+        # Leemos el archivo completo saltando las filas basura
         uploaded_file.seek(0)
-        return pd.read_excel(uploaded_file, engine='openpyxl'), "Excel Moderno (.xlsx)"
+        # Probamos separador ; primero (Excel CSV español)
+        try:
+            df = pd.read_csv(uploaded_file, header=idx_header, sep=';', encoding='utf-8')
+            if len(df.columns) < 2: raise Exception("Pocas columnas")
+        except:
+            # Si falla, probamos coma (CSV estándar)
+            uploaded_file.seek(0)
+            df = pd.read_csv(uploaded_file, header=idx_header, sep=',', encoding='utf-8')
+            
+        return df, "OK"
     except Exception as e:
-        errores.append(f"Fallo openpyxl: {str(e)}")
-
-    # 3. INTENTO: HTML (A veces Quiter exporta HTML como xls)
-    try:
-        uploaded_file.seek(0)
-        dfs = pd.read_html(uploaded_file, header=0)
-        if dfs: return dfs[0], "HTML Web Table"
-    except Exception as e:
-        errores.append(f"Fallo HTML: {str(e)}")
-
-    # 4. INTENTO: CSV (Separador coma)
-    try:
-        uploaded_file.seek(0)
-        return pd.read_csv(uploaded_file, encoding='latin-1'), "CSV Coma"
-    except Exception as e:
-        errores.append(f"Fallo CSV Coma: {str(e)}")
-
-    # 5. INTENTO: CSV (Separador punto y coma)
-    try:
-        uploaded_file.seek(0)
-        return pd.read_csv(uploaded_file, sep=';', encoding='latin-1'), "CSV Punto y Coma"
-    except Exception as e:
-        errores.append(f"Fallo CSV P.Coma: {str(e)}")
-
-    return None, f"No se pudo leer. Errores: {'; '.join(errores)}"
+        return None, str(e)
 
 # --- PROCESAMIENTO IRPV ---
 def procesar_irpv(file_v, file_t):
     # Cargar Ventas
-    df_v, tipo_v = super_cargador(file_v)
-    if df_v is None: 
-        if "xlrd" in str(tipo_v) and xlrd is None:
-            return None, "Falta instalar librería 'xlrd'. Ejecuta: pip install xlrd"
-        return None, f"Error Ventas: {tipo_v}"
+    df_v, msg_v = leer_csv_inteligente(file_v)
+    if df_v is None: return None, f"Error Ventas: {msg_v}"
     
-    # Limpieza Columnas Ventas
     df_v.columns = [str(c).upper().strip() for c in df_v.columns]
     
-    # Buscar columnas clave (flexible)
     col_vin = next((c for c in df_v.columns if 'BASTIDOR' in c or 'VIN' in c or 'CHASIS' in c), None)
     col_fec = next((c for c in df_v.columns if 'FEC' in c or 'ENTR' in c), None)
     
     if not col_vin or not col_fec:
-        return None, f"Ventas: No se encontraron columnas 'Bastidor' ni 'Fecha'. (Cols detectadas: {list(df_v.columns)})"
+        return None, f"Ventas: Faltan columnas clave (Bastidor/Fecha). Cols: {list(df_v.columns)}"
 
-    # Procesar Fechas Ventas
     def clean_date(x):
-        if pd.isna(x) or x == '': return None
-        # Si es número serial de Excel
-        if isinstance(x, (int, float)):
-            try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(x))
-            except: pass
-        # Si es texto
-        try: return pd.to_datetime(x, dayfirst=True, errors='coerce')
+        if pd.isna(x) or str(x).strip() == '': return None
+        # Intenta parsear fecha DD/MM/YYYY
+        try: return pd.to_datetime(x, dayfirst=True)
         except: return None
 
     df_v['Fecha_Entrega'] = df_v[col_fec].apply(clean_date)
@@ -133,10 +106,9 @@ def procesar_irpv(file_v, file_t):
     df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
     # Cargar Taller
-    df_t, tipo_t = super_cargador(file_t)
-    if df_t is None: return None, f"Error Taller: {tipo_t}"
+    df_t, msg_t = leer_csv_inteligente(file_t)
+    if df_t is None: return None, f"Error Taller: {msg_t}"
     
-    # Limpieza Columnas Taller
     df_t.columns = [str(c).upper().strip() for c in df_t.columns]
     
     col_vin_t = next((c for c in df_t.columns if 'BASTIDOR' in c or 'VIN' in c), None)
@@ -145,22 +117,19 @@ def procesar_irpv(file_v, file_t):
     col_or = next((c for c in df_t.columns if 'TIPO' in c or 'O.R.' in c), None)
 
     if not col_vin_t or not col_fec_t:
-        return None, f"Taller: Faltan columnas clave (Bastidor/Cierre). (Cols detectadas: {list(df_t.columns)})"
+        return None, f"Taller: Faltan columnas clave (Bastidor/Cierre). Cols: {list(df_t.columns)}"
 
     df_t['Fecha_Servicio'] = df_t[col_fec_t].apply(clean_date)
     df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
     
     if col_km:
-        df_t['Km'] = df_t[col_km].astype(str).str.replace('.','').str.replace(',','.')
-        df_t['Km'] = pd.to_numeric(df_t['Km'], errors='coerce').fillna(0)
+        df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0)
     else: df_t['Km'] = 0
 
-    # Filtro Chapa
     if col_or:
         mask = ~df_t[col_or].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
         df_t = df_t[mask]
 
-    # Clasificar
     def clasif(k):
         if 5000 <= k <= 15000: return "1er"
         elif 15001 <= k <= 25000: return "2do"
@@ -170,7 +139,6 @@ def procesar_irpv(file_v, file_t):
     df_t['Hito'] = df_t['Km'].apply(clasif)
     df_validos = df_t.dropna(subset=['Hito'])
 
-    # Cruzar
     merged = pd.merge(df_v, df_validos[['VIN', 'Hito']], on='VIN', how='left')
     pivot = merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Hito', aggfunc='size', fill_value=0).reset_index()
     
@@ -188,12 +156,13 @@ try:
     data = cargar_datos(ID_SHEET)
     
     if data:
-        # Preprocesamiento Básico
         for h in data:
             col_f = find_col(data[h], ["FECHA"]) or data[h].columns[0]
             data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f], dayfirst=True, errors='coerce')
             data[h]['Mes'] = data[h]['Fecha_dt'].dt.month
             data[h]['Año'] = data[h]['Fecha_dt'].dt.year
+
+        canales_repuestos = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
 
         with st.sidebar:
             if os.path.exists("logo.png"): st.image("logo.png", use_container_width=True)
@@ -205,7 +174,6 @@ try:
             df_y = data['CALENDARIO'][data['CALENDARIO']['Año'] == anio_sel]
             mes_sel = st.selectbox("📅 Mes", sorted(df_y['Mes'].unique(), reverse=True), format_func=lambda x: meses_nom.get(x))
 
-        # Helpers de obtención de datos
         def get_val(df, keys):
             if df is None: return 0
             row = df[(df['Año'] == anio_sel) & (df['Mes'] == mes_sel)]
@@ -220,55 +188,47 @@ try:
             col = find_col(df, ["OBJ"] + keys)
             return float(row[col].iloc[0]) if col else 1
 
-        # Avance temporal
         dias_hab = get_obj(data['CALENDARIO'], ["HAB"])
         dias_trans = get_val(data['CALENDARIO'], ["TRANS"])
         prog_t = min(dias_trans / dias_hab if dias_hab > 0 else 0, 1.0)
         
-        # --- UI LAYOUT ---
         st.title(f"Tablero Posventa - {meses_nom.get(mes_sel)} {anio_sel}")
         tabs = st.tabs(["🏠 Objetivos", "🛠️ Servicios", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"])
 
-        with tabs[0]: # OBJETIVOS
+        with tabs[0]: 
             c1, c2, c3, c4 = st.columns(4)
-            
-            # MO Servicios
             real_mo = sum([get_val(data['SERVICIOS'], ["MO", k]) for k in ["CLI", "GAR", "INT", "TER"]])
             obj_mo = get_obj(data['SERVICIOS'], ["MO"])
             c1.metric("M.O. Servicios", f"${real_mo:,.0f}", f"Obj: ${obj_mo:,.0f}")
             
-            # Repuestos
-            real_rep = sum([get_val(data['REPUESTOS'], ["VENTA", k]) for k in ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']])
+            real_rep = sum([get_val(data['REPUESTOS'], ["VENTA", k]) for k in canales_repuestos])
             obj_rep = get_obj(data['REPUESTOS'], ["FACT"])
             c2.metric("Repuestos", f"${real_rep:,.0f}", f"Obj: ${obj_rep:,.0f}")
             
-            # Cyp Jujuy
             real_cj = get_val(data['CyP JUJUY'], ["MO", "PUR"]) + get_val(data['CyP JUJUY'], ["MO", "TER"]) + get_val(data['CyP JUJUY'], ["FACT", "REP"])
             obj_cj = get_obj(data['CyP JUJUY'], ["FACT"])
             c3.metric("CyP Jujuy", f"${real_cj:,.0f}", f"Obj: ${obj_cj:,.0f}")
 
-            # Cyp Salta
             real_cs = get_val(data['CyP SALTA'], ["MO", "PUR"]) + get_val(data['CyP SALTA'], ["MO", "TER"]) + get_val(data['CyP SALTA'], ["FACT", "REP"])
             obj_cs = get_obj(data['CyP SALTA'], ["FACT"])
             c4.metric("CyP Salta", f"${real_cs:,.0f}", f"Obj: ${obj_cs:,.0f}")
 
-        with tabs[1]: # SERVICIOS
+        with tabs[1]:
             col_kpi, col_irpv = st.columns([1, 1])
             with col_kpi:
                 st.subheader("Indicadores del Mes")
                 cpus = get_val(data['SERVICIOS'], ["CPUS"])
                 obj_cpus = get_obj(data['SERVICIOS'], ["CPUS"])
                 st.metric("CPUS (Entradas)", f"{cpus:.0f}", f"Obj: {obj_cpus:.0f}")
-                
                 tus = cpus + get_val(data['SERVICIOS'], ["OTROS", "CARGOS"])
                 st.metric("TUS Total", f"{tus:.0f}", f"Obj: {get_obj(data['SERVICIOS'], ['TUS']):.0f}")
 
             with col_irpv:
                 st.subheader("🔄 Fidelización (IRPV)")
-                st.caption("Fidelización calculada sobre ventas acumuladas (Cohortes).")
+                st.markdown("ℹ️ **Importante:** Sube archivos guardados en Excel como **'CSV UTF-8 (delimitado por comas)'**.")
                 
-                up_v = st.file_uploader("Entregas 0km", key="v")
-                up_t = st.file_uploader("Historial Taller", key="t")
+                up_v = st.file_uploader("Entregas 0km (CSV)", type=["csv"], key="v")
+                up_t = st.file_uploader("Historial Taller (CSV)", type=["csv"], key="t")
                 
                 if up_v and up_t:
                     df_res, msg = procesar_irpv(up_v, up_t)
@@ -279,24 +239,20 @@ try:
                         
                         vals = df_res.loc[sel_anio_irpv]
                         c_i1, c_i2, c_i3 = st.columns(3)
-                        c_i1.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
-                        c_i2.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
-                        c_i3.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
+                        c_i1.metric("1er Service (10k)", f"{vals['1er']:.1%}", "Obj: 80%")
+                        c_i2.metric("2do Service (20k)", f"{vals['2do']:.1%}", "Obj: 60%")
+                        c_i3.metric("3er Service (30k)", f"{vals['3er']:.1%}", "Obj: 40%")
                         
-                        with st.expander("Ver Datos Completos"):
+                        with st.expander("Ver Tabla Completa"):
                             st.dataframe(df_res.style.format("{:.1%}"))
                     else:
-                        st.error(f"⚠️ Error: {msg}")
+                        st.error(f"❌ Error: {msg}")
 
-        with tabs[2]: # REPUESTOS
+        with tabs[2]:
             st.subheader("Gestión de Stock y Margen")
-            # Primas
             primas = st.number_input("Primas/Rappels ($)", value=0.0, step=1000.0)
-            
-            # Detalle Canales
-            canales = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
             items = []
-            for c in canales:
+            for c in canales_repuestos:
                 vb = get_val(data['REPUESTOS'], ["VENTA", c])
                 cos = get_val(data['REPUESTOS'], ["COSTO", c])
                 items.append({"Canal": c, "Venta": vb, "Costo": cos, "Margen $": vb-cos})
@@ -309,10 +265,9 @@ try:
             k1, k2 = st.columns(2)
             k1.metric("Utilidad Total (c/Primas)", f"${total_ut:,.0f}")
             k2.metric("Margen Global %", f"{mg_pct:.1%}")
-            
             st.dataframe(df_rep.style.format({"Venta":"${:,.0f}", "Costo":"${:,.0f}", "Margen $":"${:,.0f}"}), use_container_width=True)
 
-        with tabs[3]: # CyP
+        with tabs[3]:
             st.subheader("Chapa y Pintura")
             c_ju, c_sa = st.columns(2)
             with c_ju:
@@ -320,21 +275,17 @@ try:
                 st.metric("Facturación", f"${real_cj:,.0f}", f"Obj: ${obj_cj:,.0f}")
                 panos = get_val(data['CyP JUJUY'], ["PANOS"])
                 st.metric("Paños", f"{panos:.0f}")
-
             with c_sa:
                 st.markdown("#### Salta")
                 st.metric("Facturación", f"${real_cs:,.0f}", f"Obj: ${obj_cs:,.0f}")
                 panos_s = get_val(data['CyP SALTA'], ["PANOS"])
                 st.metric("Paños", f"{panos_s:.0f}")
         
-        with tabs[4]: # HISTORICO
+        with tabs[4]:
             st.subheader("Evolución Anual")
             df_h = data['SERVICIOS'][data['SERVICIOS']['Año'] == anio_sel]
             fig = px.bar(df_h, x='Mes', y=find_col(data['SERVICIOS'], ["MO", "CLI"]), title="Evolución MO Cliente")
             st.plotly_chart(fig, use_container_width=True)
 
-    else:
-        st.error("No se pudieron cargar los datos de Google Sheets.")
-
-except Exception as e:
-    st.error(f"Error Crítico: {e}")
+    else: st.error("No se pudieron cargar los datos de Google Sheets.")
+except Exception as e: st.error(f"Error Crítico: {e}")
