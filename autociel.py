@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+import io
 import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
@@ -126,111 +127,171 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ROBUSTA ---
+# --- FUNCIÓN "TODO TERRENO" PARA LECTURA DE ARCHIVOS QUITER ---
 @st.cache_data(ttl=3600)
 def calcular_irpv_local(archivo_ventas, archivo_taller):
     
-    # Función auxiliar para encontrar cabeceras en Excel
-    def leer_excel_inteligente(archivo):
-        try:
-            archivo.seek(0)
-            # Leemos las primeras filas sin cabecera
-            df_crudo = pd.read_excel(archivo, header=None, nrows=20)
-            
-            # Buscamos en qué fila están las palabras clave
-            idx_header = -1
-            for i, row in df_crudo.iterrows():
-                row_str = row.astype(str).str.upper().str.strip()
-                if any(x in row_str.values for x in ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA']):
-                    idx_header = i
-                    break
-            
-            archivo.seek(0)
-            if idx_header != -1:
-                return pd.read_excel(archivo, header=idx_header)
-            else:
-                return pd.read_excel(archivo)
-        except Exception as e:
-            return None
-
-    try:
-        # 1. CARGAR VENTAS
-        df_v = leer_excel_inteligente(archivo_ventas)
-        if df_v is None: 
-            archivo_ventas.seek(0)
-            try: df_v = pd.read_csv(archivo_ventas)
-            except: pass
-            
-        if df_v is None: return None
+    # Esta función intenta abrir el archivo como sea (Excel, CSV coma, CSV punto y coma)
+    def cargar_archivo_flexible(uploaded_file):
+        errores_log = []
+        df_res = None
         
-        df_v.columns = [str(c).strip() for c in df_v.columns]
-        col_vin_v = next((c for c in df_v.columns if "BASTIDOR" in c.upper() or "VIN" in c.upper()), None)
-        col_fecha_v = next((c for c in df_v.columns if "FEC" in c.upper() or "ENTR" in c.upper()), None)
-        
-        if not col_vin_v or not col_fecha_v: return None
+        # Lista de estrategias para abrir el archivo
+        estrategias = [
+            # 1. Excel normal (Buscando cabecera en las primeras 20 filas)
+            lambda f: pd.read_excel(f, header=None, nrows=20),
+            # 2. CSV separado por comas
+            lambda f: pd.read_csv(f, nrows=20),
+            # 3. CSV separado por punto y coma (común en Quiter español)
+            lambda f: pd.read_csv(f, sep=';', nrows=20),
+            # 4. CSV separado por tabulaciones
+            lambda f: pd.read_csv(f, sep='\t', nrows=20),
+            # 5. Excel "viejo" (xlrd)
+            lambda f: pd.read_excel(f, engine='xlrd', header=None, nrows=20)
+        ]
 
-        def excel_date(val):
-            if pd.isna(val) or val == '': return None
-            if isinstance(val, (int, float)):
-                try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(val))
-                except: return None
-            try: return pd.to_datetime(val, dayfirst=True, errors='coerce')
+        # Intentamos cada estrategia para encontrar DÓNDE empiezan los datos
+        idx_header = -1
+        best_loader = None
+        
+        # Palabras clave que DEBEN estar en la cabecera
+        keywords = ['BASTIDOR', 'VIN', 'MATRICULA', 'CHASIS']
+        
+        for estrategia in estrategias:
+            try:
+                uploaded_file.seek(0)
+                df_preview = estrategia(uploaded_file)
+                
+                # Buscamos en las primeras filas
+                for i, row in df_preview.iterrows():
+                    # Convertimos toda la fila a texto mayúscula para buscar
+                    row_txt = " ".join([str(x).upper() for x in row.values])
+                    if any(kw in row_txt for kw in keywords):
+                        idx_header = i
+                        # Encontramos la estrategia ganadora
+                        if "read_csv" in str(estrategia): 
+                            # Si era CSV, necesitamos saber el separador exacto para leer todo
+                            try: 
+                                uploaded_file.seek(0)
+                                pd.read_csv(uploaded_file, sep=',', nrows=1)
+                                best_loader = lambda f: pd.read_csv(f, header=idx_header)
+                            except:
+                                best_loader = lambda f: pd.read_csv(f, sep=';', header=idx_header)
+                        else:
+                            best_loader = lambda f: pd.read_excel(f, header=idx_header)
+                        break
+                if idx_header != -1: break
+            except:
+                continue
+
+        # Si no encontramos cabecera con palabras clave, intentamos carga directa
+        if idx_header == -1:
+            uploaded_file.seek(0)
+            try: df_res = pd.read_excel(uploaded_file)
+            except: 
+                try: 
+                    uploaded_file.seek(0)
+                    df_res = pd.read_csv(uploaded_file)
+                except: 
+                    try:
+                        uploaded_file.seek(0)
+                        df_res = pd.read_csv(uploaded_file, sep=';')
+                    except: return None, ["No se pudo leer el formato del archivo."]
+        else:
+            # Usamos la estrategia ganadora para leer TODO el archivo
+            try:
+                uploaded_file.seek(0)
+                df_res = best_loader(uploaded_file)
+            except Exception as e:
+                return None, [f"Error leyendo archivo detectado: {str(e)}"]
+
+        if df_res is not None:
+            # Limpiamos nombres de columnas para que sean fáciles de encontrar
+            # Eliminamos puntos, espacios y pasamos a mayúscula: "Fec. entr" -> "FECENTR"
+            df_res.columns = [str(c).upper().replace('.', '').replace(' ', '').strip() for c in df_res.columns]
+            return df_res, []
+        
+        return None, ["Formato de archivo no reconocido (no es Excel ni CSV estándar)."]
+
+    # --- PROCESO PRINCIPAL ---
+    log_debug = []
+    
+    # 1. Cargar Ventas
+    df_v, err_v = cargar_archivo_flexible(archivo_ventas)
+    if df_v is None: return None, [f"Error Archivo Ventas: {err_v[0]}"]
+    
+    # Buscar columnas clave en Ventas
+    # Buscamos 'BASTIDOR' o 'VIN'
+    col_vin_v = next((c for c in df_v.columns if "BASTIDOR" in c or "VIN" in c), None)
+    # Buscamos 'FEC' o 'ENTR' (para Fec.entr)
+    col_fecha_v = next((c for c in df_v.columns if "FEC" in c or "ENTR" in c), None)
+    
+    if not col_vin_v or not col_fecha_v:
+        return None, [f"Faltan columnas en Ventas. Encontradas: {list(df_v.columns)}. Se buscaba: BASTIDOR/VIN y FECHA/ENTR"]
+
+    # 2. Cargar Taller
+    df_t, err_t = cargar_archivo_flexible(archivo_taller)
+    if df_t is None: return None, [f"Error Archivo Taller: {err_t[0]}"]
+    
+    # Buscar columnas clave en Taller
+    col_vin_t = next((c for c in df_t.columns if "BASTIDOR" in c or "VIN" in c), None)
+    col_fecha_t = next((c for c in df_t.columns if "CIERRE" in c or "FEC" in c), None)
+    col_km = next((c for c in df_t.columns if "KM" in c), None)
+    
+    if not col_vin_t or not col_fecha_t:
+         return None, [f"Faltan columnas en Taller. Encontradas: {list(df_t.columns)}. Se buscaba: BASTIDOR/VIN y CIERRE/FECHA"]
+
+    # Procesar Fechas
+    def procesar_fecha(val):
+        if pd.isna(val) or val == '': return None
+        if isinstance(val, (int, float)): # Excel Serial
+            try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(val))
             except: return None
+        try: return pd.to_datetime(val, dayfirst=True, errors='coerce')
+        except: return None
 
-        df_v['Fecha_Entrega'] = df_v[col_fecha_v].apply(excel_date)
-        df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
-        df_v['VIN'] = df_v[col_vin_v].astype(str).str.strip().str.upper()
-        df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
+    df_v['Fecha_Entrega'] = df_v[col_fecha_v].apply(procesar_fecha)
+    df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
+    df_v['VIN'] = df_v[col_vin_v].astype(str).str.strip().str.upper()
+    df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
-        # 2. CARGAR TALLER
-        df_t = leer_excel_inteligente(archivo_taller)
-        if df_t is None:
-            archivo_taller.seek(0)
-            try: df_t = pd.read_csv(archivo_taller)
-            except: pass
-        if df_t is None: return None
+    df_t['Fecha_Servicio'] = df_t[col_fecha_t].apply(procesar_fecha)
+    df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
+    
+    # Kilometraje (puede venir como texto '10.000')
+    if col_km:
+        df_t['Km'] = df_t[col_km].astype(str).str.replace('.', '').str.replace(',', '.')
+        df_t['Km'] = pd.to_numeric(df_t['Km'], errors='coerce').fillna(0)
+    else:
+        df_t['Km'] = 0
 
-        df_t.columns = [str(c).strip() for c in df_t.columns]
-        col_vin_t = next((c for c in df_t.columns if "BASTIDOR" in c.upper() or "VIN" in c.upper()), None)
-        col_fecha_t = next((c for c in df_t.columns if "CIERRE" in c.upper() or "FEC" in c.upper()), None)
-        col_km = next((c for c in df_t.columns if "KM" in c.upper()), None)
-        col_tipo = next((c for c in df_t.columns if "TIPO" in c.upper() or "O.R." in c.upper()), None)
-        
-        if not col_vin_t or not col_fecha_t: return None
+    # Filtro Tipo OR (opcional)
+    col_tipo = next((c for c in df_t.columns if "TIPO" in c or "OR" in c), None)
+    if col_tipo:
+        mask_mec = ~df_t[col_tipo].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
+        df_t = df_t[mask_mec]
 
-        df_t['Fecha_Servicio'] = df_t[col_fecha_t].apply(excel_date)
-        df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
-        df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0) if col_km else 0
-        
-        if col_tipo:
-            mask_mec = ~df_t[col_tipo].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
-            df_t = df_t[mask_mec]
-
-        # 3. CLASIFICAR
-        def clasificar_km(k):
-            if 5000 <= k <= 15000: return "1er"
-            elif 15001 <= k <= 25000: return "2do"
-            elif 25001 <= k <= 35000: return "3er"
-            return None
-        
-        df_t['Servicio_Hito'] = df_t['Km'].apply(clasificar_km)
-        df_validos = df_t.dropna(subset=['Servicio_Hito'])
-
-        # 4. CRUZAR
-        df_merged = pd.merge(df_v, df_validos[['VIN', 'Servicio_Hito']], on='VIN', how='left')
-        pivot = df_merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Servicio_Hito', aggfunc='size', fill_value=0).reset_index()
-        
-        for col in ['1er', '2do', '3er']:
-            if col not in pivot.columns: pivot[col] = 0
-            else: pivot[col] = pivot[col].apply(lambda x: 1 if x > 0 else 0)
-
-        df_irpv = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
-        return df_irpv
-
-    except Exception as e:
+    # Clasificar y Cruzar
+    def clasificar_km(k):
+        if 5000 <= k <= 15000: return "1er"
+        elif 15001 <= k <= 25000: return "2do"
+        elif 25001 <= k <= 35000: return "3er"
         return None
+    
+    df_t['Servicio_Hito'] = df_t['Km'].apply(clasificar_km)
+    df_validos = df_t.dropna(subset=['Servicio_Hito'])
 
-# --- CONSTANTE ID_SHEET (AQUÍ ESTABA EL ERROR) ---
+    df_merged = pd.merge(df_v, df_validos[['VIN', 'Servicio_Hito']], on='VIN', how='left')
+    pivot = df_merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Servicio_Hito', aggfunc='size', fill_value=0).reset_index()
+    
+    for col in ['1er', '2do', '3er']:
+        if col not in pivot.columns: pivot[col] = 0
+        else: pivot[col] = pivot[col].apply(lambda x: 1 if x > 0 else 0)
+
+    df_irpv = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
+    
+    return df_irpv, [] # Éxito
+
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
 try:
@@ -502,44 +563,6 @@ try:
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
             
-            st.markdown("---")
-            st.markdown("### ⚙️ Taller")
-            # --- TALLER LOGIC ---
-            col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
-            if not col_tecs: col_tecs = find_col(data['TALLER'], ["DOTACION"])
-            cant_tecs = t_r.get(col_tecs, 6) 
-            if cant_tecs == 0: cant_tecs = 6
-
-            ht_cc = t_r.get(find_col(data['TALLER'], ["TRAB", "CC"]), 0)
-            ht_cg = t_r.get(find_col(data['TALLER'], ["TRAB", "CG"]), 0)
-            ht_ci = t_r.get(find_col(data['TALLER'], ["TRAB", "CI"]), 0)
-            ef_cc = hf_cc / ht_cc if ht_cc > 0 else 0
-            ef_cg = hf_cg / ht_cg if ht_cg > 0 else 0
-            ef_ci = hf_ci / ht_ci if ht_ci > 0 else 0
-            ef_gl = (hf_cc+hf_cg+hf_ci) / (ht_cc+ht_cg+ht_ci) if (ht_cc+ht_cg+ht_ci) > 0 else 0
-            
-            hs_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
-            hs_teoricas = cant_tecs * 8 * d_t 
-            presencia = hs_disp / hs_teoricas if hs_teoricas > 0 else 0
-            ocup = (ht_cc+ht_cg+ht_ci) / hs_disp if hs_disp > 0 else 0
-            prod = t_r.get(find_col(data['TALLER'], ["PRODUCTIVIDAD", "TALLER"]), 0)
-            if prod > 2: prod /= 100
-
-            e1, e2, e3, e4 = st.columns(4)
-            with e1: st.markdown(render_kpi_small("Eficiencia CC", ef_cc, 1.0), unsafe_allow_html=True)
-            with e2: st.markdown(render_kpi_small("Eficiencia Gar.", ef_cg, 1.0), unsafe_allow_html=True)
-            with e3: st.markdown(render_kpi_small("Eficiencia Int.", ef_ci, 0.20), unsafe_allow_html=True)
-            with e4: st.markdown(render_kpi_small("Eficiencia Global", ef_gl, 0.85), unsafe_allow_html=True)
-
-            u1, u2, u3 = st.columns(3)
-            with u1: st.markdown(render_kpi_small("Presencia", presencia, 0.95), unsafe_allow_html=True)
-            with u2: st.markdown(render_kpi_small("Ocupación", ocup, 0.95), unsafe_allow_html=True)
-            with u3: st.markdown(render_kpi_small("Productividad", prod, 0.95), unsafe_allow_html=True)
-
-            g1, g2 = st.columns(2)
-            with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
-            with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
-            
             # --- SECCIÓN DE IRPV INTELIGENTE (DESVINCULADA) ---
             st.markdown("---")
             st.markdown("### 🔄 Fidelización (IRPV)")
@@ -556,7 +579,7 @@ try:
             
             if uploaded_ventas is not None and uploaded_taller is not None:
                 # Calculamos el IRPV
-                df_irpv = calcular_irpv_local(uploaded_ventas, uploaded_taller)
+                df_irpv, errores = calcular_irpv_local(uploaded_ventas, uploaded_taller)
                 
                 if df_irpv is not None and not df_irpv.empty:
                     # 1. Detectar qué años existen realmente en el archivo subido
@@ -586,7 +609,9 @@ try:
                         st.info("Nota: Los porcentajes se calculan sobre los vehículos vendidos en cada año (Cohorte).")
 
                 else:
-                    st.error("⚠️ No se encontraron datos de IRPV. Verifica que los archivos correspondan a Entregas y Taller de Quiter.")
+                    st.error("⚠️ No se pudieron procesar los archivos. Diagnóstico:")
+                    for e in errores:
+                        st.write(f"- {e}")
             else:
                 st.info("👆 Carga tus reportes acumulados para ver la fidelización.")
 
