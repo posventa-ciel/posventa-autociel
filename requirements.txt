@@ -1,4 +1,6 @@
 streamlit
 pandas
-openpyxl
 plotly
+openpyxl
+xlrd==1.2.0
+lxml
