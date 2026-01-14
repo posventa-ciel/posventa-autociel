@@ -6,6 +6,12 @@ from datetime import datetime
 import io
 import os
 
+# Intentar importar xlrd para manejar excels viejos
+try:
+    import xlrd
+except ImportError:
+    xlrd = None
+
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
 # --- ESTILO CSS ---
@@ -47,49 +53,58 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- SÚPER CARGADOR DE ARCHIVOS (HTML / EXCEL / CSV) ---
+# --- SÚPER CARGADOR DE ARCHIVOS (ESPECIAL QUITER .XLS) ---
 def super_cargador(uploaded_file):
+    errores = []
+    
+    # 1. INTENTO FUERTE: Excel Binario (xlrd)
+    # Esto es para los archivos que empiezan con ÐÏà¡± (Magic Bytes de Office viejo)
     try:
-        # 1. Intentar lectura como HTML (Típico de Quiter viejo exportado a Excel)
         uploaded_file.seek(0)
-        try:
-            dfs = pd.read_html(uploaded_file, header=0)
-            if dfs: return dfs[0], "HTML Detectado"
-        except: pass
-        
-        # 2. Intentar Excel estándar
-        uploaded_file.seek(0)
-        try:
-            return pd.read_excel(uploaded_file), "Excel Estándar"
-        except: pass
-
-        # 3. CSV con punto y coma
-        uploaded_file.seek(0)
-        try:
-            return pd.read_csv(uploaded_file, sep=';', encoding='latin-1'), "CSV Punto y Coma"
-        except: pass
-
-        # 4. CSV con tabulaciones (Otro formato falso Excel)
-        uploaded_file.seek(0)
-        try:
-            return pd.read_csv(uploaded_file, sep='\t', encoding='latin-1'), "CSV Tabulado"
-        except: pass
-
-        # 5. CSV estándar
-        uploaded_file.seek(0)
-        try:
-            return pd.read_csv(uploaded_file, encoding='latin-1'), "CSV Coma"
-        except: pass
-
-        return None, "Formato Desconocido"
+        # Forzamos el motor 'xlrd' que es el único que lee estos binarios
+        return pd.read_excel(uploaded_file, engine='xlrd'), "Excel Binario (.xls)"
     except Exception as e:
-        return None, str(e)
+        errores.append(f"Fallo xlrd: {str(e)}")
+
+    # 2. INTENTO: Excel Moderno (openpyxl)
+    try:
+        uploaded_file.seek(0)
+        return pd.read_excel(uploaded_file, engine='openpyxl'), "Excel Moderno (.xlsx)"
+    except Exception as e:
+        errores.append(f"Fallo openpyxl: {str(e)}")
+
+    # 3. INTENTO: HTML (A veces Quiter exporta HTML como xls)
+    try:
+        uploaded_file.seek(0)
+        dfs = pd.read_html(uploaded_file, header=0)
+        if dfs: return dfs[0], "HTML Web Table"
+    except Exception as e:
+        errores.append(f"Fallo HTML: {str(e)}")
+
+    # 4. INTENTO: CSV (Separador coma)
+    try:
+        uploaded_file.seek(0)
+        return pd.read_csv(uploaded_file, encoding='latin-1'), "CSV Coma"
+    except Exception as e:
+        errores.append(f"Fallo CSV Coma: {str(e)}")
+
+    # 5. INTENTO: CSV (Separador punto y coma)
+    try:
+        uploaded_file.seek(0)
+        return pd.read_csv(uploaded_file, sep=';', encoding='latin-1'), "CSV Punto y Coma"
+    except Exception as e:
+        errores.append(f"Fallo CSV P.Coma: {str(e)}")
+
+    return None, f"No se pudo leer. Errores: {'; '.join(errores)}"
 
 # --- PROCESAMIENTO IRPV ---
 def procesar_irpv(file_v, file_t):
     # Cargar Ventas
     df_v, tipo_v = super_cargador(file_v)
-    if df_v is None: return None, f"Error Ventas: {tipo_v}"
+    if df_v is None: 
+        if "xlrd" in str(tipo_v) and xlrd is None:
+            return None, "Falta instalar librería 'xlrd'. Ejecuta: pip install xlrd"
+        return None, f"Error Ventas: {tipo_v}"
     
     # Limpieza Columnas Ventas
     df_v.columns = [str(c).upper().strip() for c in df_v.columns]
@@ -99,15 +114,18 @@ def procesar_irpv(file_v, file_t):
     col_fec = next((c for c in df_v.columns if 'FEC' in c or 'ENTR' in c), None)
     
     if not col_vin or not col_fec:
-        return None, f"Ventas: No se encontraron columnas 'Bastidor' ni 'Fecha'. (Cols: {list(df_v.columns)})"
+        return None, f"Ventas: No se encontraron columnas 'Bastidor' ni 'Fecha'. (Cols detectadas: {list(df_v.columns)})"
 
     # Procesar Fechas Ventas
     def clean_date(x):
         if pd.isna(x) or x == '': return None
-        try: return pd.to_datetime(x, dayfirst=True)
-        except:
+        # Si es número serial de Excel
+        if isinstance(x, (int, float)):
             try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(x))
-            except: return None
+            except: pass
+        # Si es texto
+        try: return pd.to_datetime(x, dayfirst=True, errors='coerce')
+        except: return None
 
     df_v['Fecha_Entrega'] = df_v[col_fec].apply(clean_date)
     df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
@@ -127,7 +145,7 @@ def procesar_irpv(file_v, file_t):
     col_or = next((c for c in df_t.columns if 'TIPO' in c or 'O.R.' in c), None)
 
     if not col_vin_t or not col_fec_t:
-        return None, f"Taller: Faltan columnas clave (Bastidor/Cierre). (Cols: {list(df_t.columns)})"
+        return None, f"Taller: Faltan columnas clave (Bastidor/Cierre). (Cols detectadas: {list(df_t.columns)})"
 
     df_t['Fecha_Servicio'] = df_t[col_fec_t].apply(clean_date)
     df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
@@ -247,7 +265,7 @@ try:
 
             with col_irpv:
                 st.subheader("🔄 Fidelización (IRPV)")
-                st.info("Sube tus archivos de Quiter (Excel o CSV) para calcular la retención.")
+                st.caption("Fidelización calculada sobre ventas acumuladas (Cohortes).")
                 
                 up_v = st.file_uploader("Entregas 0km", key="v")
                 up_t = st.file_uploader("Historial Taller", key="t")
@@ -269,16 +287,6 @@ try:
                             st.dataframe(df_res.style.format("{:.1%}"))
                     else:
                         st.error(f"⚠️ Error: {msg}")
-                        # DIAGNÓSTICO VISUAL
-                        st.write("---")
-                        st.warning("🔍 MODO DIAGNÓSTICO ACTIVADO")
-                        st.write("Si ves esto, es porque el formato del archivo es extraño. Aquí están las primeras líneas tal cual las ve Python:")
-                        
-                        up_v.seek(0)
-                        try: 
-                            raw_v = up_v.read(1000).decode('latin-1', errors='ignore')
-                            st.text_area("Inicio del Archivo Ventas (Raw):", raw_v, height=150)
-                        except: st.error("No se pudo leer raw Ventas")
 
         with tabs[2]: # REPUESTOS
             st.subheader("Gestión de Stock y Margen")
