@@ -126,11 +126,11 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ESPECIAL EXCEL ---
+# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ROBUSTA ---
 @st.cache_data(ttl=3600)
 def calcular_irpv_local(archivo_ventas, archivo_taller):
     
-    # Función auxiliar para encontrar donde empieza la tabla en un Excel
+    # Función auxiliar para encontrar cabeceras en Excel
     def leer_excel_inteligente(archivo):
         try:
             archivo.seek(0)
@@ -141,50 +141,39 @@ def calcular_irpv_local(archivo_ventas, archivo_taller):
             idx_header = -1
             for i, row in df_crudo.iterrows():
                 row_str = row.astype(str).str.upper().str.strip()
-                # Palabras clave típicas de tus reportes
                 if any(x in row_str.values for x in ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA']):
                     idx_header = i
                     break
             
             archivo.seek(0)
             if idx_header != -1:
-                # Si encontramos la fila, leemos el Excel saltando las filas vacías
                 return pd.read_excel(archivo, header=idx_header)
             else:
-                # Si no encontramos nada, intentamos lectura directa (por si acaso)
                 return pd.read_excel(archivo)
         except Exception as e:
             return None
 
     try:
-        # 1. CARGAR VENTAS (Con buscador de cabecera)
+        # 1. CARGAR VENTAS
         df_v = leer_excel_inteligente(archivo_ventas)
-        
-        # Si falló Excel, intentamos CSV como última opción
         if df_v is None: 
             archivo_ventas.seek(0)
             try: df_v = pd.read_csv(archivo_ventas)
             except: pass
             
-        if df_v is None: return None # No hubo caso
+        if df_v is None: return None
         
-        # Normalizar columnas
         df_v.columns = [str(c).strip() for c in df_v.columns]
-        
-        # Detectar columnas clave (flexible)
         col_vin_v = next((c for c in df_v.columns if "BASTIDOR" in c.upper() or "VIN" in c.upper()), None)
         col_fecha_v = next((c for c in df_v.columns if "FEC" in c.upper() or "ENTR" in c.upper()), None)
         
-        if not col_vin_v or not col_fecha_v:
-            return None # Faltan columnas clave
+        if not col_vin_v or not col_fecha_v: return None
 
         def excel_date(val):
             if pd.isna(val) or val == '': return None
-            # Caso 1: Fecha Excel Serial (float/int)
             if isinstance(val, (int, float)):
                 try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(val))
                 except: return None
-            # Caso 2: Texto (dd/mm/yyyy)
             try: return pd.to_datetime(val, dayfirst=True, errors='coerce')
             except: return None
 
@@ -193,36 +182,31 @@ def calcular_irpv_local(archivo_ventas, archivo_taller):
         df_v['VIN'] = df_v[col_vin_v].astype(str).str.strip().str.upper()
         df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
-        # 2. CARGAR TALLER (Con buscador de cabecera)
+        # 2. CARGAR TALLER
         df_t = leer_excel_inteligente(archivo_taller)
-        
         if df_t is None:
             archivo_taller.seek(0)
             try: df_t = pd.read_csv(archivo_taller)
             except: pass
-            
         if df_t is None: return None
 
         df_t.columns = [str(c).strip() for c in df_t.columns]
-        
         col_vin_t = next((c for c in df_t.columns if "BASTIDOR" in c.upper() or "VIN" in c.upper()), None)
         col_fecha_t = next((c for c in df_t.columns if "CIERRE" in c.upper() or "FEC" in c.upper()), None)
         col_km = next((c for c in df_t.columns if "KM" in c.upper()), None)
         col_tipo = next((c for c in df_t.columns if "TIPO" in c.upper() or "O.R." in c.upper()), None)
         
-        if not col_vin_t or not col_fecha_t:
-            return None
+        if not col_vin_t or not col_fecha_t: return None
 
         df_t['Fecha_Servicio'] = df_t[col_fecha_t].apply(excel_date)
         df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
         df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0) if col_km else 0
         
-        # Filtro: Solo mecánica 
         if col_tipo:
             mask_mec = ~df_t[col_tipo].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
             df_t = df_t[mask_mec]
 
-        # 3. CLASIFICAR SERVICIOS
+        # 3. CLASIFICAR
         def clasificar_km(k):
             if 5000 <= k <= 15000: return "1er"
             elif 15001 <= k <= 25000: return "2do"
@@ -246,7 +230,9 @@ def calcular_irpv_local(archivo_ventas, archivo_taller):
     except Exception as e:
         return None
 
-# --- INICIO DEL BLOQUE TRY PRINCIPAL ---
+# --- CONSTANTE ID_SHEET (AQUÍ ESTABA EL ERROR) ---
+ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
+
 try:
     data = cargar_datos(ID_SHEET)
     
@@ -554,7 +540,7 @@ try:
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
             
-           # --- SECCIÓN DE IRPV INTELIGENTE (DESVINCULADA) ---
+            # --- SECCIÓN DE IRPV INTELIGENTE (DESVINCULADA) ---
             st.markdown("---")
             st.markdown("### 🔄 Fidelización (IRPV)")
             st.caption("Analiza la retención histórica basada en los archivos subidos (independiente del año seleccionado en el menú lateral).")
