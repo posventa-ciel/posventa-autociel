@@ -126,82 +126,89 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) MEJORADA ---
+# --- FUNCIÓN PARA CÁLCULO DE IRPV (FIDELIZACIÓN) ESPECIAL EXCEL ---
 @st.cache_data(ttl=3600)
 def calcular_irpv_local(archivo_ventas, archivo_taller):
     
-    # Sub-función para intentar leer de varias formas
-    def leer_robusto(archivo):
-        archivo.seek(0) # Volver al inicio del archivo
-        errores = []
-        
-        # Intento 1: CSV con comas (Estándar)
+    # Función auxiliar para encontrar donde empieza la tabla en un Excel
+    def leer_excel_inteligente(archivo):
         try:
-            df = pd.read_csv(archivo)
-            if len(df.columns) > 1: return df
-        except Exception as e: errores.append(str(e))
-        
-        # Intento 2: CSV con punto y coma (Excel Español)
-        archivo.seek(0)
-        try:
-            df = pd.read_csv(archivo, sep=';')
-            if len(df.columns) > 1: return df
-        except Exception as e: errores.append(str(e))
-        
-        # Intento 3: Excel nativo (.xlsx / .xls)
-        archivo.seek(0)
-        try:
-            df = pd.read_excel(archivo)
-            if len(df.columns) > 1: return df
-        except Exception as e: errores.append(str(e))
-
-        # Intento 4: CSV con codificación Latin-1 (Por si tiene tildes raras)
-        archivo.seek(0)
-        try:
-            df = pd.read_csv(archivo, sep=';', encoding='latin-1')
-            if len(df.columns) > 1: return df
-        except Exception as e: errores.append(str(e))
-        
-        return None
+            archivo.seek(0)
+            # Leemos las primeras filas sin cabecera
+            df_crudo = pd.read_excel(archivo, header=None, nrows=20)
+            
+            # Buscamos en qué fila están las palabras clave
+            idx_header = -1
+            for i, row in df_crudo.iterrows():
+                row_str = row.astype(str).str.upper().str.strip()
+                # Palabras clave típicas de tus reportes
+                if any(x in row_str.values for x in ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA']):
+                    idx_header = i
+                    break
+            
+            archivo.seek(0)
+            if idx_header != -1:
+                # Si encontramos la fila, leemos el Excel saltando las filas vacías
+                return pd.read_excel(archivo, header=idx_header)
+            else:
+                # Si no encontramos nada, intentamos lectura directa (por si acaso)
+                return pd.read_excel(archivo)
+        except Exception as e:
+            return None
 
     try:
-        # 1. CARGAR VENTAS
-        df_v = leer_robusto(archivo_ventas)
-        if df_v is None: return None
+        # 1. CARGAR VENTAS (Con buscador de cabecera)
+        df_v = leer_excel_inteligente(archivo_ventas)
         
-        # Normalizar nombres de columnas (quitar espacios extra)
-        df_v.columns = [c.strip() for c in df_v.columns]
+        # Si falló Excel, intentamos CSV como última opción
+        if df_v is None: 
+            archivo_ventas.seek(0)
+            try: df_v = pd.read_csv(archivo_ventas)
+            except: pass
+            
+        if df_v is None: return None # No hubo caso
         
-        # Detectar columnas clave en Ventas
-        col_vin_v = next((c for c in df_v.columns if "Bastidor" in c or "VIN" in c), None)
-        col_fecha_v = next((c for c in df_v.columns if "Fec" in c or "Fecha" in c), None)
+        # Normalizar columnas
+        df_v.columns = [str(c).strip() for c in df_v.columns]
+        
+        # Detectar columnas clave (flexible)
+        col_vin_v = next((c for c in df_v.columns if "BASTIDOR" in c.upper() or "VIN" in c.upper()), None)
+        col_fecha_v = next((c for c in df_v.columns if "FEC" in c.upper() or "ENTR" in c.upper()), None)
         
         if not col_vin_v or not col_fecha_v:
-            return None # No encontramos las columnas clave
+            return None # Faltan columnas clave
 
-        def excel_date(serial):
-            if pd.isna(serial) or serial == '': return None
-            try: 
-                # Si es número (formato Excel serial)
-                return datetime(1899, 12, 30) + pd.Timedelta(days=float(serial))
-            except: 
-                # Si es texto (formato fecha normal dd/mm/yyyy)
-                return pd.to_datetime(serial, dayfirst=True, errors='coerce')
+        def excel_date(val):
+            if pd.isna(val) or val == '': return None
+            # Caso 1: Fecha Excel Serial (float/int)
+            if isinstance(val, (int, float)):
+                try: return datetime(1899, 12, 30) + pd.Timedelta(days=float(val))
+                except: return None
+            # Caso 2: Texto (dd/mm/yyyy)
+            try: return pd.to_datetime(val, dayfirst=True, errors='coerce')
+            except: return None
 
         df_v['Fecha_Entrega'] = df_v[col_fecha_v].apply(excel_date)
         df_v['Año_Venta'] = df_v['Fecha_Entrega'].dt.year
         df_v['VIN'] = df_v[col_vin_v].astype(str).str.strip().str.upper()
         df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
-        # 2. CARGAR TALLER
-        df_t = leer_robusto(archivo_taller)
+        # 2. CARGAR TALLER (Con buscador de cabecera)
+        df_t = leer_excel_inteligente(archivo_taller)
+        
+        if df_t is None:
+            archivo_taller.seek(0)
+            try: df_t = pd.read_csv(archivo_taller)
+            except: pass
+            
         if df_t is None: return None
+
+        df_t.columns = [str(c).strip() for c in df_t.columns]
         
-        df_t.columns = [c.strip() for c in df_t.columns]
-        
-        col_vin_t = next((c for c in df_t.columns if "Bastidor" in c or "VIN" in c), None)
-        col_fecha_t = next((c for c in df_t.columns if "F.cierre" in c or "Fecha" in c), None)
-        col_km = next((c for c in df_t.columns if "Km" in c or "KM" in c), None)
+        col_vin_t = next((c for c in df_t.columns if "BASTIDOR" in c.upper() or "VIN" in c.upper()), None)
+        col_fecha_t = next((c for c in df_t.columns if "CIERRE" in c.upper() or "FEC" in c.upper()), None)
+        col_km = next((c for c in df_t.columns if "KM" in c.upper()), None)
+        col_tipo = next((c for c in df_t.columns if "TIPO" in c.upper() or "O.R." in c.upper()), None)
         
         if not col_vin_t or not col_fecha_t:
             return None
@@ -210,8 +217,7 @@ def calcular_irpv_local(archivo_ventas, archivo_taller):
         df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
         df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0) if col_km else 0
         
-        # Filtro: Solo mecánica (Intentamos buscar columna Tipo OR)
-        col_tipo = next((c for c in df_t.columns if "Tipo" in c), None)
+        # Filtro: Solo mecánica 
         if col_tipo:
             mask_mec = ~df_t[col_tipo].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
             df_t = df_t[mask_mec]
@@ -239,8 +245,6 @@ def calcular_irpv_local(archivo_ventas, archivo_taller):
 
     except Exception as e:
         return None
-
-ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
 # --- INICIO DEL BLOQUE TRY PRINCIPAL ---
 try:
