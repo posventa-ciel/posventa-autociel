@@ -508,40 +508,55 @@ try:
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
             
-            # --- SECCIÓN DE IRPV CON CARGA DE ARCHIVOS ---
+           # --- SECCIÓN DE IRPV INTELIGENTE (DESVINCULADA) ---
             st.markdown("---")
             st.markdown("### 🔄 Fidelización (IRPV)")
-            st.caption(f"Cálculo sobre vehículos entregados en el año seleccionado ({año_sel})")
+            st.caption("Analiza la retención histórica basada en los archivos subidos (independiente del año seleccionado en el menú lateral).")
 
-            # Columnas para los botones de carga
+            # Columnas para carga
             col_load_1, col_load_2 = st.columns(2)
             
             with col_load_1:
-                uploaded_ventas = st.file_uploader("📂 Cargar: Historial Entregas 0km", type=["csv", "xls", "xlsx"])
+                uploaded_ventas = st.file_uploader("📂 Cargar: Historial Entregas 0km", type=["csv", "xls", "xlsx"], key="up_v")
             
             with col_load_2:
-                uploaded_taller = st.file_uploader("📂 Cargar: Historial Taller", type=["csv", "xls", "xlsx"])
+                uploaded_taller = st.file_uploader("📂 Cargar: Historial Taller", type=["csv", "xls", "xlsx"], key="up_t")
             
             if uploaded_ventas is not None and uploaded_taller is not None:
-                # Calculamos si hay archivos
+                # Calculamos el IRPV
                 df_irpv = calcular_irpv_local(uploaded_ventas, uploaded_taller)
                 
-                if df_irpv is not None and año_sel in df_irpv.index:
-                    tasas = df_irpv.loc[año_sel]
+                if df_irpv is not None and not df_irpv.empty:
+                    # 1. Detectar qué años existen realmente en el archivo subido
+                    años_encontrados = sorted(df_irpv.index.tolist(), reverse=True)
+                    
+                    # 2. Crear un selector exclusivo para esta sección
+                    st.write("---")
+                    col_sel_irpv, col_dummy = st.columns([1, 3])
+                    with col_sel_irpv:
+                        # Por defecto seleccionamos el más reciente disponible
+                        año_irpv_sel = st.selectbox("📅 Seleccionar Año Cohorte (Venta)", años_encontrados)
+                    
+                    # 3. Mostrar los datos del año elegido en este selector específico
+                    tasas = df_irpv.loc[año_irpv_sel]
                     irpv_1 = tasas['1er']
                     irpv_2 = tasas['2do']
                     irpv_3 = tasas['3er']
                     
-                    st.success("✅ Datos procesados correctamente")
-                    
                     col_i1, col_i2, col_i3 = st.columns(3)
-                    with col_i1: st.markdown(render_kpi_small("1er Servicio (10k)", irpv_1, 0.80, None, None, "{:.1%}", "Obj. Ideal"), unsafe_allow_html=True)
-                    with col_i2: st.markdown(render_kpi_small("2do Servicio (20k)", irpv_2, 0.60, None, None, "{:.1%}", "Obj. Ideal"), unsafe_allow_html=True)
-                    with col_i3: st.markdown(render_kpi_small("3er Servicio (30k)", irpv_3, 0.40, None, None, "{:.1%}", "Obj. Ideal"), unsafe_allow_html=True)
+                    with col_i1: st.markdown(render_kpi_small("1er Servicio (10k)", irpv_1, 0.80, None, None, "{:.1%}", "Obj"), unsafe_allow_html=True)
+                    with col_i2: st.markdown(render_kpi_small("2do Servicio (20k)", irpv_2, 0.60, None, None, "{:.1%}", "Obj"), unsafe_allow_html=True)
+                    with col_i3: st.markdown(render_kpi_small("3er Servicio (30k)", irpv_3, 0.40, None, None, "{:.1%}", "Obj"), unsafe_allow_html=True)
+                    
+                    # Tabla de datos para verificar
+                    with st.expander(f"Ver detalle completo de todos los años ({min(años_encontrados)} - {max(años_encontrados)})"):
+                        st.dataframe(df_irpv.style.format("{:.1%}"), use_container_width=True)
+                        st.info("Nota: Los porcentajes se calculan sobre los vehículos vendidos en cada año (Cohorte).")
+
                 else:
-                    st.info(f"⚠️ Se cargaron los archivos, pero no hay suficientes datos de entregas para el año {año_sel} o hubo un error en la lectura.")
+                    st.error("⚠️ No se encontraron datos de IRPV. Verifica que los archivos correspondan a Entregas y Taller de Quiter.")
             else:
-                st.info("👆 Por favor, carga los dos archivos (Entregas y Taller) para visualizar el IRPV.")
+                st.info("👆 Carga tus reportes acumulados para ver la fidelización.")
 
 
         elif selected_tab == "📦 Repuestos":
