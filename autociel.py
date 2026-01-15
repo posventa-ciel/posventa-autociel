@@ -6,10 +6,9 @@ from datetime import datetime, timedelta
 import numpy as np
 import os
 
-# --- CONFIGURACIÓN INICIAL ---
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS (Tu estilo original completo) ---
+# --- ESTILO CSS (Tu estilo original) ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -92,7 +91,7 @@ st.markdown("""<style>
     .cyp-header { font-weight: bold; color: #00235d; font-size: 0.85rem; margin-bottom: 2px; display: block; }
 </style>""", unsafe_allow_html=True)
 
-# --- FUNCIONES AUXILIARES ORIGINALES ---
+# --- FUNCIÓN DE BÚSQUEDA ---
 def find_col(df, include_keywords, exclude_keywords=[]):
     if df is None: return ""
     for col in df.columns:
@@ -102,6 +101,7 @@ def find_col(df, include_keywords, exclude_keywords=[]):
                 return col
     return ""
 
+# --- CARGA DE DATOS ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']
@@ -127,7 +127,7 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- NUEVAS FUNCIONES PARA IRPV (Fidelización) ---
+# --- NUEVAS FUNCIONES IRPV (Insertadas Aquí) ---
 def leer_csv_inteligente(uploaded_file):
     try:
         uploaded_file.seek(0)
@@ -235,14 +235,13 @@ def procesar_irpv(file_v, file_t):
     res.columns = ['1er', '2do', '3er']
     return res, "OK"
 
-# --- MAIN APP ---
+# --- MAIN APP (Tu estructura original) ---
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
 try:
     data = cargar_datos(ID_SHEET)
     
     if data:
-        # Preprocesamiento fechas
         for h in data:
             col_f = find_col(data[h], ["FECHA"]) or data[h].columns[0]
             data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f], dayfirst=True, errors='coerce')
@@ -264,7 +263,6 @@ try:
             meses_disp = sorted(df_year['Mes'].unique(), reverse=True)
             mes_sel = st.selectbox("📅 Mes", meses_disp, format_func=lambda x: meses_nom.get(x, "N/A"))
 
-        # Helpers
         def get_row(df):
             res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
             return res.iloc[-1] if not res.empty else pd.Series(dtype='object')
@@ -288,7 +286,7 @@ try:
         prog_t = d_t / d_h if d_h > 0 else 0
         prog_t = min(prog_t, 1.0)
 
-        # Históricos helper
+        # DATA HISTORICO
         def get_hist_data(sheet_name):
             df = data[sheet_name]
             df = df[df['Año'] == año_sel].sort_values('Mes')
@@ -303,7 +301,7 @@ try:
         h_cyp_j = get_hist_data('CyP JUJUY')
         h_cyp_s = get_hist_data('CyP SALTA')
 
-        # Portada
+        # --- PORTADA ---
         st.markdown(f'''
         <div class="portada-container">
             <div class="portada-left">
@@ -323,7 +321,7 @@ try:
         selected_tab = st.radio("", menu_opts, horizontal=True, label_visibility="collapsed")
         st.markdown("---")
 
-        # RENDERIZADORES
+        # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -341,7 +339,10 @@ try:
                 daily_html = f'<div style="font-size:0.75rem; color:#00235d; background-color:#eef2f7; padding: 1px 6px; border-radius:4px; display:inline-block; margin-bottom:4px;">Prom: <b>{fmt_daily.format(daily_val)}</b> /día</div>'
 
             html = '<div class="kpi-card">'
-            html += f'<div><p>{title}</p><h2>{fmt.format(real)}</h2>{daily_html}</div>'
+            html += f'<div><p>{title}</p>'
+            html += f'<h2>{fmt.format(real)}</h2>'
+            html += daily_html 
+            html += '</div>'
             html += f'<div><div class="kpi-subtext">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
             html += '<hr style="margin:5px 0; border:0; border-top:1px solid #eee;">'
             html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:2px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
@@ -353,6 +354,7 @@ try:
         def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial"):
             subtext_html = "<div style='height:15px;'></div>"
             footer_html = ""
+            
             if target is not None:
                 delta = val - target
                 color = "#28a745" if delta >= 0 else "#dc3545"
@@ -362,16 +364,28 @@ try:
             if target_mensual is not None and projection is not None:
                 proy_delta = projection - target_mensual
                 color_proy = "#28a745" if proy_delta >= 0 else "#dc3545"
-                footer_html = f'''<div class="metric-footer"><div>Obj. Mes: <b>{format_str.format(target_mensual)}</b></div><div style="color:{color_proy}">Proy: <b>{format_str.format(projection)}</b></div></div>'''
+                footer_html = f'''
+                <div class="metric-footer">
+                    <div>Obj. Mes: <b>{format_str.format(target_mensual)}</b></div>
+                    <div style="color:{color_proy}">Proy: <b>{format_str.format(projection)}</b></div>
+                </div>
+                '''
             
-            html = f'<div class="metric-card"><div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>{subtext_html}</div>{footer_html}</div>'
+            html = '<div class="metric-card">'
+            html += f'<div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p>'
+            html += f'<h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>'
+            html += subtext_html
+            html += '</div>'
+            html += footer_html
+            html += '</div>'
             return html
 
-        # LOGICA COLUMNAS
+        # --- LÓGICA DE COLUMNAS ROBUSTA (SERVICIOS) ---
         c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
         c_gar = find_col(data['SERVICIOS'], ["MO", "GAR"], exclude_keywords=["OBJ"])
         c_int = find_col(data['SERVICIOS'], ["MO", "INT"], exclude_keywords=["OBJ"])
         if not c_int: c_int = find_col(data['SERVICIOS'], ["INTERNA"], exclude_keywords=["OBJ", "MO"])
+        
         c_ter = find_col(data['SERVICIOS'], ["MO", "TERCERO"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TERCEROS"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
@@ -381,9 +395,10 @@ try:
         val_gar = s_r.get(c_gar, 0) if c_gar else 0
         val_int = s_r.get(c_int, 0) if c_int else 0
         val_ter = s_r.get(c_ter, 0) if c_ter else 0
+        
         real_mo_total = val_cli + val_gar + val_int + val_ter
         
-        # --- PESTAÑAS ---
+        # --- TAB 1: OBJETIVOS ---
         if selected_tab == "🏠 Objetivos":
             cols = st.columns(4)
             real_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]), 0) for c in canales_repuestos])
@@ -409,7 +424,10 @@ try:
             with col_main: st.markdown(render_kpi_card("Facturación M.O.", real_mo_total, obj_mo_total, show_daily=True), unsafe_allow_html=True)
             
             with col_breakdown:
-                df_mo = pd.DataFrame({"Cargo": ["Cliente", "Garantía", "Interno", "Terceros"], "Facturación": [val_cli, val_gar, val_int, val_ter]})
+                df_mo = pd.DataFrame({
+                    "Cargo": ["Cliente", "Garantía", "Interno", "Terceros"], 
+                    "Facturación": [val_cli, val_gar, val_int, val_ter]
+                })
                 fig_mo = px.bar(df_mo, x="Facturación", y="Cargo", orientation='h', text_auto='.2s', title="", color="Cargo", color_discrete_sequence=["#00235d", "#28a745", "#ffc107", "#17a2b8"])
                 fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) 
                 st.plotly_chart(fig_mo, use_container_width=True)
@@ -434,35 +452,45 @@ try:
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, None, None, "{:.2f} hs"), unsafe_allow_html=True)
             with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, None, None, "${:,.0f}"), unsafe_allow_html=True)
 
+            # --- SECCIÓN: CALIDAD Y REQUERIMIENTOS ---
             st.markdown("---")
-            st.markdown("### 🏆 Calidad")
+            st.markdown("### 🏆 Calidad y Requerimientos de Marca")
             
             def get_calidad_data(keyword_main, brand, is_percent=False, prorate_target=False):
                 c_real = find_col(data['SERVICIOS'], [keyword_main, brand], exclude_keywords=["OBJ"])
                 c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
                 if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 val_real = s_r.get(c_real, 0)
+                
                 df_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == año_sel) & (data['SERVICIOS']['Mes'] == mes_sel)]
                 if not df_mes.empty and c_obj: val_obj_mensual = df_mes[c_obj].max() 
                 else: val_obj_mensual = 0
+                
                 val_proyeccion = val_real / prog_t if prog_t > 0 else 0
-                val_obj_parcial = val_obj_mensual * prog_t if prorate_target else val_obj_mensual
-                if not prorate_target: val_proyeccion = val_real
+
+                if prorate_target: val_obj_parcial = val_obj_mensual * prog_t
+                else:
+                    val_obj_parcial = val_obj_mensual
+                    val_proyeccion = val_real 
+                
                 if is_percent:
                     if val_real > 1.0: val_real /= 100
                     if val_obj_parcial > 1.0: val_obj_parcial /= 100
                     if val_obj_mensual > 1.0: val_obj_mensual /= 100
                     if val_proyeccion > 1.0: val_proyeccion /= 100
                     fmt = "{:.1%}"
-                else: fmt = "{:,.0f}" if not prorate_target else "{:,.1f}"
+                else:
+                    fmt = "{:,.0f}" if not prorate_target else "{:,.1f}" 
+                    
                 return val_real, val_obj_parcial, val_obj_mensual, val_proyeccion, fmt
 
-            nps_p_r, nps_p_p, nps_p_m, nps_p_proy, fmt_nps = get_calidad_data("NPS", "PEUGEOT")
-            nps_c_r, nps_c_p, nps_c_m, nps_c_proy, _ = get_calidad_data("NPS", "CITROEN")
-            vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", prorate_target=True)
-            vc_c_r, vc_c_p, vc_c_m, vc_c_proy, _ = get_calidad_data("VIDEO", "CITROEN", prorate_target=True)
-            ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", prorate_target=True)
-            ff_c_r, ff_c_p, ff_c_m, ff_c_proy, _ = get_calidad_data("FORFAIT", "CITROEN", prorate_target=True)
+            # DATA
+            nps_p_r, nps_p_p, nps_p_m, nps_p_proy, fmt_nps = get_calidad_data("NPS", "PEUGEOT", is_percent=False, prorate_target=False)
+            nps_c_r, nps_c_p, nps_c_m, nps_c_proy, _ = get_calidad_data("NPS", "CITROEN", is_percent=False, prorate_target=False)
+            vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc = get_calidad_data("VIDEO", "PEUGEOT", is_percent=False, prorate_target=True)
+            vc_c_r, vc_c_p, vc_c_m, vc_c_proy, _ = get_calidad_data("VIDEO", "CITROEN", is_percent=False, prorate_target=True)
+            ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff = get_calidad_data("FORFAIT", "PEUGEOT", is_percent=False, prorate_target=True)
+            ff_c_r, ff_c_p, ff_c_m, ff_c_proy, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
 
             c_peugeot, c_citroen = st.columns(2)
             with c_peugeot:
@@ -471,58 +499,81 @@ try:
                 p_row = st.columns(2)
                 with p_row[0]: st.markdown(render_kpi_small("Videocheck", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
                 with p_row[1]: st.markdown(render_kpi_small("Forfait", ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff), unsafe_allow_html=True)
+
             with c_citroen:
                 st.markdown("#### 🔴 Citroën")
                 st.markdown(render_kpi_small("NPS", nps_c_r, nps_c_p, None, None, fmt_nps, label_target="Obj"), unsafe_allow_html=True)
                 c_row = st.columns(2)
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
-
+            
             st.markdown("---")
-            st.markdown("### ⚙️ Eficiencia Taller")
+            st.markdown("### ⚙️ Taller")
             # --- TALLER LOGIC ---
             col_tecs = find_col(data['TALLER'], ["TECNICOS"], exclude_keywords=["PROD"])
             if not col_tecs: col_tecs = find_col(data['TALLER'], ["DOTACION"])
             cant_tecs = t_r.get(col_tecs, 6) 
             if cant_tecs == 0: cant_tecs = 6
+
             ht_cc = t_r.get(find_col(data['TALLER'], ["TRAB", "CC"]), 0)
             ht_cg = t_r.get(find_col(data['TALLER'], ["TRAB", "CG"]), 0)
             ht_ci = t_r.get(find_col(data['TALLER'], ["TRAB", "CI"]), 0)
             ef_cc = hf_cc / ht_cc if ht_cc > 0 else 0
+            ef_cg = hf_cg / ht_cg if ht_cg > 0 else 0
+            ef_ci = hf_ci / ht_ci if ht_ci > 0 else 0
             ef_gl = (hf_cc+hf_cg+hf_ci) / (ht_cc+ht_cg+ht_ci) if (ht_cc+ht_cg+ht_ci) > 0 else 0
+            
+            hs_disp = t_r.get(find_col(data['TALLER'], ["DISPONIBLES", "REAL"]), 0)
+            hs_teoricas = cant_tecs * 8 * d_t 
+            presencia = hs_disp / hs_teoricas if hs_teoricas > 0 else 0
+            ocup = (ht_cc+ht_cg+ht_ci) / hs_disp if hs_disp > 0 else 0
             prod = t_r.get(find_col(data['TALLER'], ["PRODUCTIVIDAD", "TALLER"]), 0)
             if prod > 2: prod /= 100
-            
-            e1, e2, e3 = st.columns(3)
-            with e1: st.markdown(render_kpi_small("Eficiencia CC", ef_cc, 1.0), unsafe_allow_html=True)
-            with e2: st.markdown(render_kpi_small("Eficiencia Global", ef_gl, 0.85), unsafe_allow_html=True)
-            with e3: st.markdown(render_kpi_small("Productividad", prod, 0.95), unsafe_allow_html=True)
 
-            # --- SECCIÓN NUEVA: IRPV (Insertada aquí sin romper nada) ---
+            e1, e2, e3, e4 = st.columns(4)
+            with e1: st.markdown(render_kpi_small("Eficiencia CC", ef_cc, 1.0), unsafe_allow_html=True)
+            with e2: st.markdown(render_kpi_small("Eficiencia Gar.", ef_cg, 1.0), unsafe_allow_html=True)
+            with e3: st.markdown(render_kpi_small("Eficiencia Int.", ef_ci, 0.20), unsafe_allow_html=True)
+            with e4: st.markdown(render_kpi_small("Eficiencia Global", ef_gl, 0.85), unsafe_allow_html=True)
+
+            u1, u2, u3 = st.columns(3)
+            with u1: st.markdown(render_kpi_small("Presencia", presencia, 0.95), unsafe_allow_html=True)
+            with u2: st.markdown(render_kpi_small("Ocupación", ocup, 0.95), unsafe_allow_html=True)
+            with u3: st.markdown(render_kpi_small("Productividad", prod, 0.95), unsafe_allow_html=True)
+
+            g1, g2 = st.columns(2)
+            with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
+            with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
+
+            # --- NUEVA SECCION: IRPV ---
             st.markdown("---")
             st.subheader("🔄 Fidelización (IRPV)")
-            st.info("Sube archivos CSV (UTF-8) para calcular.")
+            st.info("Sube archivos CSV (UTF-8) para analizar la retención.")
+            
             up_v = st.file_uploader("Entregas 0km", type=["csv"], key="v")
             up_t = st.file_uploader("Historial Taller", type=["csv"], key="t")
             
             if up_v and up_t:
-                df_res, msg = procesar_irpv(up_v, up_t)
-                if df_res is not None:
-                    anios_irpv = sorted(df_res.index, reverse=True)
+                df_irpv, msg = procesar_irpv(up_v, up_t)
+                if df_irpv is not None:
+                    anios_irpv = sorted(df_irpv.index, reverse=True)
                     sel_anio = st.selectbox("Año Cohorte:", anios_irpv)
-                    vals = df_res.loc[sel_anio]
+                    vals = df_irpv.loc[sel_anio]
                     i1, i2, i3 = st.columns(3)
                     with i1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
                     with i2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
                     with i3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
-                    with st.expander("Ver Datos"): st.dataframe(df_res.style.format("{:.1%}", na_rep="-"))
+                    with st.expander("Ver Datos"): st.dataframe(df_irpv.style.format("{:.1%}", na_rep="-"))
                 else: st.error(msg)
+
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
+            
+            # --- 1. INPUT DE PRIMAS / BONOS ---
             col_primas, col_vacia = st.columns([1, 3])
             with col_primas:
-                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f")
+                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
 
             detalles = []
             for c in canales_repuestos:
@@ -536,51 +587,334 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
+            # TOTALES
+            vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
+            
+            # --- AJUSTE CON PRIMAS ---
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             
-            st.dataframe(df_r.style.format({"Venta Bruta": "${:,.0f}", "Venta Neta": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+            obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
+            costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
+            val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
-            k1, k2 = st.columns(2)
-            k1.metric("Utilidad Total (+Primas)", f"${util_total_final:,.0f}")
-            k2.metric("Margen Global Real", f"{mg_total_final:.1%}", "Obj: 21%")
+            c_main, c_kpis = st.columns([1, 3])
+            with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
+            with c_kpis:
+                r2, r3, r4 = st.columns(3)
+                meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
+                with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
+                with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
+                with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
+
+            if not df_r.empty:
+                t_vb = df_r['Venta Bruta'].sum()
+                t_desc = df_r['Desc.'].sum()
+                t_vn = df_r['Venta Neta'].sum()
+                t_cost = df_r['Costo'].sum()
+                t_ut = df_r['Utilidad $'].sum()
+                t_mg = t_ut / t_vn if t_vn != 0 else 0
+                df_show = pd.concat([df_r, pd.DataFrame([{"Canal": "TOTAL OPERATIVO", "Venta Bruta": t_vb, "Desc.": t_desc, "Venta Neta": t_vn, "Costo": t_cost, "Utilidad $": t_ut, "Margen %": t_mg}])], ignore_index=True)
+                st.dataframe(df_show.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+            
+            c1, c2 = st.columns(2)
+            with c1: 
+                if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
+            with c2:
+                p_vivo = float(r_r.get(find_col(data['REPUESTOS'], ["VIVO"]), 0))
+                p_obs = float(r_r.get(find_col(data['REPUESTOS'], ["OBSOLETO"]), 0))
+                p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
+                f = 1 if p_vivo <= 1 else 100
+                df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
+                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+            
+            st.markdown("---")
+            
+            # --- 2. CALCULADORA DE MIX IDEAL ---
+            st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
+            st.info("Define tu participación ideal por canal y el margen al que aspiras vender. El sistema te mostrará qué tan rentable es esa estrategia globalmente.")
+            
+            col_mix_input, col_mix_res = st.columns([3, 2])
+            
+            # Valores por defecto
+            default_mix = {}
+            default_margin = {}
+            if vta_total_neta > 0:
+                for idx, row in df_r.iterrows():
+                    default_mix[row['Canal']] = (row['Venta Neta'] / vta_total_neta) * 100
+                    default_margin[row['Canal']] = row['Margen %'] * 100
+            
+            mix_ideal = {}
+            margin_ideal = {}
+            sum_mix = 0
+            
+            with col_mix_input:
+                for c in canales_repuestos:
+                    val_def_mix = float(default_mix.get(c, 0.0))
+                    val_def_marg = float(default_margin.get(c, 25.0))
+                    
+                    c1_s, c2_s = st.columns([2, 1])
+                    with c1_s:
+                        val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
+                    with c2_s:
+                        val_marg = st.number_input(f"% Margen {c}", 0.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
+                    
+                    mix_ideal[c] = val_mix / 100
+                    margin_ideal[c] = val_marg / 100
+                    sum_mix += val_mix
+                
+            with col_mix_res:
+                st.markdown(f"#### Objetivo Mensual: ${obj_rep_total:,.0f}")
+                
+                # Indicador de Suma
+                delta_sum = sum_mix - 100.0
+                color_sum = "off"
+                if abs(delta_sum) < 0.1: color_sum = "normal" # Verde por defecto en metric
+                else: color_sum = "inverse" # Rojo por defecto en error
+                
+                st.metric("Suma del Mix Total", f"{sum_mix:.1f}%", f"{delta_sum:.1f}%", delta_color=color_sum)
+                if abs(delta_sum) > 0.1:
+                    st.error(f"⚠️ El mix debe sumar 100% (Actual: {sum_mix:.1f}%)")
+                
+                # Calculo de Estrategia
+                ideal_data = []
+                total_profit_ideal = 0
+                for c, share in mix_ideal.items():
+                    target_vta = obj_rep_total * share
+                    target_marg = margin_ideal.get(c, 0)
+                    profit = target_vta * target_marg
+                    total_profit_ideal += profit
+                    ideal_data.append({"Canal": c, "Mix": share, "Venta Obj": target_vta, "Mg Ideal": target_marg, "Utilidad": profit})
+                
+                global_margin_ideal = total_profit_ideal / obj_rep_total if obj_rep_total > 0 else 0
+                
+                st.markdown("#### Resultado Estratégico:")
+                st.info(f"Con esta estrategia, tu **Margen Global Promedio** sería del **{global_margin_ideal:.1%}**")
+                
+                df_ideal = pd.DataFrame(ideal_data)
+                st.dataframe(df_ideal.style.format({"Mix": "{:.1%}", "Venta Obj": "${:,.0f}", "Mg Ideal": "{:.1%}", "Utilidad": "${:,.0f}"}), hide_index=True)
+
+
+            # --- 3. SIMULADOR DE MARGEN (CON PRIMAS) ---
+            st.markdown("---")
+            st.markdown("### 🎛️ Simulador What-If (Efecto Mix + Primas)")
+
+            sim_data = []
+            if not df_r.empty:
+                for index, row in df_r.iterrows():
+                    sim_data.append({"Canal": row['Canal'], "VentaBase": row['Venta Neta'], "MargenBase": row['Margen %']})
+            else:
+                for c in canales_repuestos: sim_data.append({"Canal": c, "VentaBase": 1000000, "MargenBase": 0.25})
+
+            col_sim_inputs, col_sim_kpis = st.columns([1, 1])
+            proyecciones = []
+            
+            with col_sim_inputs:
+                st.markdown("#### 🔧 Ajuste de Proyecciones")
+                with st.expander("Desplegar Controles por Canal", expanded=True):
+                    for item in sim_data:
+                        c_name = item['Canal']
+                        base_v = float(item['VentaBase'])
+                        base_m = float(item['MargenBase'])
+                        cols_ctrl = st.columns([2, 2])
+                        with cols_ctrl[0]:
+                            new_v = st.number_input(f"Venta {c_name} ($)", value=base_v, min_value=0.0, step=100000.0, format="%.0f", key=f"sim_v_{c_name}")
+                        with cols_ctrl[1]:
+                            new_m = st.number_input(f"Margen {c_name} (%)", value=base_m * 100, min_value=0.0, max_value=100.0, step=0.5, format="%.1f", key=f"sim_m_{c_name}") / 100
+                        proyecciones.append({"Canal": c_name, "Venta Proy": new_v, "Margen % Proy": new_m, "Utilidad Proy": new_v * new_m})
+
+            df_sim = pd.DataFrame(proyecciones)
+            total_v_sim = df_sim['Venta Proy'].sum()
+            total_u_sim = df_sim['Utilidad Proy'].sum() + primas_input
+            margen_global_sim = total_u_sim / total_v_sim if total_v_sim > 0 else 0
+            
+            with col_sim_kpis:
+                st.markdown("#### 🎯 Resultado Simulado (Inc. Primas)")
+                fig_gauge = go.Figure(go.Indicator(
+                    mode = "gauge+number+delta", value = margen_global_sim * 100,
+                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    title = {'text': "Margen Global Real", 'font': {'size': 20}},
+                    delta = {'reference': 21.0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+                    gauge = {'axis': {'range': [0, 40], 'tickwidth': 1}, 'bar': {'color': "#00235d"}, 'bgcolor': "white", 'steps': [{'range': [0, 18], 'color': '#dc3545'}, {'range': [18, 21], 'color': '#ffc107'}, {'range': [21, 40], 'color': 'rgba(40, 167, 69, 0.3)'}], 'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 21.0}}
+                ))
+                fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_gauge, use_container_width=True)
+                
+                k1, k2 = st.columns(2)
+                with k1: st.metric("Venta Total Proy.", f"${total_v_sim:,.0f}", f"{total_v_sim - vta_total_neta:,.0f} vs Real")
+                with k2: st.metric("Utilidad Total Proy.", f"${total_u_sim:,.0f}", f"{total_u_sim - util_total_final:,.0f} vs Real")
+                
+                st.markdown("##### Contribución de Utilidad ($)")
+                st.plotly_chart(px.bar(df_sim, x='Utilidad Proy', y='Canal', orientation='h', text_auto='.2s', color='Margen % Proy', color_continuous_scale='RdYlGn', range_color=[0.10, 0.40]).update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0)), use_container_width=True)
 
         elif selected_tab == "🎨 Chapa y Pintura":
-            # (Tu código original de CyP, intacto)
             st.markdown("### 🎨 Chapa y Pintura")
+            
             c_mo_j = find_col(data['CyP JUJUY'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
-            c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
+            c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
+            if not c_mo_t_j: c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
             j_f_p = cj_r.get(c_mo_j, 0)
             j_f_t = cj_r.get(c_mo_t_j, 0)
             j_total_fact = j_f_p + j_f_t
             j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
-            c_panos_j = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']) or find_col(data['CyP JUJUY'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            c_panos_j = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            if not c_panos_j: c_panos_j = find_col(data['CyP JUJUY'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             j_panos_prop = cj_r.get(c_panos_j, 0)
+            j_obj_panos = cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'PANOS']), 1)
+            c_tec_j = find_col(data['CyP JUJUY'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
+            if not c_tec_j: c_tec_j = find_col(data['CyP JUJUY'], ['DOTACION'])
+            j_cant_tec = cj_r.get(c_tec_j, 1)
+            j_ratio = j_panos_prop / j_cant_tec if j_cant_tec > 0 else 0
+            j_panos_ter = cj_r.get(find_col(data['CyP JUJUY'], ['PANOS', 'TER']), 0)
+            j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
+            j_m_ter = j_f_t - j_c_ter
+            j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
             c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
-            c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ'])
+            c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
+            if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ'])
             s_f_p = cs_r.get(c_mo_s, 0)
             s_f_t = cs_r.get(c_mo_t_s, 0)
-            s_total_fact = s_f_p + s_f_t
+            s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
+            s_total_fact = s_f_p + s_f_t + s_f_r
             s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
-            c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']) or find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             s_panos_prop = cs_r.get(c_panos_s, 0)
+            s_obj_panos = cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'PANOS']), 1)
+            c_tec_s = find_col(data['CyP SALTA'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
+            if not c_tec_s: c_tec_s = find_col(data['CyP SALTA'], ['DOTACION'])
+            s_cant_tec = cs_r.get(c_tec_s, 1)
+            s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
+            s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
+            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER']), 0)
+            s_m_ter = s_f_t - s_c_ter
+            s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
+            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP']), 0)
+            s_m_rep = s_f_r - s_c_rep
+            s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Jujuy")
-                st.markdown(render_kpi_card("Facturación", j_total_fact, j_obj_fact), unsafe_allow_html=True)
-                st.metric("Paños Propios", f"{j_panos_prop:.0f}")
-            with c2:
-                st.subheader("Salta")
-                st.markdown(render_kpi_card("Facturación", s_total_fact, s_obj_fact), unsafe_allow_html=True)
-                st.metric("Paños Propios", f"{s_panos_prop:.0f}")
+            c_jujuy, c_salta = st.columns(2)
+            with c_jujuy:
+                st.subheader("Sede Jujuy")
+                st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_j, unsafe_allow_html=True)
+            with c_salta:
+                st.subheader("Sede Salta")
+                st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
+                html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_s, unsafe_allow_html=True)
+                if s_f_r > 0: st.markdown(f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Mg: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})</div>', unsafe_allow_html=True)
+
+            g_jujuy, g_salta = st.columns(2)
+            with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
+            with g_salta: 
+                vals_s, nams_s = [s_f_p, s_f_t], ["MO Pura", "Terceros"]
+                if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
+                st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
 
         elif selected_tab == "📈 Histórico":
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
+            st.markdown("#### 🛠️ Servicios")
+            
+            col_hab_hist = find_col(h_cal, ["HAB"])
+            col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "EFIC"])
+            if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["MECANICOS"], exclude_keywords=["PROD"])
+            col_disp_hist = find_col(h_tal, ["DISPONIBLES", "REAL"])
+            if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISP", "REAL"])
+            if not col_disp_hist: col_disp_hist = find_col(h_tal, ["DISPONIBLE"]) 
+            
+            if col_hab_hist and col_disp_hist:
+                df_capacidad = pd.merge(h_tal, h_cal[['Mes', col_hab_hist]], on='Mes', suffixes=('', '_cal'))
+                if col_tecs_hist: cant_tecnicos_series = df_capacidad[col_tecs_hist].astype(float)
+                else: cant_tecnicos_series = 6
+                
+                df_capacidad['Hs Ideales'] = cant_tecnicos_series * 8 * df_capacidad[col_hab_hist].astype(float)
+                df_capacidad['Hs Reales'] = df_capacidad[col_disp_hist].astype(float)
+                cols_trab_h = [c for c in [find_col(h_tal, ["TRAB", k]) for k in ["CC", "CG", "CI"]] if c]
+                df_capacidad['Hs Ocupadas'] = df_capacidad[cols_trab_h].sum(axis=1) if cols_trab_h else 0
+                
+                fig_cap = go.Figure()
+                fig_cap.add_trace(go.Scatter(x=df_capacidad['NombreMes'], y=df_capacidad['Hs Ideales'], name='Ideal (Teórico)', line=dict(color='gray', dash='dash')))
+                fig_cap.add_trace(go.Bar(x=df_capacidad['NombreMes'], y=df_capacidad['Hs Reales'], name='Presencia Real', marker_color='#00235d'))
+                fig_cap.add_trace(go.Bar(x=df_capacidad['NombreMes'], y=df_capacidad['Hs Ocupadas'], name='Hs Ocupadas', marker_color='#28a745'))
+                st.plotly_chart(fig_cap.update_layout(title="Análisis de Capacidad: Ideal vs Real vs Ocupación", barmode='group', height=350), use_container_width=True)
+            
+            col_prod = find_col(h_tal, ["PRODUCTIVIDAD", "TALLER"])
+            h_tal['Productividad'] = h_tal[col_prod].apply(lambda x: x/100 if x > 2 else x) if col_prod else 0
+            cols_trab = [c for c in [find_col(h_tal, ["TRAB", k]) for k in ["CC", "CG", "CI"]] if c]
+            h_tal['Hs Trabajadas'] = h_tal[cols_trab].sum(axis=1) if cols_trab else 0
+            h_tal['Hs Vendidas'] = 0
+            cols_hs_fact = [c for c in [find_col(h_tal, ["FACT", k]) for k in ["CC", "CG", "CI"]] if c]
+            if cols_hs_fact: h_tal['Hs Vendidas'] = h_tal[cols_hs_fact].sum(axis=1)
+            h_tal['Eficiencia Global'] = h_tal.apply(lambda row: row['Hs Vendidas'] / row['Hs Trabajadas'] if row['Hs Trabajadas'] > 0 else 0, axis=1)
+            
+            fig_efi = go.Figure()
+            fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Eficiencia Global'], name='Efic. Global', mode='lines+markers', line=dict(color='#28a745')))
+            fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Productividad'], name='Productividad', mode='lines+markers', line=dict(color='#17a2b8', dash='dot')))
+            st.plotly_chart(fig_efi.update_layout(title="Eficiencia y Productividad", yaxis_tickformat='.0%', height=300), use_container_width=True)
+
+            c_h1, c_h2 = st.columns(2)
             col_cpus = find_col(h_ser, ["CPUS"], exclude_keywords=["OBJ"])
-            if col_cpus: st.plotly_chart(px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas (CPUS)", color_discrete_sequence=['#00235d']), use_container_width=True)
+            if col_cpus:
+                c_h1.plotly_chart(px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas (CPUS)", color_discrete_sequence=['#00235d']), use_container_width=True)
+                h_ser_tal = pd.merge(h_ser, h_tal, on="Mes")
+                h_ser_tal['Ticket Hs'] = h_ser_tal.apply(lambda row: row['Hs Vendidas'] / row[col_cpus] if row[col_cpus] > 0 else 0, axis=1)
+                c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### 📦 Repuestos")
+            col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
+            fig_stk = go.Figure()
+            if col_vivo: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
+            if col_obs: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_obs], name='Obsoleto', marker_color='#ffc107'))
+            if col_muerto: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
+            st.plotly_chart(fig_stk.update_layout(barmode='stack', title="Salud de Stock", height=300), use_container_width=True)
+
+            fig_mix = go.Figure()
+            for c in canales_repuestos:
+                col_vta = find_col(h_rep, ["VENTA", c], exclude_keywords=["OBJ"])
+                if col_vta: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c))
+            st.plotly_chart(fig_mix.update_layout(barmode='stack', title="Venta Total por Canal (Apilado)", height=300), use_container_width=True)
+            
+            h_rep['CostoTotalMes'] = 0
+            for c in canales_repuestos:
+                 col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
+                 if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
+            
+            h_rep['CostoPromedio3M'] = h_rep['CostoTotalMes'].rolling(window=3, min_periods=1).mean()
+            col_val_stock = find_col(h_rep, ["VALOR", "STOCK"])
+            
+            if col_val_stock:
+                h_rep['MesesStock'] = h_rep.apply(lambda row: row[col_val_stock] / row['CostoPromedio3M'] if row['CostoPromedio3M'] > 0 else 0, axis=1)
+                st.plotly_chart(go.Figure(go.Scatter(x=h_rep['NombreMes'], y=h_rep['MesesStock'], name='Meses Stock', mode='lines+markers', line=dict(color='#6610f2', width=3))).update_layout(title="Evolución Meses de Stock (Stock / Costo Prom. 3 meses)", height=300), use_container_width=True)
+            
+            c_hist_j, c_hist_s = st.columns(2)
+            col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']) or find_col(h_cyp_j, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
+            col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER']) or find_col(h_cyp_j, ['PAÑOS', 'TER'])
+            h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
+            h_cyp_j['Paños Terceros'] = h_cyp_j[col_pt_j] if col_pt_j else 0
+            col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ']) or find_col(h_cyp_s, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
+            col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER']) or find_col(h_cyp_s, ['PAÑOS', 'TER'])
+            h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
+            h_cyp_s['Paños Terceros'] = h_cyp_s[col_pt_s] if col_pt_s else 0
+            
+            with c_hist_j:
+                fig_pj = go.Figure()
+                fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Propios'], name='Propios', marker_color='#00235d'))
+                fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+                st.plotly_chart(fig_pj.update_layout(barmode='stack', title="Evolución Jujuy (Paños)", height=300), use_container_width=True)
+            with c_hist_s:
+                fig_ps = go.Figure()
+                fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Propios'], name='Propios', marker_color='#00235d'))
+                fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
+                st.plotly_chart(fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=300), use_container_width=True)
 
     else:
         st.warning("No se pudieron cargar los datos.")
