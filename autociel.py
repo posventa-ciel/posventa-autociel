@@ -80,7 +80,7 @@ def leer_csv_inteligente(uploaded_file):
     except Exception as e:
         return None, str(e)
 
-# --- PROCESAMIENTO IRPV (HÍBRIDO: KM + TEXTO) ---
+# --- PROCESAMIENTO IRPV (HÍBRIDO + FILTRO DE MADUREZ) ---
 def procesar_irpv(file_v, file_t):
     # Cargar Ventas
     df_v, msg_v = leer_csv_inteligente(file_v)
@@ -104,6 +104,11 @@ def procesar_irpv(file_v, file_t):
     df_v['VIN'] = df_v[col_vin].astype(str).str.strip().str.upper()
     df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
+    # --- NUEVO: CALCULO DE ANTIGÜEDAD (MADUREZ) ---
+    hoy = datetime.now()
+    # Calculamos cuántos meses pasaron desde la venta hasta hoy
+    df_v['Meses_Uso'] = (hoy - df_v['Fecha_Entrega']).dt.days / 30.44
+
     # Cargar Taller
     df_t, msg_t = leer_csv_inteligente(file_t)
     if df_t is None: return None, f"Error Taller: {msg_t}"
@@ -114,7 +119,6 @@ def procesar_irpv(file_v, file_t):
     col_fec_t = next((c for c in df_t.columns if 'CIERRE' in c or 'FEC' in c), None)
     col_km = next((c for c in df_t.columns if 'KM' in c), None)
     col_or = next((c for c in df_t.columns if 'TIPO' in c or 'O.R.' in c), None)
-    # Buscamos la columna de descripción (donde escriben los asesores)
     col_desc = next((c for c in df_t.columns if 'DESCR' in c or 'OPER' in c or 'TRABAJO' in c), None)
 
     if not col_vin_t or not col_fec_t:
@@ -123,59 +127,66 @@ def procesar_irpv(file_v, file_t):
     df_t['Fecha_Servicio'] = df_t[col_fec_t].apply(clean_date)
     df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
     
-    # Limpieza de KM
     if col_km:
         df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0)
     else: df_t['Km'] = 0
 
-    # Limpieza de Descripción (Texto)
-    if col_desc:
-        df_t['Texto'] = df_t[col_desc].astype(str).str.upper()
-    else:
-        df_t['Texto'] = ""
+    if col_desc: df_t['Texto'] = df_t[col_desc].astype(str).str.upper()
+    else: df_t['Texto'] = ""
 
-    # Filtro Chapa (excluir si es chapa explícita)
     if col_or:
         mask = ~df_t[col_or].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
         df_t = df_t[mask]
 
-    # --- CLASIFICACIÓN INTELIGENTE (HÍBRIDA) ---
+    # --- CLASIFICACIÓN INTELIGENTE ---
     def clasif_hibrida(row):
         k = row['Km']
         txt = row['Texto']
         
-        # 1. CRITERIO NUMÉRICO (Prioridad Alta)
+        # 1. Por KILOMETROS (Rangos tolerantes)
         if 2500 <= k <= 16500: return "1er"
         if 16501 <= k <= 27000: return "2do"
         if 27001 <= k <= 38000: return "3er"
         
-        # 2. CRITERIO DE TEXTO (Si el Km falla o es 0)
-        # Palabras clave para 1er Service
-        if any(w in txt for w in ["10.000", "10000", "10K", "DIEZ MIL", "PRIMER SERVI", "1ER SERVI"]): 
-            return "1er"
-            
-        # Palabras clave para 2do Service (lo que mencionaste)
-        if any(w in txt for w in ["20.000", "20000", "20K", "VEINTE MIL", "SEGUNDO SERVI", "2DO SERVI"]): 
-            return "2do"
-            
-        # Palabras clave para 3er Service
-        if any(w in txt for w in ["30.000", "30000", "30K", "TREINTA MIL", "TERCER SERVI", "3ER SERVI"]): 
-            return "3er"
-            
+        # 2. Por TEXTO (Palabras clave ampliadas)
+        # 1er Service
+        if any(w in txt for w in ["10.000", "10000", "10K", "DIEZ MIL", "1ER SERVI", "PRIMER SERVI"]): return "1er"
+        # 2do Service (Aquí agregamos tus sugerencias)
+        if any(w in txt for w in ["20.000", "20000", "20K", "VEINTE MIL", "2DO SERVI", "SEGUNDO SERVI"]): return "2do"
+        # 3er Service
+        if any(w in txt for w in ["30.000", "30000", "30K", "TREINTA MIL", "3ER SERVI", "TERCER SERVI"]): return "3er"
+        
+        # COMODIN GENERAL: Si dice "SERVICIO" y no matcheó nada antes, a veces conviene revisar manual, 
+        # pero por ahora no asignamos para no generar falsos positivos.
         return None
     
-    # Aplicamos la función a cada fila (axis=1)
     df_t['Hito'] = df_t.apply(clasif_hibrida, axis=1)
     df_validos = df_t.dropna(subset=['Hito'])
 
+    # Cruzar datos
     merged = pd.merge(df_v, df_validos[['VIN', 'Hito']], on='VIN', how='left')
-    pivot = merged.pivot_table(index=['VIN', 'Año_Venta'], columns='Hito', aggfunc='size', fill_value=0).reset_index()
+    
+    # Pivotear para tener una columna por servicio (1 si lo hizo, 0 si no)
+    pivot = merged.pivot_table(index=['VIN', 'Año_Venta', 'Meses_Uso'], columns='Hito', aggfunc='size', fill_value=0).reset_index()
     
     for c in ['1er', '2do', '3er']:
         if c not in pivot.columns: pivot[c] = 0
         else: pivot[c] = pivot[c].apply(lambda x: 1 if x > 0 else 0)
-        
+
+    # --- FILTRO DE "AUTO INMADURO" (Aquí está la magia) ---
+    # Si el auto es muy nuevo, ponemos NaN (Not a Number) en la columna del servicio.
+    # Pandas ignora los NaN al calcular promedios, así que no bajan el % innecesariamente.
+    
+    import numpy as np
+    
+    # Criterio: Necesitas al menos X meses de uso para que te exijamos haber hecho el service
+    pivot.loc[pivot['Meses_Uso'] < 6, '1er'] = np.nan   # Menos de 6 meses -> Ignorar para 1er service
+    pivot.loc[pivot['Meses_Uso'] < 16, '2do'] = np.nan  # Menos de 16 meses -> Ignorar para 2do service
+    pivot.loc[pivot['Meses_Uso'] < 28, '3er'] = np.nan  # Menos de 28 meses -> Ignorar para 3er service
+
+    # Agrupar y promediar (ignora los NaNs automáticamente)
     res = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
+    
     return res, "OK"
 
 # --- MAIN APP ---
