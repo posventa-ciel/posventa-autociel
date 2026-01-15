@@ -80,7 +80,7 @@ def leer_csv_inteligente(uploaded_file):
     except Exception as e:
         return None, str(e)
 
-# --- PROCESAMIENTO IRPV ---
+# --- PROCESAMIENTO IRPV (HÍBRIDO: KM + TEXTO) ---
 def procesar_irpv(file_v, file_t):
     # Cargar Ventas
     df_v, msg_v = leer_csv_inteligente(file_v)
@@ -96,7 +96,6 @@ def procesar_irpv(file_v, file_t):
 
     def clean_date(x):
         if pd.isna(x) or str(x).strip() == '': return None
-        # Intenta parsear fecha DD/MM/YYYY
         try: return pd.to_datetime(x, dayfirst=True)
         except: return None
 
@@ -115,35 +114,58 @@ def procesar_irpv(file_v, file_t):
     col_fec_t = next((c for c in df_t.columns if 'CIERRE' in c or 'FEC' in c), None)
     col_km = next((c for c in df_t.columns if 'KM' in c), None)
     col_or = next((c for c in df_t.columns if 'TIPO' in c or 'O.R.' in c), None)
+    # Buscamos la columna de descripción (donde escriben los asesores)
+    col_desc = next((c for c in df_t.columns if 'DESCR' in c or 'OPER' in c or 'TRABAJO' in c), None)
 
     if not col_vin_t or not col_fec_t:
-        return None, f"Taller: Faltan columnas clave (Bastidor/Cierre). Cols: {list(df_t.columns)}"
+        return None, f"Taller: Faltan columnas clave. Cols: {list(df_t.columns)}"
 
     df_t['Fecha_Servicio'] = df_t[col_fec_t].apply(clean_date)
     df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
     
+    # Limpieza de KM
     if col_km:
         df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0)
     else: df_t['Km'] = 0
 
+    # Limpieza de Descripción (Texto)
+    if col_desc:
+        df_t['Texto'] = df_t[col_desc].astype(str).str.upper()
+    else:
+        df_t['Texto'] = ""
+
+    # Filtro Chapa (excluir si es chapa explícita)
     if col_or:
         mask = ~df_t[col_or].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
         df_t = df_t[mask]
 
-    # Clasificar (RANGOS AMPLIADOS PARA JUJUY/SALTA)
-    def clasif(k):
-        # 1er Service (Obj 10k): Tomamos desde 2.500 hasta 16.500
+    # --- CLASIFICACIÓN INTELIGENTE (HÍBRIDA) ---
+    def clasif_hibrida(row):
+        k = row['Km']
+        txt = row['Texto']
+        
+        # 1. CRITERIO NUMÉRICO (Prioridad Alta)
         if 2500 <= k <= 16500: return "1er"
+        if 16501 <= k <= 27000: return "2do"
+        if 27001 <= k <= 38000: return "3er"
         
-        # 2do Service (Obj 20k): Tomamos desde 16.501 hasta 27.000 (Gente que llega tarde)
-        elif 16501 <= k <= 27000: return "2do"
-        
-        # 3er Service (Obj 30k): Tomamos desde 27.001 hasta 38.000
-        elif 27001 <= k <= 38000: return "3er"
-        
+        # 2. CRITERIO DE TEXTO (Si el Km falla o es 0)
+        # Palabras clave para 1er Service
+        if any(w in txt for w in ["10.000", "10000", "10K", "DIEZ MIL", "PRIMER SERVI", "1ER SERVI"]): 
+            return "1er"
+            
+        # Palabras clave para 2do Service (lo que mencionaste)
+        if any(w in txt for w in ["20.000", "20000", "20K", "VEINTE MIL", "SEGUNDO SERVI", "2DO SERVI"]): 
+            return "2do"
+            
+        # Palabras clave para 3er Service
+        if any(w in txt for w in ["30.000", "30000", "30K", "TREINTA MIL", "TERCER SERVI", "3ER SERVI"]): 
+            return "3er"
+            
         return None
     
-    df_t['Hito'] = df_t['Km'].apply(clasif)
+    # Aplicamos la función a cada fila (axis=1)
+    df_t['Hito'] = df_t.apply(clasif_hibrida, axis=1)
     df_validos = df_t.dropna(subset=['Hito'])
 
     merged = pd.merge(df_v, df_validos[['VIN', 'Hito']], on='VIN', how='left')
