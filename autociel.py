@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS (Tu estilo original) ---
+# --- ESTILO CSS ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -127,7 +127,7 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- NUEVAS FUNCIONES IRPV (Insertadas Aquí) ---
+# --- NUEVAS FUNCIONES IRPV ---
 def leer_csv_inteligente(uploaded_file):
     try:
         uploaded_file.seek(0)
@@ -235,7 +235,7 @@ def procesar_irpv(file_v, file_t):
     res.columns = ['1er', '2do', '3er']
     return res, "OK"
 
-# --- MAIN APP (Tu estructura original) ---
+# --- MAIN APP ---
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
 try:
@@ -263,6 +263,30 @@ try:
             meses_disp = sorted(df_year['Mes'].unique(), reverse=True)
             mes_sel = st.selectbox("📅 Mes", meses_disp, format_func=lambda x: meses_nom.get(x, "N/A"))
 
+        # --- PREPARACIÓN DE HISTÓRICOS (Global) ---
+        def get_hist_data(sheet_name):
+            df = data[sheet_name]
+            # Filtramos por año seleccionado para tener la base, pero para promedios necesitaríamos
+            # idealmente cruzar años. Simplificación: Usamos datos del año seleccionado.
+            df = df[df['Año'] == año_sel].sort_values('Mes')
+            df = df.groupby('Mes').last().reset_index()
+            df['NombreMes'] = df['Mes'].map(meses_nom)
+            return df
+
+        h_cal = get_hist_data('CALENDARIO')
+        h_ser = get_hist_data('SERVICIOS')
+        h_rep = get_hist_data('REPUESTOS')
+        h_tal = get_hist_data('TALLER')
+        h_cyp_j = get_hist_data('CyP JUJUY')
+        h_cyp_s = get_hist_data('CyP SALTA')
+        
+        # Calcular Costo Total Mensual en el Histórico de Repuestos
+        h_rep['CostoTotalMes'] = 0
+        for c in canales_repuestos:
+             col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
+             if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
+
+        # --- FILA DE DATOS DEL MES ACTUAL ---
         def get_row(df):
             res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
             return res.iloc[-1] if not res.empty else pd.Series(dtype='object')
@@ -285,21 +309,6 @@ try:
 
         prog_t = d_t / d_h if d_h > 0 else 0
         prog_t = min(prog_t, 1.0)
-
-        # DATA HISTORICO
-        def get_hist_data(sheet_name):
-            df = data[sheet_name]
-            df = df[df['Año'] == año_sel].sort_values('Mes')
-            df = df.groupby('Mes').last().reset_index()
-            df['NombreMes'] = df['Mes'].map(meses_nom)
-            return df
-
-        h_cal = get_hist_data('CALENDARIO')
-        h_ser = get_hist_data('SERVICIOS')
-        h_rep = get_hist_data('REPUESTOS')
-        h_tal = get_hist_data('TALLER')
-        h_cyp_j = get_hist_data('CyP JUJUY')
-        h_cyp_s = get_hist_data('CyP SALTA')
 
         # --- PORTADA ---
         st.markdown(f'''
@@ -597,17 +606,64 @@ try:
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
-            costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
+            
+            # --- NUEVO CÁLCULO MESES STOCK (PROYECCIÓN + HISTÓRICO) ---
+            costo_mes_actual_real = df_r['Costo'].sum() if not df_r.empty else 0
+            costo_mes_actual_proy = costo_mes_actual_real / prog_t if prog_t > 0 else costo_mes_actual_real
+            
+            # Obtener costo de meses anteriores (histórico)
+            # h_rep ya está filtrado por año actual. Buscamos mes-1 y mes-2
+            costos_anteriores = []
+            if not h_rep.empty:
+                 # Meses anteriores disponibles en la data
+                 prev_months = h_rep[h_rep['Mes'] < mes_sel].sort_values('Mes', ascending=False).head(2)
+                 costos_anteriores = prev_months['CostoTotalMes'].tolist()
+            
+            # Sumar Costo Proyectado Actual + Hasta 2 Meses Anteriores
+            suma_costos_3m = costo_mes_actual_proy + sum(costos_anteriores)
+            divisor = 1 + len(costos_anteriores) # 1 (actual) + N (anteriores)
+            
+            costo_promedio_3m = suma_costos_3m / divisor if divisor > 0 else 1
+            
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+            meses_stock = val_stock / costo_promedio_3m if costo_promedio_3m > 0 else 0
+            
+            # Lógica Semáforo Personalizado
+            if meses_stock <= 3:
+                color_stk = "#28a745" # Verde
+                icon_stk = "✅"
+            elif meses_stock < 5:
+                color_stk = "#ffc107" # Amarillo
+                icon_stk = "⚠️"
+            else:
+                color_stk = "#dc3545" # Rojo
+                icon_stk = "🔻"
             
             c_main, c_kpis = st.columns([1, 3])
             with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
-                meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
-                with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
+                
+                # --- TARJETA PERSONALIZADA STOCK ---
+                html_stock = f"""
+                <div class="metric-card">
+                    <div>
+                        <p style="color:#666; font-size:0.8rem; margin-bottom:2px;">Meses Stock (Prom. 3M Proy)</p>
+                        <h3 style="color:#00235d; margin:0; font-size:1.3rem;">{meses_stock:.1f}</h3>
+                        <div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'>
+                            <span style='color:#888;'>Obj: 3.0</span>
+                            <span style='color:{color_stk}; font-weight:bold;'>{icon_stk}</span>
+                        </div>
+                    </div>
+                    <div class="metric-footer">
+                         <div style="font-size:0.6rem">Stock: ${val_stock:,.0f}</div>
+                         <div style="font-size:0.6rem">Costo Prom: ${costo_promedio_3m:,.0f}</div>
+                    </div>
+                </div>
+                """
+                with r4: st.markdown(html_stock, unsafe_allow_html=True)
 
             if not df_r.empty:
                 t_vb = df_r['Venta Bruta'].sum()
