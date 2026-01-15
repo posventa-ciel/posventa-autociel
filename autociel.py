@@ -80,19 +80,20 @@ def leer_csv_inteligente(uploaded_file):
     except Exception as e:
         return None, str(e)
 
-# --- PROCESAMIENTO IRPV (HÍBRIDO + FILTRO DE MADUREZ) ---
+# --- PROCESAMIENTO IRPV (LÓGICA SECUENCIAL + TIEMPO) ---
 def procesar_irpv(file_v, file_t):
-    # Cargar Ventas
+    from datetime import timedelta
+    import numpy as np
+    
+    # 1. Cargar Ventas
     df_v, msg_v = leer_csv_inteligente(file_v)
     if df_v is None: return None, f"Error Ventas: {msg_v}"
-    
     df_v.columns = [str(c).upper().strip() for c in df_v.columns]
     
     col_vin = next((c for c in df_v.columns if 'BASTIDOR' in c or 'VIN' in c or 'CHASIS' in c), None)
     col_fec = next((c for c in df_v.columns if 'FEC' in c or 'ENTR' in c), None)
     
-    if not col_vin or not col_fec:
-        return None, f"Ventas: Faltan columnas clave (Bastidor/Fecha). Cols: {list(df_v.columns)}"
+    if not col_vin or not col_fec: return None, f"Ventas: Faltan columnas clave. Cols: {list(df_v.columns)}"
 
     def clean_date(x):
         if pd.isna(x) or str(x).strip() == '': return None
@@ -104,15 +105,9 @@ def procesar_irpv(file_v, file_t):
     df_v['VIN'] = df_v[col_vin].astype(str).str.strip().str.upper()
     df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
-    # --- NUEVO: CALCULO DE ANTIGÜEDAD (MADUREZ) ---
-    hoy = datetime.now()
-    # Calculamos cuántos meses pasaron desde la venta hasta hoy
-    df_v['Meses_Uso'] = (hoy - df_v['Fecha_Entrega']).dt.days / 30.44
-
-    # Cargar Taller
+    # 2. Cargar Taller
     df_t, msg_t = leer_csv_inteligente(file_t)
     if df_t is None: return None, f"Error Taller: {msg_t}"
-    
     df_t.columns = [str(c).upper().strip() for c in df_t.columns]
     
     col_vin_t = next((c for c in df_t.columns if 'BASTIDOR' in c or 'VIN' in c), None)
@@ -121,16 +116,13 @@ def procesar_irpv(file_v, file_t):
     col_or = next((c for c in df_t.columns if 'TIPO' in c or 'O.R.' in c), None)
     col_desc = next((c for c in df_t.columns if 'DESCR' in c or 'OPER' in c or 'TRABAJO' in c), None)
 
-    if not col_vin_t or not col_fec_t:
-        return None, f"Taller: Faltan columnas clave. Cols: {list(df_t.columns)}"
+    if not col_vin_t or not col_fec_t: return None, f"Taller: Faltan columnas clave. Cols: {list(df_t.columns)}"
 
     df_t['Fecha_Servicio'] = df_t[col_fec_t].apply(clean_date)
     df_t['VIN'] = df_t[col_vin_t].astype(str).str.strip().str.upper()
-    
-    if col_km:
-        df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0)
+    if col_km: df_t['Km'] = pd.to_numeric(df_t[col_km], errors='coerce').fillna(0)
     else: df_t['Km'] = 0
-
+    
     if col_desc: df_t['Texto'] = df_t[col_desc].astype(str).str.upper()
     else: df_t['Texto'] = ""
 
@@ -138,54 +130,76 @@ def procesar_irpv(file_v, file_t):
         mask = ~df_t[col_or].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
         df_t = df_t[mask]
 
-    # --- CLASIFICACIÓN INTELIGENTE ---
+    # --- CLASIFICACIÓN DE HITOS (Híbrida) ---
     def clasif_hibrida(row):
         k = row['Km']
-        txt = row['Texto']
+        t = row['Texto']
         
-        # 1. Por KILOMETROS (Rangos tolerantes)
-        if 2500 <= k <= 16500: return "1er"
-        if 16501 <= k <= 27000: return "2do"
-        if 27001 <= k <= 38000: return "3er"
+        # 1er Service (10k)
+        if (2500 <= k <= 16500) or any(w in t for w in ["10.000", "10000", "10K", "10 KM", "DIEZ MIL", "1ER", "PRIMER"]): return "1er"
         
-        # 2. Por TEXTO (Palabras clave ampliadas)
-        # 1er Service
-        if any(w in txt for w in ["10.000", "10000", "10K", "DIEZ MIL", "1ER SERVI", "PRIMER SERVI"]): return "1er"
-        # 2do Service (Aquí agregamos tus sugerencias)
-        if any(w in txt for w in ["20.000", "20000", "20K", "VEINTE MIL", "2DO SERVI", "SEGUNDO SERVI"]): return "2do"
-        # 3er Service
-        if any(w in txt for w in ["30.000", "30000", "30K", "TREINTA MIL", "3ER SERVI", "TERCER SERVI"]): return "3er"
+        # 2do Service (20k)
+        if (16501 <= k <= 27000) or any(w in t for w in ["20.000", "20000", "20K", "20 KM", "VEINTE MIL", "2DO", "SEGUNDO"]): return "2do"
         
-        # COMODIN GENERAL: Si dice "SERVICIO" y no matcheó nada antes, a veces conviene revisar manual, 
-        # pero por ahora no asignamos para no generar falsos positivos.
+        # 3er Service (30k)
+        if (27001 <= k <= 38000) or any(w in t for w in ["30.000", "30000", "30K", "30 KM", "TREINTA MIL", "3ER", "TERCER"]): return "3er"
+        
         return None
     
     df_t['Hito'] = df_t.apply(clasif_hibrida, axis=1)
     df_validos = df_t.dropna(subset=['Hito'])
 
-    # Cruzar datos
-    merged = pd.merge(df_v, df_validos[['VIN', 'Hito']], on='VIN', how='left')
+    # 3. OBTENER FECHAS REALES DE CADA SERVICIO
+    # Pivotamos para tener una columna con la FECHA de cada servicio por VIN
+    pivot_dates = df_validos.pivot_table(index='VIN', columns='Hito', values='Fecha_Servicio', aggfunc='min').reset_index()
     
-    # Pivotear para tener una columna por servicio (1 si lo hizo, 0 si no)
-    pivot = merged.pivot_table(index=['VIN', 'Año_Venta', 'Meses_Uso'], columns='Hito', aggfunc='size', fill_value=0).reset_index()
-    
-    for c in ['1er', '2do', '3er']:
-        if c not in pivot.columns: pivot[c] = 0
-        else: pivot[c] = pivot[c].apply(lambda x: 1 if x > 0 else 0)
+    # Unimos con Ventas
+    merged = pd.merge(df_v, pivot_dates, on='VIN', how='left')
 
-    # --- FILTRO DE "AUTO INMADURO" (Aquí está la magia) ---
-    # Si el auto es muy nuevo, ponemos NaN (Not a Number) en la columna del servicio.
-    # Pandas ignora los NaN al calcular promedios, así que no bajan el % innecesariamente.
-    
-    import numpy as np
-    
-    # Criterio: Necesitas al menos X meses de uso para que te exijamos haber hecho el service
-    pivot.loc[pivot['Meses_Uso'] < 6, '1er'] = np.nan   # Menos de 6 meses -> Ignorar para 1er service
-    pivot.loc[pivot['Meses_Uso'] < 16, '2do'] = np.nan  # Menos de 16 meses -> Ignorar para 2do service
-    pivot.loc[pivot['Meses_Uso'] < 28, '3er'] = np.nan  # Menos de 28 meses -> Ignorar para 3er service
+    # --- LÓGICA DE TIEMPO (LA PARTE CLAVE) ---
+    hoy = datetime.now()
 
-    # Agrupar y promediar (ignora los NaNs automáticamente)
-    res = pivot.groupby('Año_Venta')[['1er', '2do', '3er']].mean()
+    def evaluar_retencion(row, hito_actual, hito_anterior=None):
+        # Fecha base para contar los 12 meses
+        if hito_actual == '1er':
+            f_base = row['Fecha_Entrega']
+        else:
+            # Para 2do y 3er, dependemos de que haya hecho el anterior
+            f_anterior = row.get(hito_anterior, pd.NaT) # Fecha del hito anterior (columna se llama '1er', '2do'...)
+            if pd.isna(f_anterior):
+                # Si no hizo el anterior, la cadena se rompió. 
+                # Retornamos NaN para no contarlo en el denominador (Retención Condicional)
+                return np.nan
+            f_base = f_anterior
+
+        # Fecha límite (Vencimiento) = Fecha Base + 365 días
+        f_limite = f_base + timedelta(days=365)
+        
+        # Fecha real del servicio actual
+        f_actual = row.get(hito_actual, pd.NaT)
+        
+        # CASO 1: YA LO HIZO
+        if not pd.isna(f_actual):
+            return 1.0 # Éxito
+        
+        # CASO 2: NO LO HIZO, PERO YA PASÓ EL AÑO (VENCIDO)
+        if hoy >= f_limite:
+            return 0.0 # Fracaso (Fuga)
+            
+        # CASO 3: NO LO HIZO, PERO TODAVÍA TIENE TIEMPO (INMADURO)
+        return np.nan # Pendiente (No cuenta en la estadística)
+
+    # Aplicamos la lógica fila por fila
+    merged['R_1er'] = merged.apply(lambda r: evaluar_retencion(r, '1er'), axis=1)
+    merged['R_2do'] = merged.apply(lambda r: evaluar_retencion(r, '2do', '1er'), axis=1)
+    merged['R_3er'] = merged.apply(lambda r: evaluar_retencion(r, '3er', '2do'), axis=1)
+
+    # Agrupamos por Año de Venta
+    # El promedio ignora automáticamente los NaN, dándote la tasa real de los que ya cumplieron plazo
+    res = merged.groupby('Año_Venta')[['R_1er', 'R_2do', 'R_3er']].mean()
+    
+    # Renombrar columnas para el gráfico
+    res.columns = ['1er', '2do', '3er']
     
     return res, "OK"
 
