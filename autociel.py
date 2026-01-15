@@ -130,10 +130,17 @@ def procesar_irpv(file_v, file_t):
         mask = ~df_t[col_or].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
         df_t = df_t[mask]
 
+    # Clasificar (RANGOS AMPLIADOS PARA JUJUY/SALTA)
     def clasif(k):
-        if 5000 <= k <= 15000: return "1er"
-        elif 15001 <= k <= 25000: return "2do"
-        elif 25001 <= k <= 35000: return "3er"
+        # 1er Service (Obj 10k): Tomamos desde 2.500 hasta 16.500
+        if 2500 <= k <= 16500: return "1er"
+        
+        # 2do Service (Obj 20k): Tomamos desde 16.501 hasta 27.000 (Gente que llega tarde)
+        elif 16501 <= k <= 27000: return "2do"
+        
+        # 3er Service (Obj 30k): Tomamos desde 27.001 hasta 38.000
+        elif 27001 <= k <= 38000: return "3er"
+        
         return None
     
     df_t['Hito'] = df_t['Km'].apply(clasif)
