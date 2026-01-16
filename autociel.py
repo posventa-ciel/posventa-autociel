@@ -628,9 +628,17 @@ try:
                 p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
-                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
-            
-            st.markdown("---")
+                
+                # Grafico de composición
+                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+                
+                # --- AQUÍ APARECE EL VALOR DEBAJO DEL GRÁFICO ---
+                st.markdown(f"""
+                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6; text-align: center;">
+                        <p style="color: #666; margin: 0; font-size: 0.9rem; font-weight: bold;">VALORACIÓN TOTAL</p>
+                        <h3 style="color: #00235d; margin: 0;">${val_stock:,.0f}</h3>
+                    </div>
+                """, unsafe_allow_html=True)
             
             # --- 2. CALCULADORA DE MIX IDEAL ---
             st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
