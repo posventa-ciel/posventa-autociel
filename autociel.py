@@ -678,49 +678,46 @@ try:
                 st.metric("Margen Crítico Volumen", f"{margen_critico:.1%}", 
                           help="Es el margen promedio mínimo que deben dejar Mayorista + Seguros + Primas para no perder plata frente al objetivo.")
 
-            # --- SIMULADOR DE OPERACIÓN ESPECIAL (EL "CIERRE DE NEGOCIO") ---
+            # --- SIMULADOR DE NEGOCIO CORREGIDO ---
             st.markdown("### 📈 Simulador de Negocio Mayorista / Especial")
-            st.info("Usá este simulador para ver si una venta de gran volumen a bajo margen rompe tu rentabilidad del mes.")
             
-            with st.expander("Abrir Simulador de Operación", expanded=False):
+            with st.expander("Abrir Simulador de Operación", expanded=True):
                 c_sim1, c_sim2 = st.columns(2)
                 with c_sim1:
-                    monto_especial = st.number_input("Monto de la Venta Especial ($)", min_value=0.0, value=1000000.0, step=100000.0)
+                    monto_especial = st.number_input("Monto de la Venta Especial ($)", min_value=0.0, value=50000000.0, step=1000000.0)
                 with c_sim2:
-                    margen_especial = st.slider("% Margen de la Operación (Sin Primas)", -10.0, 30.0, 5.0, 0.5) / 100
+                    margen_especial = st.slider("% Margen de la Operación (Sin Primas)", -10.0, 30.0, 10.0, 0.5) / 100
                 
-                # Cálculo del impacto
+                # CÁLCULOS LÓGICOS
                 nueva_venta_total = vta_total_neta + monto_especial
-                # La utilidad nueva suma la actual + la de la operación + la prima que inyectes (si aplica)
                 nueva_utilidad_total = util_total_final + (monto_especial * margen_especial)
                 nuevo_margen_global = nueva_utilidad_total / nueva_venta_total if nueva_venta_total > 0 else 0
                 
-                # Visualización del impacto
                 col_res1, col_res2 = st.columns(2)
                 
-                # Color según el resultado
-                color_sim = "green" if nuevo_margen_global >= 0.21 else "red"
-                
                 with col_res1:
+                    # Mostramos el nuevo margen global y la diferencia en puntos porcentuales
+                    puntos_dif = (nuevo_margen_global - mg_total_final) * 100
+                    color_delta = "normal" if nuevo_margen_global >= 0.21 else "inverse"
                     st.metric("Nuevo Margen Global", f"{nuevo_margen_global:.1%}", 
-                              delta=f"{nuevo_margen_global - mg_total_final:.1%}",
-                              delta_color="normal" if nuevo_margen_global >= 0.21 else "inverse")
+                              delta=f"{puntos_dif:.1f} pts vs actual",
+                              delta_color=color_delta)
                 
                 with col_res2:
+                    # Calculamos el excedente o faltante en PESOS, que es lo que importa
                     dif_objetivo = nueva_utilidad_total - (nueva_venta_total * 0.21)
-                    if dif_objetivo >= 0:
-                        st.write(f"✅ **Operación Viable:** El negocio deja un excedente de **${dif_objetivo:,.0f}** sobre el objetivo del 21%.")
+                    if nuevo_margen_global >= 0.21:
+                        st.success(f"✅ **Operación Viable**\n\nEl margen global queda en {nuevo_margen_global:.1%}. Te sobran **${dif_objetivo:,.0f}** sobre el objetivo del 21%.")
                     else:
-                        st.write(f"❌ **Operación Riesgosa:** Esta venta te deja **${abs(dif_objetivo):,.0f}** por debajo del 21% global. Necesitás subir el margen o compensar con Mostrador.")
+                        st.error(f"❌ **Operación No Viable**\n\nEl margen global caería a {nuevo_margen_global:.1%}. Te faltarían **${abs(dif_objetivo):,.0f}** para llegar al 21%.")
 
-                # Gráfico rápido de "Antes vs Después"
-                fig_sim = go.Figure(data=[
-                    go.Bar(name='Margen Actual', x=['Estado'], y=[mg_total_final*100], marker_color='#00235d'),
-                    go.Bar(name='Margen Post-Operación', x=['Estado'], y=[nuevo_margen_global*100], marker_color=color_sim)
-                ])
-                fig_sim.update_layout(yaxis_title="Margen %", height=250, showlegend=True, 
-                                      yaxis=dict(range=[0, max(30, nuevo_margen_global*120)]))
-                fig_sim.add_hline(y=21, line_dash="dash", line_color="red", annotation_text="Objetivo 21%")
+                # GRÁFICO MEJORADO
+                fig_sim = go.Figure()
+                fig_sim.add_trace(go.Bar(name='Margen Actual', x=['Situación'], y=[mg_total_final*100], marker_color='#00235d'))
+                fig_sim.add_trace(go.Bar(name='Margen con Negocio', x=['Situación'], y=[nuevo_margen_global*100], marker_color='#28a745' if nuevo_margen_global >= 0.21 else '#dc3545'))
+                
+                fig_sim.update_layout(title="Impacto en el Margen Global (%)", yaxis_title="%", barmode='group', height=300)
+                fig_sim.add_hline(y=21, line_dash="dash", line_color="red", annotation_text="Piso Objetivo 21%")
                 st.plotly_chart(fig_sim, use_container_width=True)
                 
             # --- 2. CALCULADORA DE MIX IDEAL ---
