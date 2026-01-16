@@ -577,13 +577,14 @@ try:
 
 
         elif selected_tab == "📦 Repuestos":
-            st.markdown("### 📦 Repuestos")
+            st.markdown("### 📦 Gestión Estratégica de Repuestos")
             
             # --- 1. INPUT DE PRIMAS / BONOS ---
             col_primas, col_vacia = st.columns([1, 3])
             with col_primas:
-                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
+                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f")
 
+            # Cálculo de datos base
             detalles = []
             for c in canales_repuestos:
                 v_col = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
@@ -596,105 +597,77 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
-            # TOTALES
-            vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
-            
-            # --- AJUSTE CON PRIMAS ---
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
-            
-            obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
-            
-            # --- NUEVO CÁLCULO MESES STOCK (PROYECCIÓN + HISTÓRICO) ---
-            costo_mes_actual_real = df_r['Costo'].sum() if not df_r.empty else 0
-            costo_mes_actual_proy = costo_mes_actual_real / prog_t if prog_t > 0 else costo_mes_actual_real
-            
-            # Obtener costo de meses anteriores (histórico)
-            # h_rep ya está filtrado por año actual. Buscamos mes-1 y mes-2
-            costos_anteriores = []
-            if not h_rep.empty:
-                 # Meses anteriores disponibles en la data
-                 prev_months = h_rep[h_rep['Mes'] < mes_sel].sort_values('Mes', ascending=False).head(2)
-                 costos_anteriores = prev_months['CostoTotalMes'].tolist()
-            
-            # Sumar Costo Proyectado Actual + Hasta 2 Meses Anteriores
-            suma_costos_3m = costo_mes_actual_proy + sum(costos_anteriores)
-            divisor = 1 + len(costos_anteriores) # 1 (actual) + N (anteriores)
-            
-            costo_promedio_3m = suma_costos_3m / divisor if divisor > 0 else 1
-            
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
-            meses_stock = val_stock / costo_promedio_3m if costo_promedio_3m > 0 else 0
-            
-            # Lógica Semáforo Personalizado
-            if meses_stock <= 3:
-                color_stk = "#28a745" # Verde
-                icon_stk = "✅"
-            elif meses_stock < 5:
-                color_stk = "#ffc107" # Amarillo
-                icon_stk = "⚠️"
-            else:
-                color_stk = "#dc3545" # Rojo
-                icon_stk = "🔻"
-            
-            c_main, c_kpis = st.columns([1, 3])
-            with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
-            with c_kpis:
-                r2, r3, r4 = st.columns(3)
-                with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
-                with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
-                
-                # --- TARJETA PERSONALIZADA STOCK ---
-                html_stock = f"""
-                <div class="metric-card">
-                    <div>
-                        <p style="color:#666; font-size:0.8rem; margin-bottom:2px;">Meses Stock (Prom. 3M Proy)</p>
-                        <h3 style="color:#00235d; margin:0; font-size:1.3rem;">{meses_stock:.1f}</h3>
-                        <div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'>
-                            <span style='color:#888;'>Obj: 3.0</span>
-                            <span style='color:{color_stk}; font-weight:bold;'>{icon_stk}</span>
-                        </div>
-                    </div>
-                    <div class="metric-footer">
-                         <div style="font-size:0.6rem">Stock: ${val_stock:,.0f}</div>
-                         <div style="font-size:0.6rem">Costo Prom: ${costo_promedio_3m:,.0f}</div>
-                    </div>
-                </div>
-                """
-                with r4: st.markdown(html_stock, unsafe_allow_html=True)
+            obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
 
-            if not df_r.empty:
-                t_vb = df_r['Venta Bruta'].sum()
-                t_desc = df_r['Desc.'].sum()
-                t_vn = df_r['Venta Neta'].sum()
-                t_cost = df_r['Costo'].sum()
-                t_ut = df_r['Utilidad $'].sum()
-                t_mg = t_ut / t_vn if t_vn != 0 else 0
-                df_show = pd.concat([df_r, pd.DataFrame([{"Canal": "TOTAL OPERATIVO", "Venta Bruta": t_vb, "Desc.": t_desc, "Venta Neta": t_vn, "Costo": t_cost, "Utilidad $": t_ut, "Margen %": t_mg}])], ignore_index=True)
-                st.dataframe(df_show.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+            # --- TARJETAS GERENCIALES CON COLORES AGRESIVOS ---
+            c1, c2, c3 = st.columns(3)
             
-            c1, c2 = st.columns(2)
-            with c1: 
-                if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
-            with c2:
+            # Semáforo de Margen (Rojo si es < 21%)
+            color_mg = "#28a745" if mg_total_final >= 0.21 else "#dc3545"
+            bg_mg = "#d4edda" if mg_total_final >= 0.21 else "#f8d7da"
+
+            with c1: # VALOR STOCK TOTAL
+                st.markdown(f"""
+                    <div style="background-color: #f1f4f9; padding: 20px; border-radius: 10px; border-left: 8px solid #00235d;">
+                        <p style="color: #666; margin: 0; font-weight: bold;">VALOR STOCK TOTAL</p>
+                        <h2 style="color: #00235d; margin: 0;">${val_stock:,.0f}</h2>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with c2: # MARGEN REAL (EL SEMÁFORO)
+                st.markdown(f"""
+                    <div style="background-color: {bg_mg}; padding: 20px; border-radius: 10px; border: 2px solid {color_mg};">
+                        <p style="color: #333; margin: 0; font-weight: bold;">MARGEN GLOBAL REAL</p>
+                        <h2 style="color: {color_mg}; margin: 0;">{mg_total_final:.1%}</h2>
+                        <p style="font-size: 0.8rem; color: #666; margin: 0;">Objetivo Mínimo: 21%</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with c3: # ASISTENTE PROACTIVO
+                if mg_total_final < 0.21:
+                    falta = (vta_total_neta * 0.21) - util_total_final
+                    st.markdown(f"""
+                        <div style="background-color: #fff3cd; padding: 20px; border-radius: 10px; border-left: 8px solid #ffc107;">
+                            <p style="color: #856404; margin: 0; font-weight: bold;">ASISTENTE: NECESIDAD</p>
+                            <h3 style="color: #856404; margin: 0;">+ ${falta:,.0f}</h3>
+                            <p style="font-size: 0.75rem; color: #856404; margin: 0;">Utilidad extra para llegar al 21%</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                        <div style="background-color: #d4edda; padding: 20px; border-radius: 10px; border-left: 8px solid #28a745;">
+                            <p style="color: #155724; margin: 0; font-weight: bold;">ESTADO ESTRATÉGICO</p>
+                            <h3 style="color: #155724; margin: 0;">MÁRGEN ÓPTIMO</h3>
+                            <p style="font-size: 0.75rem; color: #155724; margin: 0;">Estrategia de precios saludable</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+            # --- TABLA DE DATOS Y GRÁFICOS ---
+            st.markdown("---")
+            if not df_r.empty:
+                st.dataframe(df_r.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+            
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación de Venta"), use_container_width=True)
+            with col_g2:
+                # Recuperamos los indicadores de salud de stock (Vivo, Obsoleto, Muerto)
                 p_vivo = float(r_r.get(find_col(data['REPUESTOS'], ["VIVO"]), 0))
                 p_obs = float(r_r.get(find_col(data['REPUESTOS'], ["OBSOLETO"]), 0))
                 p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
-                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
-            
-            st.markdown("---")
-            
-            # --- 2. CALCULADORA DE MIX IDEAL ---
+                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock Total", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+
+            # --- CALCULADORA DE MIX IDEAL (TU CÓDIGO ORIGINAL MEJORADO) ---
             st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
-            st.info("Define tu participación ideal por canal y el margen al que aspiras vender. El sistema te mostrará qué tan rentable es esa estrategia globalmente.")
-            
             col_mix_input, col_mix_res = st.columns([3, 2])
             
-            # Valores por defecto
             default_mix = {}
             default_margin = {}
             if vta_total_neta > 0:
@@ -702,108 +675,21 @@ try:
                     default_mix[row['Canal']] = (row['Venta Neta'] / vta_total_neta) * 100
                     default_margin[row['Canal']] = row['Margen %'] * 100
             
-            mix_ideal = {}
-            margin_ideal = {}
-            sum_mix = 0
-            
+            mix_ideal = {}; margin_ideal = {}; sum_mix = 0
             with col_mix_input:
                 for c in canales_repuestos:
                     val_def_mix = float(default_mix.get(c, 0.0))
                     val_def_marg = float(default_margin.get(c, 25.0))
-                    
                     c1_s, c2_s = st.columns([2, 1])
-                    with c1_s:
-                        val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
-                    with c2_s:
-                        val_marg = st.number_input(f"% Margen {c}", 0.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
-                    
-                    mix_ideal[c] = val_mix / 100
-                    margin_ideal[c] = val_marg / 100
-                    sum_mix += val_mix
-                
+                    with c1_s: val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
+                    with c2_s: val_marg = st.number_input(f"% Margen {c}", 0.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
+                    mix_ideal[c] = val_mix / 100; margin_ideal[c] = val_marg / 100; sum_mix += val_mix
+            
             with col_mix_res:
-                st.markdown(f"#### Objetivo Mensual: ${obj_rep_total:,.0f}")
-                
-                # Indicador de Suma
-                delta_sum = sum_mix - 100.0
-                color_sum = "off"
-                if abs(delta_sum) < 0.1: color_sum = "normal" # Verde por defecto en metric
-                else: color_sum = "inverse" # Rojo por defecto en error
-                
-                st.metric("Suma del Mix Total", f"{sum_mix:.1f}%", f"{delta_sum:.1f}%", delta_color=color_sum)
-                if abs(delta_sum) > 0.1:
-                    st.error(f"⚠️ El mix debe sumar 100% (Actual: {sum_mix:.1f}%)")
-                
-                # Calculo de Estrategia
-                ideal_data = []
-                total_profit_ideal = 0
-                for c, share in mix_ideal.items():
-                    target_vta = obj_rep_total * share
-                    target_marg = margin_ideal.get(c, 0)
-                    profit = target_vta * target_marg
-                    total_profit_ideal += profit
-                    ideal_data.append({"Canal": c, "Mix": share, "Venta Obj": target_vta, "Mg Ideal": target_marg, "Utilidad": profit})
-                
+                st.metric("Suma Mix", f"{sum_mix:.1f}%", f"{sum_mix-100:.1f}%", delta_color="inverse" if abs(sum_mix-100)>0.1 else "normal")
+                total_profit_ideal = sum([obj_rep_total * mix_ideal[c] * margin_ideal[c] for c in canales_repuestos])
                 global_margin_ideal = total_profit_ideal / obj_rep_total if obj_rep_total > 0 else 0
-                
-                st.markdown("#### Resultado Estratégico:")
-                st.info(f"Con esta estrategia, tu **Margen Global Promedio** sería del **{global_margin_ideal:.1%}**")
-                
-                df_ideal = pd.DataFrame(ideal_data)
-                st.dataframe(df_ideal.style.format({"Mix": "{:.1%}", "Venta Obj": "${:,.0f}", "Mg Ideal": "{:.1%}", "Utilidad": "${:,.0f}"}), hide_index=True)
-
-
-            # --- 3. SIMULADOR DE MARGEN (CON PRIMAS) ---
-            st.markdown("---")
-            st.markdown("### 🎛️ Simulador What-If (Efecto Mix + Primas)")
-
-            sim_data = []
-            if not df_r.empty:
-                for index, row in df_r.iterrows():
-                    sim_data.append({"Canal": row['Canal'], "VentaBase": row['Venta Neta'], "MargenBase": row['Margen %']})
-            else:
-                for c in canales_repuestos: sim_data.append({"Canal": c, "VentaBase": 1000000, "MargenBase": 0.25})
-
-            col_sim_inputs, col_sim_kpis = st.columns([1, 1])
-            proyecciones = []
-            
-            with col_sim_inputs:
-                st.markdown("#### 🔧 Ajuste de Proyecciones")
-                with st.expander("Desplegar Controles por Canal", expanded=True):
-                    for item in sim_data:
-                        c_name = item['Canal']
-                        base_v = float(item['VentaBase'])
-                        base_m = float(item['MargenBase'])
-                        cols_ctrl = st.columns([2, 2])
-                        with cols_ctrl[0]:
-                            new_v = st.number_input(f"Venta {c_name} ($)", value=base_v, min_value=0.0, step=100000.0, format="%.0f", key=f"sim_v_{c_name}")
-                        with cols_ctrl[1]:
-                            new_m = st.number_input(f"Margen {c_name} (%)", value=base_m * 100, min_value=0.0, max_value=100.0, step=0.5, format="%.1f", key=f"sim_m_{c_name}") / 100
-                        proyecciones.append({"Canal": c_name, "Venta Proy": new_v, "Margen % Proy": new_m, "Utilidad Proy": new_v * new_m})
-
-            df_sim = pd.DataFrame(proyecciones)
-            total_v_sim = df_sim['Venta Proy'].sum()
-            total_u_sim = df_sim['Utilidad Proy'].sum() + primas_input
-            margen_global_sim = total_u_sim / total_v_sim if total_v_sim > 0 else 0
-            
-            with col_sim_kpis:
-                st.markdown("#### 🎯 Resultado Simulado (Inc. Primas)")
-                fig_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number+delta", value = margen_global_sim * 100,
-                    domain = {'x': [0, 1], 'y': [0, 1]},
-                    title = {'text': "Margen Global Real", 'font': {'size': 20}},
-                    delta = {'reference': 21.0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-                    gauge = {'axis': {'range': [0, 40], 'tickwidth': 1}, 'bar': {'color': "#00235d"}, 'bgcolor': "white", 'steps': [{'range': [0, 18], 'color': '#dc3545'}, {'range': [18, 21], 'color': '#ffc107'}, {'range': [21, 40], 'color': 'rgba(40, 167, 69, 0.3)'}], 'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 21.0}}
-                ))
-                fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_gauge, use_container_width=True)
-                
-                k1, k2 = st.columns(2)
-                with k1: st.metric("Venta Total Proy.", f"${total_v_sim:,.0f}", f"{total_v_sim - vta_total_neta:,.0f} vs Real")
-                with k2: st.metric("Utilidad Total Proy.", f"${total_u_sim:,.0f}", f"{total_u_sim - util_total_final:,.0f} vs Real")
-                
-                st.markdown("##### Contribución de Utilidad ($)")
-                st.plotly_chart(px.bar(df_sim, x='Utilidad Proy', y='Canal', orientation='h', text_auto='.2s', color='Margen % Proy', color_continuous_scale='RdYlGn', range_color=[0.10, 0.40]).update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0)), use_container_width=True)
+                st.info(f"Con este Mix, tu Margen Global sería: **{global_margin_ideal:.1%}**")
 
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
