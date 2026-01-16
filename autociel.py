@@ -629,14 +629,14 @@ try:
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
                 
-                # Grafico de composición
+                # Gráfico de salud de stock
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 
-                # --- AQUÍ APARECE EL VALOR DEBAJO DEL GRÁFICO ---
+                # --- TARJETA AJUSTADA: Tamaño pequeño y letra estándar ---
                 st.markdown(f"""
-                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6; text-align: center;">
-                        <p style="color: #666; margin: 0; font-size: 0.9rem; font-weight: bold;">VALORACIÓN TOTAL</p>
-                        <h3 style="color: #00235d; margin: 0;">${val_stock:,.0f}</h3>
+                    <div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff;">
+                        <p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total</p>
+                        <p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p>
                     </div>
                 """, unsafe_allow_html=True)
             
