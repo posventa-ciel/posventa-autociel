@@ -595,7 +595,45 @@ try:
             # --- AJUSTE CON PRIMAS ---
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
+
+            # --- ASISTENTE DE ESTRATEGIA: EQUILIBRIO DE MIX ---
+            st.markdown("---")
+            st.subheader("🏁 Asistente de Equilibrio de Margen")
             
+            # 1. Definimos los canales según tu estrategia
+            canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
+            canales_volumen = ['MAYORISTA', 'SEGUROS', 'GARANTIA', 'GAR']
+            
+            # 2. Calculamos cuánto aportan hoy los canales de "Margen Alto"
+            vta_premium = df_r[df_r['Canal'].isin(canales_premium)]['Venta Neta'].sum()
+            util_premium = df_r[df_r['Canal'].isin(canales_premium)]['Utilidad $'].sum()
+            mg_premium = util_premium / vta_premium if vta_premium > 0 else 0
+            
+            # 3. Calculamos cuánto margen necesitamos que aporte el "Volumen" para llegar al 21% global
+            utilidad_objetivo_total = vta_total_neta * 0.21
+            # Restamos lo que ya ganamos en taller/mostrador y sumamos las primas que entran por volumen
+            margen_necesario_volumen = utilidad_objetivo_total - util_premium - primas_input
+            
+            vta_volumen = df_r[df_r['Canal'].str.contains('MAYORISTA|SEGUROS|GAR', na=False)]['Venta Neta'].sum()
+            # Este es el "Margen Crítico" que no podés perforar en Mayorista
+            margen_critico = (margen_necesario_volumen / vta_volumen) if vta_volumen > 0 else 0
+
+            # --- VISUALIZACIÓN PARA GERENCIA ---
+            col_asist1, col_asist2 = st.columns([2, 1])
+            
+            with col_asist1:
+                if mg_total_final < 0.21:
+                    st.error(f"🔴 **Alerta de Rentabilidad:** El mix actual ({mg_total_final:.1%}) no llega al objetivo.")
+                    st.write(f"Para compensar, tus canales de volumen (Mayorista/Seguros) deberían promediar un margen del **{margen_critico:.1%}** (contando las primas).")
+                else:
+                    st.success(f"🟢 **Estrategia Bajo Control:** El taller y mostrador están blindando tu rentabilidad.")
+                    st.write(f"Podés permitirte bajar el margen en Mayorista hasta un **{max(0, margen_critico):.1%}** y seguirías en el 21% global.")
+
+            with col_asist2:
+                # El número que tenés que grabarte para negociar con Mayoristas
+                st.metric("Margen Crítico Volumen", f"{margen_critico:.1%}", 
+                          help="Es el margen promedio mínimo que deben dejar Mayorista + Seguros + Primas para no perder plata frente al objetivo.")
+                
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
