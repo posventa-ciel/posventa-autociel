@@ -677,7 +677,52 @@ try:
                 # El número que tenés que grabarte para negociar con Mayoristas
                 st.metric("Margen Crítico Volumen", f"{margen_critico:.1%}", 
                           help="Es el margen promedio mínimo que deben dejar Mayorista + Seguros + Primas para no perder plata frente al objetivo.")
+
+            # --- SIMULADOR DE OPERACIÓN ESPECIAL (EL "CIERRE DE NEGOCIO") ---
+            st.markdown("### 📈 Simulador de Negocio Mayorista / Especial")
+            st.info("Usá este simulador para ver si una venta de gran volumen a bajo margen rompe tu rentabilidad del mes.")
             
+            with st.expander("Abrir Simulador de Operación", expanded=False):
+                c_sim1, c_sim2 = st.columns(2)
+                with c_sim1:
+                    monto_especial = st.number_input("Monto de la Venta Especial ($)", min_value=0.0, value=1000000.0, step=100000.0)
+                with c_sim2:
+                    margen_especial = st.slider("% Margen de la Operación (Sin Primas)", -10.0, 30.0, 5.0, 0.5) / 100
+                
+                # Cálculo del impacto
+                nueva_venta_total = vta_total_neta + monto_especial
+                # La utilidad nueva suma la actual + la de la operación + la prima que inyectes (si aplica)
+                nueva_utilidad_total = util_total_final + (monto_especial * margen_especial)
+                nuevo_margen_global = nueva_utilidad_total / nueva_venta_total if nueva_venta_total > 0 else 0
+                
+                # Visualización del impacto
+                col_res1, col_res2 = st.columns(2)
+                
+                # Color según el resultado
+                color_sim = "green" if nuevo_margen_global >= 0.21 else "red"
+                
+                with col_res1:
+                    st.metric("Nuevo Margen Global", f"{nuevo_margen_global:.1%}", 
+                              delta=f"{nuevo_margen_global - mg_total_final:.1%}",
+                              delta_color="normal" if nuevo_margen_global >= 0.21 else "inverse")
+                
+                with col_res2:
+                    dif_objetivo = nueva_utilidad_total - (nueva_venta_total * 0.21)
+                    if dif_objetivo >= 0:
+                        st.write(f"✅ **Operación Viable:** El negocio deja un excedente de **${dif_objetivo:,.0f}** sobre el objetivo del 21%.")
+                    else:
+                        st.write(f"❌ **Operación Riesgosa:** Esta venta te deja **${abs(dif_objetivo):,.0f}** por debajo del 21% global. Necesitás subir el margen o compensar con Mostrador.")
+
+                # Gráfico rápido de "Antes vs Después"
+                fig_sim = go.Figure(data=[
+                    go.Bar(name='Margen Actual', x=['Estado'], y=[mg_total_final*100], marker_color='#00235d'),
+                    go.Bar(name='Margen Post-Operación', x=['Estado'], y=[nuevo_margen_global*100], marker_color=color_sim)
+                ])
+                fig_sim.update_layout(yaxis_title="Margen %", height=250, showlegend=True, 
+                                      yaxis=dict(range=[0, max(30, nuevo_margen_global*120)]))
+                fig_sim.add_hline(y=21, line_dash="dash", line_color="red", annotation_text="Objetivo 21%")
+                st.plotly_chart(fig_sim, use_container_width=True)
+                
             # --- 2. CALCULADORA DE MIX IDEAL ---
             st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
             st.info("Define tu participación ideal por canal y el margen al que aspiras vender. El sistema te mostrará qué tan rentable es esa estrategia globalmente.")
