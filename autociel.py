@@ -814,37 +814,61 @@ try:
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             st.markdown("#### 🛠️ Servicios")
             
-            # --- MEJORA: IRPV CON MEMORIA (SESSION STATE) ---
+            elif selected_tab == "📈 Histórico":
+            st.markdown(f"### 📈 Evolución Anual {año_sel}")
+            
+            # --- MÓDULO IRPV CON MEMORIA (SESSION STATE) ---
             st.markdown("---")
             st.subheader("🔄 Fidelización (IRPV)")
+            st.info("Sube los archivos una sola vez. Los datos se mantendrán aunque cambies de pestaña.")
             
+            # 1. Inicializamos la memoria si no existe
             if 'df_irpv_cache' not in st.session_state:
                 st.session_state.df_irpv_cache = None
 
-            u1, u2 = st.columns(2)
-            up_v = u1.file_uploader("Entregas 0km", type=["csv"], key="v")
-            up_t = u2.file_uploader("Historial Taller", type=["csv"], key="t")
+            # 2. Botones de carga
+            col_up1, col_up2 = st.columns(2)
+            with col_up1:
+                up_v = st.file_uploader("Entregas 0km (CSV)", type=["csv"], key="v_irpv_memory")
+            with col_up2:
+                up_t = st.file_uploader("Historial Taller (CSV)", type=["csv"], key="t_irpv_memory")
             
+            # 3. Procesamiento (Solo si hay archivos nuevos y la memoria está vacía)
             if up_v and up_t and st.session_state.df_irpv_cache is None:
-                with st.spinner("Procesando historial..."):
+                with st.spinner("Analizando retención de clientes..."):
                     df_irpv, msg = procesar_irpv(up_v, up_t)
                     if df_irpv is not None:
                         st.session_state.df_irpv_cache = df_irpv
-                    else: st.error(msg)
-            
+                    else:
+                        st.error(msg)
+
+            # 4. Mostrar Resultados desde la Memoria
             if st.session_state.df_irpv_cache is not None:
                 df_res = st.session_state.df_irpv_cache
+                
+                # Selector de Año
                 anios_irpv = sorted(df_res.index, reverse=True)
-                sel_anio = st.selectbox("Año Cohorte:", anios_irpv)
+                sel_anio = st.selectbox("Seleccionar Año de Venta (Cohorte):", anios_irpv)
+                
+                # Métricas
                 vals = df_res.loc[sel_anio]
-                i1, i2, i3 = st.columns(3)
-                with i1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
-                with i2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
-                with i3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
-                with st.expander("Ver Datos"): st.dataframe(df_res.style.format("{:.1%}", na_rep="-"))
-                if st.button("Limpiar datos IRPV"):
+                k1, k2, k3 = st.columns(3)
+                with k1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
+                with k2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
+                with k3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
+                
+                # Tabla Expandible
+                with st.expander("Ver Matriz de Retención Completa"):
+                    st.dataframe(df_res.style.format("{:.1%}", na_rep="-"), use_container_width=True)
+                
+                # Botón de Limpieza
+                if st.button("🗑️ Borrar datos y cargar nuevos archivos"):
                     st.session_state.df_irpv_cache = None
                     st.rerun()
+            
+            st.markdown("---")
+            st.markdown("#### 📊 Análisis Histórico Mensual")
+            # (Aquí sigue el resto de tu código de gráficos históricos...)
 
             st.markdown("---")
             # --- TU CÓDIGO HISTÓRICO ORIGINAL ---
