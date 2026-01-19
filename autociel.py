@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- ESTILO CSS (Tu estilo original) ---
+# --- ESTILO CSS ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     .main { background-color: #f4f7f9; }
@@ -127,7 +127,7 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- NUEVAS FUNCIONES IRPV (Insertadas Aquí) ---
+# --- NUEVAS FUNCIONES IRPV ---
 def leer_csv_inteligente(uploaded_file):
     try:
         uploaded_file.seek(0)
@@ -235,7 +235,7 @@ def procesar_irpv(file_v, file_t):
     res.columns = ['1er', '2do', '3er']
     return res, "OK"
 
-# --- MAIN APP (Tu estructura original) ---
+# --- MAIN APP ---
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
 
 try:
@@ -456,8 +456,7 @@ try:
             st.markdown("---")
             st.markdown("### 🏆 Calidad e Incentivos de Marca")
             
-            # --- MEJORA: INCENTIVOS VISUALES (SIN AFECTAR CÁLCULOS) ---
-            # Captura de datos de Incentivos de la pestaña SERVICIOS
+            # --- MEJORA: INCENTIVOS VISUALES ---
             val_prima_p = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "PEUGEOT"], exclude_keywords=["OBJ"]), 0)
             val_prima_c = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "CITROEN"], exclude_keywords=["OBJ"]), 0)
             obj_prima_p = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "PRIMA", "PEUGEOT"]), 0)
@@ -574,7 +573,6 @@ try:
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
             
-            # --- 1. INPUT DE PRIMAS / BONOS ---
             col_primas, col_vacia = st.columns([1, 3])
             with col_primas:
                 primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
@@ -591,12 +589,10 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
-            # TOTALES
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
             
-            # --- AJUSTE CON PRIMAS ---
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             
@@ -635,7 +631,6 @@ try:
                 
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 
-                # --- MEJORA: VALOR STOCK DEBAJO DEL GRÁFICO ---
                 st.markdown(f"""
                     <div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;">
                         <p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p>
@@ -645,10 +640,8 @@ try:
             
             st.markdown("---")
             
-            # --- MEJORA: ASISTENTE DE MARGEN Y SIMULADOR ---
             st.subheader("🏁 Asistente de Equilibrio y Simulador")
             
-            # Asistente
             canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
             vta_premium = df_r[df_r['Canal'].isin(canales_premium)]['Venta Neta'].sum()
             util_premium = df_r[df_r['Canal'].isin(canales_premium)]['Utilidad $'].sum()
@@ -664,7 +657,6 @@ try:
                 else:
                     st.success(f"🟢 **OK:** Mix actual {mg_total_final:.1%}. Margen crítico volumen: **{max(0, margen_critico):.1%}**.")
 
-            # Simulador de Negocio Especial
             st.markdown("#### 📈 Simulador de Operación Especial")
             with st.expander("Abrir Simulador", expanded=True):
                 c_sim1, c_sim2 = st.columns(2)
@@ -688,13 +680,11 @@ try:
                     else:
                         st.error(f"❌ **Riesgoso:** Faltan **${abs(dif_objetivo):,.0f}** para el 21%.")
 
-            # --- 2. CALCULADORA DE MIX IDEAL (Tu código original) ---
             st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
             st.info("Define tu participación ideal por canal y el margen al que aspiras vender.")
             
             col_mix_input, col_mix_res = st.columns([3, 2])
             
-            # Valores por defecto
             default_mix = {}
             default_margin = {}
             if vta_total_neta > 0:
@@ -810,26 +800,24 @@ try:
                 if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
                 st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
 
-            elif selected_tab == "📈 Histórico":
+        elif selected_tab == "📈 Histórico":
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
+            st.markdown("#### 🛠️ Servicios")
             
             # --- MÓDULO IRPV CON MEMORIA (SESSION STATE) ---
             st.markdown("---")
             st.subheader("🔄 Fidelización (IRPV)")
             st.info("Sube los archivos una sola vez. Los datos se mantendrán aunque cambies de pestaña.")
             
-            # 1. Inicializamos la memoria si no existe
             if 'df_irpv_cache' not in st.session_state:
                 st.session_state.df_irpv_cache = None
 
-            # 2. Botones de carga
             col_up1, col_up2 = st.columns(2)
             with col_up1:
                 up_v = st.file_uploader("Entregas 0km (CSV)", type=["csv"], key="v_irpv_memory")
             with col_up2:
                 up_t = st.file_uploader("Historial Taller (CSV)", type=["csv"], key="t_irpv_memory")
             
-            # 3. Procesamiento (Solo si hay archivos nuevos y la memoria está vacía)
             if up_v and up_t and st.session_state.df_irpv_cache is None:
                 with st.spinner("Analizando retención de clientes..."):
                     df_irpv, msg = procesar_irpv(up_v, up_t)
@@ -838,36 +826,28 @@ try:
                     else:
                         st.error(msg)
 
-            # 4. Mostrar Resultados desde la Memoria
             if st.session_state.df_irpv_cache is not None:
                 df_res = st.session_state.df_irpv_cache
                 
-                # Selector de Año
                 anios_irpv = sorted(df_res.index, reverse=True)
                 sel_anio = st.selectbox("Seleccionar Año de Venta (Cohorte):", anios_irpv)
                 
-                # Métricas
                 vals = df_res.loc[sel_anio]
                 k1, k2, k3 = st.columns(3)
                 with k1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
                 with k2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
                 with k3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
                 
-                # Tabla Expandible
                 with st.expander("Ver Matriz de Retención Completa"):
                     st.dataframe(df_res.style.format("{:.1%}", na_rep="-"), use_container_width=True)
                 
-                # Botón de Limpieza
                 if st.button("🗑️ Borrar datos y cargar nuevos archivos"):
                     st.session_state.df_irpv_cache = None
                     st.rerun()
             
             st.markdown("---")
             st.markdown("#### 📊 Análisis Histórico Mensual")
-            # (Aquí sigue el resto de tu código de gráficos históricos...)
 
-            st.markdown("---")
-            # --- TU CÓDIGO HISTÓRICO ORIGINAL ---
             col_hab_hist = find_col(h_cal, ["HAB"])
             col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "EFIC"])
             if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["MECANICOS"], exclude_keywords=["PROD"])
