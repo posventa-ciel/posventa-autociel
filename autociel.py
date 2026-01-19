@@ -506,7 +506,56 @@ try:
                 c_row = st.columns(2)
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
+
+            # --- SECCIÓN: CALIDAD E INCENTIVOS (SOLO INFORMATIVO) ---
+            st.markdown("---")
+            st.markdown("### 🏆 Calidad e Incentivos de Marca")
             
+            # Captura de datos de Incentivos de la pestaña SERVICIOS
+            # W = Prima Peugeot, X = Prima Citroën (Columnas del Sheet)
+            val_prima_p = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "PEUGEOT"], exclude_keywords=["OBJ"]), 0)
+            val_prima_c = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "CITROEN"], exclude_keywords=["OBJ"]), 0)
+            
+            # U = Obj Prima P, V = Obj Prima C
+            obj_prima_p = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "PRIMA", "PEUGEOT"]), 0)
+            obj_prima_c = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "PRIMA", "CITROEN"]), 0)
+
+            c_peugeot, c_citroen = st.columns(2)
+            
+            with c_peugeot:
+                st.markdown("#### 🦁 Peugeot")
+                # Tus indicadores actuales de calidad
+                st.markdown(render_kpi_small("NPS", nps_p_r, nps_p_p, None, None, fmt_nps, label_target="Obj"), unsafe_allow_html=True)
+                p_row = st.columns(2)
+                with p_row[0]: st.markdown(render_kpi_small("Videocheck", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
+                with p_row[1]: st.markdown(render_kpi_small("Forfait", ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff), unsafe_allow_html=True)
+                
+                # Tarjeta de Incentivo (Solo visual, no suma a la facturación)
+                st.markdown(f"""
+                    <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
+                        <p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Peugeot</p>
+                        <p style="margin: 0; color: #28a745; font-size: 1.1rem; font-weight: bold;">${val_prima_p:,.0f}</p>
+                        <p style="margin: 0; color: #999; font-size: 0.65rem;">Techo de Meta: ${obj_prima_p:,.0f}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with c_citroen:
+                st.markdown("#### 🔴 Citroën")
+                # Tus indicadores actuales de calidad
+                st.markdown(render_kpi_small("NPS", nps_c_r, nps_c_p, None, None, fmt_nps, label_target="Obj"), unsafe_allow_html=True)
+                c_row = st.columns(2)
+                with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
+                with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
+                
+                # Tarjeta de Incentivo (Solo visual, no suma a la facturación)
+                st.markdown(f"""
+                    <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
+                        <p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Citroën</p>
+                        <p style="margin: 0; color: #28a745; font-size: 1.1rem; font-weight: bold;">${val_prima_c:,.0f}</p>
+                        <p style="margin: 0; color: #999; font-size: 0.65rem;">Techo de Meta: ${obj_prima_c:,.0f}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                
             st.markdown("---")
             st.markdown("### ⚙️ Taller")
             # --- TALLER LOGIC ---
