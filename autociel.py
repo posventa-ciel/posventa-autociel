@@ -452,10 +452,17 @@ try:
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, None, None, "{:.2f} hs"), unsafe_allow_html=True)
             with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, None, None, "${:,.0f}"), unsafe_allow_html=True)
 
-            # --- SECCIÓN: CALIDAD Y REQUERIMIENTOS ---
+            # --- SECCIÓN: CALIDAD E INCENTIVOS ---
             st.markdown("---")
-            st.markdown("### 🏆 Calidad y Requerimientos de Marca")
+            st.markdown("### 🏆 Calidad e Incentivos de Marca")
             
+            # --- MEJORA: INCENTIVOS VISUALES (SIN AFECTAR CÁLCULOS) ---
+            # Captura de datos de Incentivos de la pestaña SERVICIOS
+            val_prima_p = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "PEUGEOT"], exclude_keywords=["OBJ"]), 0)
+            val_prima_c = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "CITROEN"], exclude_keywords=["OBJ"]), 0)
+            obj_prima_p = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "PRIMA", "PEUGEOT"]), 0)
+            obj_prima_c = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "PRIMA", "CITROEN"]), 0)
+
             def get_calidad_data(keyword_main, brand, is_percent=False, prorate_target=False):
                 c_real = find_col(data['SERVICIOS'], [keyword_main, brand], exclude_keywords=["OBJ"])
                 c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
@@ -467,7 +474,6 @@ try:
                 else: val_obj_mensual = 0
                 
                 val_proyeccion = val_real / prog_t if prog_t > 0 else 0
-
                 if prorate_target: val_obj_parcial = val_obj_mensual * prog_t
                 else:
                     val_obj_parcial = val_obj_mensual
@@ -493,12 +499,22 @@ try:
             ff_c_r, ff_c_p, ff_c_m, ff_c_proy, _ = get_calidad_data("FORFAIT", "CITROEN", is_percent=False, prorate_target=True)
 
             c_peugeot, c_citroen = st.columns(2)
+            
             with c_peugeot:
                 st.markdown("#### 🦁 Peugeot")
                 st.markdown(render_kpi_small("NPS", nps_p_r, nps_p_p, None, None, fmt_nps, label_target="Obj"), unsafe_allow_html=True)
                 p_row = st.columns(2)
                 with p_row[0]: st.markdown(render_kpi_small("Videocheck", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
                 with p_row[1]: st.markdown(render_kpi_small("Forfait", ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff), unsafe_allow_html=True)
+                
+                # Tarjeta de Incentivo
+                st.markdown(f"""
+                    <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
+                        <p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Peugeot</p>
+                        <p style="margin: 0; color: #28a745; font-size: 1.1rem; font-weight: bold;">${val_prima_p:,.0f}</p>
+                        <p style="margin: 0; color: #999; font-size: 0.65rem;">Techo de Meta: ${obj_prima_p:,.0f}</p>
+                    </div>
+                """, unsafe_allow_html=True)
 
             with c_citroen:
                 st.markdown("#### 🔴 Citroën")
@@ -506,6 +522,15 @@ try:
                 c_row = st.columns(2)
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
+                
+                # Tarjeta de Incentivo
+                st.markdown(f"""
+                    <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
+                        <p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Citroën</p>
+                        <p style="margin: 0; color: #28a745; font-size: 1.1rem; font-weight: bold;">${val_prima_c:,.0f}</p>
+                        <p style="margin: 0; color: #999; font-size: 0.65rem;">Techo de Meta: ${obj_prima_c:,.0f}</p>
+                    </div>
+                """, unsafe_allow_html=True)
             
             st.markdown("---")
             st.markdown("### ⚙️ Taller")
@@ -544,27 +569,6 @@ try:
             g1, g2 = st.columns(2)
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
-
-            # --- NUEVA SECCION: IRPV ---
-            st.markdown("---")
-            st.subheader("🔄 Fidelización (IRPV)")
-            st.info("Sube archivos CSV (UTF-8) para analizar la retención.")
-            
-            up_v = st.file_uploader("Entregas 0km", type=["csv"], key="v")
-            up_t = st.file_uploader("Historial Taller", type=["csv"], key="t")
-            
-            if up_v and up_t:
-                df_irpv, msg = procesar_irpv(up_v, up_t)
-                if df_irpv is not None:
-                    anios_irpv = sorted(df_irpv.index, reverse=True)
-                    sel_anio = st.selectbox("Año Cohorte:", anios_irpv)
-                    vals = df_irpv.loc[sel_anio]
-                    i1, i2, i3 = st.columns(3)
-                    with i1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
-                    with i2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
-                    with i3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
-                    with st.expander("Ver Datos"): st.dataframe(df_irpv.style.format("{:.1%}", na_rep="-"))
-                else: st.error(msg)
 
 
         elif selected_tab == "📦 Repuestos":
@@ -628,13 +632,65 @@ try:
                 p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
                 f = 1 if p_vivo <= 1 else 100
                 df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
-                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+                
+                st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+                
+                # --- MEJORA: VALOR STOCK DEBAJO DEL GRÁFICO ---
+                st.markdown(f"""
+                    <div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;">
+                        <p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p>
+                        <p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p>
+                    </div>
+                """, unsafe_allow_html=True)
             
             st.markdown("---")
             
-            # --- 2. CALCULADORA DE MIX IDEAL ---
+            # --- MEJORA: ASISTENTE DE MARGEN Y SIMULADOR ---
+            st.subheader("🏁 Asistente de Equilibrio y Simulador")
+            
+            # Asistente
+            canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
+            vta_premium = df_r[df_r['Canal'].isin(canales_premium)]['Venta Neta'].sum()
+            util_premium = df_r[df_r['Canal'].isin(canales_premium)]['Utilidad $'].sum()
+            utilidad_objetivo_total = vta_total_neta * 0.21
+            margen_necesario_volumen = utilidad_objetivo_total - util_premium - primas_input
+            vta_volumen = df_r[df_r['Canal'].str.contains('MAYORISTA|SEGUROS|GAR', na=False)]['Venta Neta'].sum()
+            margen_critico = (margen_necesario_volumen / vta_volumen) if vta_volumen > 0 else 0
+            
+            col_asist1, col_asist2 = st.columns([2, 1])
+            with col_asist1:
+                if mg_total_final < 0.21:
+                    st.error(f"🔴 **Alerta:** Mix actual {mg_total_final:.1%}. Canales volumen necesitan marginar **{margen_critico:.1%}**.")
+                else:
+                    st.success(f"🟢 **OK:** Mix actual {mg_total_final:.1%}. Margen crítico volumen: **{max(0, margen_critico):.1%}**.")
+
+            # Simulador de Negocio Especial
+            st.markdown("#### 📈 Simulador de Operación Especial")
+            with st.expander("Abrir Simulador", expanded=True):
+                c_sim1, c_sim2 = st.columns(2)
+                with c_sim1:
+                    monto_especial = st.number_input("Monto Venta ($)", min_value=0.0, value=50000000.0, step=1000000.0)
+                with c_sim2:
+                    margen_especial = st.slider("% Margen Operación", -10.0, 30.0, 10.0, 0.5) / 100
+                
+                nueva_venta_total = vta_total_neta + monto_especial
+                nueva_utilidad_total = util_total_final + (monto_especial * margen_especial)
+                nuevo_margen_global = nueva_utilidad_total / nueva_venta_total if nueva_venta_total > 0 else 0
+                
+                col_res1, col_res2 = st.columns(2)
+                with col_res1:
+                    puntos_dif = (nuevo_margen_global - mg_total_final) * 100
+                    st.metric("Nuevo Margen Global", f"{nuevo_margen_global:.1%}", delta=f"{puntos_dif:.1f} pts vs actual")
+                with col_res2:
+                    dif_objetivo = nueva_utilidad_total - (nueva_venta_total * 0.21)
+                    if nuevo_margen_global >= 0.21:
+                        st.success(f"✅ **Viable:** Sobran **${dif_objetivo:,.0f}** sobre el 21%.")
+                    else:
+                        st.error(f"❌ **Riesgoso:** Faltan **${abs(dif_objetivo):,.0f}** para el 21%.")
+
+            # --- 2. CALCULADORA DE MIX IDEAL (Tu código original) ---
             st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
-            st.info("Define tu participación ideal por canal y el margen al que aspiras vender. El sistema te mostrará qué tan rentable es esa estrategia globalmente.")
+            st.info("Define tu participación ideal por canal y el margen al que aspiras vender.")
             
             col_mix_input, col_mix_res = st.columns([3, 2])
             
@@ -654,31 +710,23 @@ try:
                 for c in canales_repuestos:
                     val_def_mix = float(default_mix.get(c, 0.0))
                     val_def_marg = float(default_margin.get(c, 25.0))
-                    
                     c1_s, c2_s = st.columns([2, 1])
-                    with c1_s:
-                        val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
-                    with c2_s:
-                        val_marg = st.number_input(f"% Margen {c}", 0.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
-                    
+                    with c1_s: val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
+                    with c2_s: val_marg = st.number_input(f"% Margen {c}", 0.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
                     mix_ideal[c] = val_mix / 100
                     margin_ideal[c] = val_marg / 100
                     sum_mix += val_mix
                 
             with col_mix_res:
                 st.markdown(f"#### Objetivo Mensual: ${obj_rep_total:,.0f}")
-                
-                # Indicador de Suma
                 delta_sum = sum_mix - 100.0
                 color_sum = "off"
-                if abs(delta_sum) < 0.1: color_sum = "normal" # Verde por defecto en metric
-                else: color_sum = "inverse" # Rojo por defecto en error
+                if abs(delta_sum) < 0.1: color_sum = "normal"
+                else: color_sum = "inverse"
                 
                 st.metric("Suma del Mix Total", f"{sum_mix:.1f}%", f"{delta_sum:.1f}%", delta_color=color_sum)
-                if abs(delta_sum) > 0.1:
-                    st.error(f"⚠️ El mix debe sumar 100% (Actual: {sum_mix:.1f}%)")
+                if abs(delta_sum) > 0.1: st.error(f"⚠️ El mix debe sumar 100%")
                 
-                # Calculo de Estrategia
                 ideal_data = []
                 total_profit_ideal = 0
                 for c, share in mix_ideal.items():
@@ -689,65 +737,8 @@ try:
                     ideal_data.append({"Canal": c, "Mix": share, "Venta Obj": target_vta, "Mg Ideal": target_marg, "Utilidad": profit})
                 
                 global_margin_ideal = total_profit_ideal / obj_rep_total if obj_rep_total > 0 else 0
-                
                 st.markdown("#### Resultado Estratégico:")
-                st.info(f"Con esta estrategia, tu **Margen Global Promedio** sería del **{global_margin_ideal:.1%}**")
-                
-                df_ideal = pd.DataFrame(ideal_data)
-                st.dataframe(df_ideal.style.format({"Mix": "{:.1%}", "Venta Obj": "${:,.0f}", "Mg Ideal": "{:.1%}", "Utilidad": "${:,.0f}"}), hide_index=True)
-
-
-            # --- 3. SIMULADOR DE MARGEN (CON PRIMAS) ---
-            st.markdown("---")
-            st.markdown("### 🎛️ Simulador What-If (Efecto Mix + Primas)")
-
-            sim_data = []
-            if not df_r.empty:
-                for index, row in df_r.iterrows():
-                    sim_data.append({"Canal": row['Canal'], "VentaBase": row['Venta Neta'], "MargenBase": row['Margen %']})
-            else:
-                for c in canales_repuestos: sim_data.append({"Canal": c, "VentaBase": 1000000, "MargenBase": 0.25})
-
-            col_sim_inputs, col_sim_kpis = st.columns([1, 1])
-            proyecciones = []
-            
-            with col_sim_inputs:
-                st.markdown("#### 🔧 Ajuste de Proyecciones")
-                with st.expander("Desplegar Controles por Canal", expanded=True):
-                    for item in sim_data:
-                        c_name = item['Canal']
-                        base_v = float(item['VentaBase'])
-                        base_m = float(item['MargenBase'])
-                        cols_ctrl = st.columns([2, 2])
-                        with cols_ctrl[0]:
-                            new_v = st.number_input(f"Venta {c_name} ($)", value=base_v, min_value=0.0, step=100000.0, format="%.0f", key=f"sim_v_{c_name}")
-                        with cols_ctrl[1]:
-                            new_m = st.number_input(f"Margen {c_name} (%)", value=base_m * 100, min_value=0.0, max_value=100.0, step=0.5, format="%.1f", key=f"sim_m_{c_name}") / 100
-                        proyecciones.append({"Canal": c_name, "Venta Proy": new_v, "Margen % Proy": new_m, "Utilidad Proy": new_v * new_m})
-
-            df_sim = pd.DataFrame(proyecciones)
-            total_v_sim = df_sim['Venta Proy'].sum()
-            total_u_sim = df_sim['Utilidad Proy'].sum() + primas_input
-            margen_global_sim = total_u_sim / total_v_sim if total_v_sim > 0 else 0
-            
-            with col_sim_kpis:
-                st.markdown("#### 🎯 Resultado Simulado (Inc. Primas)")
-                fig_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number+delta", value = margen_global_sim * 100,
-                    domain = {'x': [0, 1], 'y': [0, 1]},
-                    title = {'text': "Margen Global Real", 'font': {'size': 20}},
-                    delta = {'reference': 21.0, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
-                    gauge = {'axis': {'range': [0, 40], 'tickwidth': 1}, 'bar': {'color': "#00235d"}, 'bgcolor': "white", 'steps': [{'range': [0, 18], 'color': '#dc3545'}, {'range': [18, 21], 'color': '#ffc107'}, {'range': [21, 40], 'color': 'rgba(40, 167, 69, 0.3)'}], 'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 21.0}}
-                ))
-                fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_gauge, use_container_width=True)
-                
-                k1, k2 = st.columns(2)
-                with k1: st.metric("Venta Total Proy.", f"${total_v_sim:,.0f}", f"{total_v_sim - vta_total_neta:,.0f} vs Real")
-                with k2: st.metric("Utilidad Total Proy.", f"${total_u_sim:,.0f}", f"{total_u_sim - util_total_final:,.0f} vs Real")
-                
-                st.markdown("##### Contribución de Utilidad ($)")
-                st.plotly_chart(px.bar(df_sim, x='Utilidad Proy', y='Canal', orientation='h', text_auto='.2s', color='Margen % Proy', color_continuous_scale='RdYlGn', range_color=[0.10, 0.40]).update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0)), use_container_width=True)
+                st.info(f"Con esta estrategia, tu **Margen Global** sería del **{global_margin_ideal:.1%}**")
 
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
@@ -823,6 +814,40 @@ try:
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             st.markdown("#### 🛠️ Servicios")
             
+            # --- MEJORA: IRPV CON MEMORIA (SESSION STATE) ---
+            st.markdown("---")
+            st.subheader("🔄 Fidelización (IRPV)")
+            
+            if 'df_irpv_cache' not in st.session_state:
+                st.session_state.df_irpv_cache = None
+
+            u1, u2 = st.columns(2)
+            up_v = u1.file_uploader("Entregas 0km", type=["csv"], key="v")
+            up_t = u2.file_uploader("Historial Taller", type=["csv"], key="t")
+            
+            if up_v and up_t and st.session_state.df_irpv_cache is None:
+                with st.spinner("Procesando historial..."):
+                    df_irpv, msg = procesar_irpv(up_v, up_t)
+                    if df_irpv is not None:
+                        st.session_state.df_irpv_cache = df_irpv
+                    else: st.error(msg)
+            
+            if st.session_state.df_irpv_cache is not None:
+                df_res = st.session_state.df_irpv_cache
+                anios_irpv = sorted(df_res.index, reverse=True)
+                sel_anio = st.selectbox("Año Cohorte:", anios_irpv)
+                vals = df_res.loc[sel_anio]
+                i1, i2, i3 = st.columns(3)
+                with i1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
+                with i2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
+                with i3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
+                with st.expander("Ver Datos"): st.dataframe(df_res.style.format("{:.1%}", na_rep="-"))
+                if st.button("Limpiar datos IRPV"):
+                    st.session_state.df_irpv_cache = None
+                    st.rerun()
+
+            st.markdown("---")
+            # --- TU CÓDIGO HISTÓRICO ORIGINAL ---
             col_hab_hist = find_col(h_cal, ["HAB"])
             col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "EFIC"])
             if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["MECANICOS"], exclude_keywords=["PROD"])
@@ -844,7 +869,7 @@ try:
                 fig_cap.add_trace(go.Scatter(x=df_capacidad['NombreMes'], y=df_capacidad['Hs Ideales'], name='Ideal (Teórico)', line=dict(color='gray', dash='dash')))
                 fig_cap.add_trace(go.Bar(x=df_capacidad['NombreMes'], y=df_capacidad['Hs Reales'], name='Presencia Real', marker_color='#00235d'))
                 fig_cap.add_trace(go.Bar(x=df_capacidad['NombreMes'], y=df_capacidad['Hs Ocupadas'], name='Hs Ocupadas', marker_color='#28a745'))
-                st.plotly_chart(fig_cap.update_layout(title="Análisis de Capacidad: Ideal vs Real vs Ocupación", barmode='group', height=350), use_container_width=True)
+                st.plotly_chart(fig_cap.update_layout(title="Análisis de Capacidad", barmode='group', height=350), use_container_width=True)
             
             col_prod = find_col(h_tal, ["PRODUCTIVIDAD", "TALLER"])
             h_tal['Productividad'] = h_tal[col_prod].apply(lambda x: x/100 if x > 2 else x) if col_prod else 0
@@ -868,7 +893,6 @@ try:
                 h_ser_tal['Ticket Hs'] = h_ser_tal.apply(lambda row: row['Hs Vendidas'] / row[col_cpus] if row[col_cpus] > 0 else 0, axis=1)
                 c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
 
-            st.markdown("---")
             st.markdown("#### 📦 Repuestos")
             col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
             fig_stk = go.Figure()
