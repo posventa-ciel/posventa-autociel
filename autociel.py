@@ -581,25 +581,49 @@ try:
 
             # --- NUEVA SECCION: IRPV ---
             st.markdown("---")
-            st.subheader("🔄 Fidelización (IRPV)")
-            st.info("Sube archivos CSV (UTF-8) para analizar la retención.")
-            
-            up_v = st.file_uploader("Entregas 0km", type=["csv"], key="v")
-            up_t = st.file_uploader("Historial Taller", type=["csv"], key="t")
-            
-            if up_v and up_t:
-                df_irpv, msg = procesar_irpv(up_v, up_t)
-                if df_irpv is not None:
-                    anios_irpv = sorted(df_irpv.index, reverse=True)
-                    sel_anio = st.selectbox("Año Cohorte:", anios_irpv)
-                    vals = df_irpv.loc[sel_anio]
-                    i1, i2, i3 = st.columns(3)
-                    with i1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
-                    with i2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
-                    with i3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
-                    with st.expander("Ver Datos"): st.dataframe(df_irpv.style.format("{:.1%}", na_rep="-"))
-                else: st.error(msg)
+    st.subheader("🔄 Fidelización (IRPV)")
+    st.info("Sube los archivos una sola vez. Los datos se mantendrán aunque navegues por otras pestañas.")
+    
+    # 1. Creamos la memoria si no existe
+    if 'df_irpv_cache' not in st.session_state:
+        st.session_state.df_irpv_cache = None
 
+    col_up1, col_up2 = st.columns(2)
+    with col_up1:
+        up_v = st.file_uploader("Entregas 0km (CSV)", type=["csv"], key="up_v")
+    with col_up2:
+        up_t = st.file_uploader("Historial Taller (CSV)", type=["csv"], key="up_t")
+    
+    # Si hay archivos nuevos y el cache está vacío, procesamos
+    if up_v and up_t and st.session_state.df_irpv_cache is None:
+        with st.spinner("Analizando retención..."):
+            df_irpv, msg = procesar_irpv(up_v, up_t)
+            if df_irpv is not None:
+                st.session_state.df_irpv_cache = df_irpv
+            else:
+                st.error(msg)
+
+    # Si ya tenemos datos en la memoria (cache), los mostramos
+    if st.session_state.df_irpv_cache is not None:
+        df_res = st.session_state.df_irpv_cache
+        
+        # Selectores y métricas (esto es lo que ya tenías, pero con memoria)
+        anios_irpv = sorted(df_res.index, reverse=True)
+        sel_anio = st.selectbox("Seleccionar Año de Venta (Cohorte):", anios_irpv)
+        
+        vals = df_res.loc[sel_anio]
+        i1, i2, i3 = st.columns(3)
+        with i1: st.metric("1er Service", f"{vals['1er']:.1%}", "Obj: 80%")
+        with i2: st.metric("2do Service", f"{vals['2do']:.1%}", "Obj: 60%")
+        with i3: st.metric("3er Service", f"{vals['3er']:.1%}", "Obj: 40%")
+        
+        with st.expander("Ver Cuadro de Retención Completo"):
+            st.dataframe(df_res.style.format("{:.1%}", na_rep="-"), use_container_width=True)
+        
+        # Botón para resetear si querés cargar otros archivos
+        if st.button("🗑️ Borrar datos y cargar archivos nuevos"):
+            st.session_state.df_irpv_cache = None
+            st.rerun()
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
