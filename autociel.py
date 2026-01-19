@@ -810,10 +810,6 @@ try:
                 if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
                 st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
 
-        elif selected_tab == "📈 Histórico":
-            st.markdown(f"### 📈 Evolución Anual {año_sel}")
-            st.markdown("#### 🛠️ Servicios")
-            
             elif selected_tab == "📈 Histórico":
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             
