@@ -8,7 +8,7 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
-# --- 1. CONFIGURACIÓN Y MAPEOS (LO NUEVO) ---
+# --- 1. CONFIGURACIÓN Y MAPEOS ---
 # Diccionario para convertir el número de "Rec" en Nombre Real
 ASESORES_MAP = {
     1: "Claudio Molina", 3: "Belen Juarez", 4: "Fatima Polli", 8: "Daniel Espin",
@@ -491,68 +491,7 @@ try:
 
         elif selected_tab == "🛠️ Servicios y Taller":
             
-            # --- MÓDULO WIP (ÓRDENES ABIERTAS) ---
-            st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
-            if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
-            
-            with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
-                st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.xls' (formato CSV).")
-                up_wip = st.file_uploader("Cargar Reporte", type=["csv"])
-                if up_wip:
-                    df_wip, msg_wip = procesar_wip(up_wip)
-                    if df_wip is not None:
-                        st.session_state.df_wip_cache = df_wip
-                        st.success(f"Reporte cargado: {len(df_wip)} registros procesados.")
-                    else:
-                        st.error(f"Error: {msg_wip}")
-            
-            if st.session_state.df_wip_cache is not None:
-                df_w = st.session_state.df_wip_cache
-                
-                # CÁLCULOS
-                total_plata_wip = df_w['Saldo'].sum()
-                # Contamos Autos únicos por Taller
-                df_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']
-                df_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']
-                
-                autos_totales_unicos = df_w['Identificador'].nunique()
-                
-                autos_mec = df_mec['Identificador'].nunique()
-                plata_mec = df_mec['Saldo'].sum()
-                
-                autos_cyp = df_cyp['Identificador'].nunique()
-                plata_cyp = df_cyp['Saldo'].sum()
-
-                # TARJETAS
-                kw1, kw2, kw3, kw4 = st.columns(4)
-                with kw1: st.metric("Total Dinero Abierto", f"${total_plata_wip:,.0f}")
-                with kw2: st.metric("Total Autos Físicos", f"{autos_totales_unicos}", help="Cantidad de patentes/chasis únicos en el predio")
-                with kw3: st.metric("Mecánica (Autos/$)", f"{autos_mec} / ${plata_mec:,.0f}")
-                with kw4: st.metric("CyP (Autos/$)", f"{autos_cyp} / ${plata_cyp:,.0f}")
-                
-                # GRÁFICO DE BARRAS POR ASESOR
-                st.markdown("##### 👥 Saldo Abierto por Asesor")
-                
-                # Agrupamos por Asesor: Sumamos plata y contamos Autos ÚNICOS para ese asesor
-                df_asesor = df_w.groupby('Nombre_Asesor').agg(
-                    Dinero=('Saldo', 'sum'),
-                    Autos=('Identificador', 'nunique')
-                ).reset_index().sort_values('Dinero', ascending=False)
-                
-                # Gráfico
-                fig_wip = px.bar(df_asesor, x='Nombre_Asesor', y='Dinero', text='Autos',
-                                title="Dinero Pendiente por Asesor (Etiqueta = Cant. Autos)",
-                                color='Dinero', color_continuous_scale='Blues')
-                fig_wip.update_traces(texttemplate='%{text} 🚘', textposition='outside')
-                fig_wip.update_layout(height=400, xaxis_title="", yaxis_title="Monto ($)")
-                st.plotly_chart(fig_wip, use_container_width=True)
-                
-                # Tabla detalle
-                with st.expander("Ver Detalle de Autos"):
-                    st.dataframe(df_w[['Ref.OR', 'Fecha_dt', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']].style.format({'Saldo': "${:,.2f}"}), use_container_width=True)
-                
-                st.markdown("---")
-
+            # --- 1. FACTURACIÓN Y KPIS (LO PRIMERO QUE SE VE) ---
             col_main, col_breakdown = st.columns([1, 2])
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
             
@@ -701,6 +640,66 @@ try:
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
+            # --- MÓDULO WIP (ÓRDENES ABIERTAS) - AHORA AL FINAL ---
+            st.markdown("---")
+            st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
+            if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
+            
+            with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
+                st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.xls' (formato CSV).")
+                up_wip = st.file_uploader("Cargar Reporte", type=["csv"])
+                if up_wip:
+                    df_wip, msg_wip = procesar_wip(up_wip)
+                    if df_wip is not None:
+                        st.session_state.df_wip_cache = df_wip
+                        st.success(f"Reporte cargado: {len(df_wip)} registros procesados.")
+                    else:
+                        st.error(f"Error: {msg_wip}")
+            
+            if st.session_state.df_wip_cache is not None:
+                df_w = st.session_state.df_wip_cache
+                
+                # CÁLCULOS
+                total_plata_wip = df_w['Saldo'].sum()
+                # Contamos Autos únicos por Taller
+                df_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']
+                df_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']
+                
+                autos_totales_unicos = df_w['Identificador'].nunique()
+                
+                autos_mec = df_mec['Identificador'].nunique()
+                plata_mec = df_mec['Saldo'].sum()
+                
+                autos_cyp = df_cyp['Identificador'].nunique()
+                plata_cyp = df_cyp['Saldo'].sum()
+
+                # TARJETAS
+                kw1, kw2, kw3, kw4 = st.columns(4)
+                with kw1: st.metric("Total Dinero Abierto", f"${total_plata_wip:,.0f}")
+                with kw2: st.metric("Total Autos Físicos", f"{autos_totales_unicos}", help="Cantidad de patentes/chasis únicos en el predio")
+                with kw3: st.metric("Mecánica (Autos/$)", f"{autos_mec} / ${plata_mec:,.0f}")
+                with kw4: st.metric("CyP (Autos/$)", f"{autos_cyp} / ${plata_cyp:,.0f}")
+                
+                # GRÁFICO DE BARRAS POR ASESOR
+                st.markdown("##### 👥 Saldo Abierto por Asesor")
+                
+                # Agrupamos por Asesor: Sumamos plata y contamos Autos ÚNICOS para ese asesor
+                df_asesor = df_w.groupby('Nombre_Asesor').agg(
+                    Dinero=('Saldo', 'sum'),
+                    Autos=('Identificador', 'nunique')
+                ).reset_index().sort_values('Dinero', ascending=False)
+                
+                # Gráfico
+                fig_wip = px.bar(df_asesor, x='Nombre_Asesor', y='Dinero', text='Autos',
+                                title="Dinero Pendiente por Asesor (Etiqueta = Cant. Autos)",
+                                color='Dinero', color_continuous_scale='Blues')
+                fig_wip.update_traces(texttemplate='%{text} 🚘', textposition='outside')
+                fig_wip.update_layout(height=400, xaxis_title="", yaxis_title="Monto ($)")
+                st.plotly_chart(fig_wip, use_container_width=True)
+                
+                # Tabla detalle
+                with st.expander("Ver Detalle de Autos"):
+                    st.dataframe(df_w[['Ref.OR', 'Fecha_dt', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']].style.format({'Saldo': "${:,.2f}"}), use_container_width=True)
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
