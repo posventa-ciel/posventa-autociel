@@ -660,7 +660,7 @@ try:
             
             with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
                 st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.xls' (formato CSV).")
-                up_wip = st.file_uploader("Cargar Reporte", type=["csv"])
+                up_wip = st.file_uploader("Cargar Reporte", type=["csv", "xls", "xlsx"])
                 if up_wip:
                     df_wip, msg_wip = procesar_wip(up_wip)
                     if df_wip is not None:
