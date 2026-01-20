@@ -711,69 +711,93 @@ try:
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
-            # --- MÓDULO WIP (ÓRDENES ABIERTAS) - AHORA AL FINAL ---
+            # --- MÓDULO WIP (ÓRDENES ABIERTAS) ---
+        st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
+        if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
+        
+        with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
+            st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.csv' (o Excel).")
+            up_wip = st.file_uploader("Cargar Reporte", type=["csv", "xls", "xlsx"])
+            if up_wip:
+                df_wip, msg_wip = procesar_wip(up_wip)
+                if df_wip is not None:
+                    st.session_state.df_wip_cache = df_wip
+                    st.success(f"Reporte cargado: {len(df_wip)} registros procesados.")
+                else:
+                    st.error(f"Error: {msg_wip}")
+        
+        if st.session_state.df_wip_cache is not None:
+            df_w = st.session_state.df_wip_cache
+            
+            # --- FILTROS DE INTERACCIÓN ---
+            lista_asesores = sorted(df_w['Nombre_Asesor'].unique().tolist())
+            col_filtro, col_metricas_mini = st.columns([1, 3])
+            
+            with col_filtro:
+                asesor_seleccionado = st.selectbox("👤 Filtrar por Asesor:", ["Todos"] + lista_asesores)
+            
+            # Aplicamos filtro al Dataframe para la TABLA (El gráfico global se mantiene para comparar)
+            if asesor_seleccionado != "Todos":
+                df_filtrado = df_w[df_w['Nombre_Asesor'] == asesor_seleccionado]
+            else:
+                df_filtrado = df_w
+
+            # CÁLCULOS GENERALES (Siempre sobre el total para los KPIs de arriba)
+            total_plata_wip = df_w['Saldo'].sum()
+            autos_totales_unicos = df_w['Identificador'].nunique()
+            
+            autos_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']['Identificador'].nunique()
+            plata_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']['Saldo'].sum()
+            
+            autos_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']['Identificador'].nunique()
+            plata_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']['Saldo'].sum()
+
+            # TARJETAS KPI
+            kw1, kw2, kw3, kw4 = st.columns(4)
+            with kw1: st.metric("Total Dinero Abierto", f"${total_plata_wip:,.0f}")
+            with kw2: st.metric("Total Autos Físicos", f"{autos_totales_unicos}", help="Cantidad de patentes/chasis únicos en el predio")
+            with kw3: st.metric("Mecánica (Autos/$)", f"{autos_mec} / ${plata_mec:,.0f}")
+            with kw4: st.metric("CyP (Autos/$)", f"{autos_cyp} / ${plata_cyp:,.0f}")
+            
+            # --- GRÁFICO HORIZONTAL (MEJORADO) ---
+            st.markdown("##### 👥 Saldo Abierto por Asesor")
+            
+            # Agrupamos
+            df_asesor = df_w.groupby('Nombre_Asesor').agg(
+                Dinero=('Saldo', 'sum'),
+                Autos=('Identificador', 'nunique')
+            ).reset_index().sort_values('Dinero', ascending=True) # Ascending true para que el mayor salga arriba en horizontal bar
+            
+            # Creamos etiqueta combinada para que se lea fácil
+            df_asesor['Etiqueta'] = df_asesor.apply(lambda x: f"{x['Autos']} autos (${x['Dinero']/1000:.0f}k)", axis=1)
+
+            # Gráfico Horizontal
+            fig_wip = px.bar(df_asesor, x='Dinero', y='Nombre_Asesor', text='Etiqueta',
+                             orientation='h', # <--- CLAVE: HORIZONTAL
+                             title="Ranking de Saldo Pendiente (Dinero)",
+                             color='Dinero', color_continuous_scale='Blues')
+            
+            fig_wip.update_traces(textposition='outside') # Texto afuera para que se lea siempre
+            fig_wip.update_layout(height=500, xaxis_title="Monto ($)", yaxis_title="")
+            st.plotly_chart(fig_wip, use_container_width=True)
+            
+            # --- TABLA DETALLE FILTRADA ---
+            st.markdown(f"##### 📋 Detalle de Autos: {asesor_seleccionado}")
+            
+            # Seleccionamos columnas útiles y formateamos la fecha
+            cols_ver = ['Ref.OR', 'Fecha_Alta', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']
+            # Aseguramos que existan (por si el excel cambia un poco)
+            cols_finales = [c for c in cols_ver if c in df_filtrado.columns]
+            
+            st.dataframe(
+                df_filtrado[cols_finales].style.format({
+                    'Saldo': "${:,.2f}",
+                    'Fecha_Alta': '{:%d-%m-%Y}' # Formato fecha limpio
+                }), 
+                use_container_width=True
+            )
+            
             st.markdown("---")
-            st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
-            if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
-            
-            with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
-                st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.xls' (formato CSV).")
-                up_wip = st.file_uploader("Cargar Reporte", type=["csv", "xls", "xlsx"])
-                if up_wip:
-                    df_wip, msg_wip = procesar_wip(up_wip)
-                    if df_wip is not None:
-                        st.session_state.df_wip_cache = df_wip
-                        st.success(f"Reporte cargado: {len(df_wip)} registros procesados.")
-                    else:
-                        st.error(f"Error: {msg_wip}")
-            
-            if st.session_state.df_wip_cache is not None:
-                df_w = st.session_state.df_wip_cache
-                
-                # CÁLCULOS
-                total_plata_wip = df_w['Saldo'].sum()
-                # Contamos Autos únicos por Taller
-                df_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']
-                df_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']
-                
-                autos_totales_unicos = df_w['Identificador'].nunique()
-                
-                autos_mec = df_mec['Identificador'].nunique()
-                plata_mec = df_mec['Saldo'].sum()
-                
-                autos_cyp = df_cyp['Identificador'].nunique()
-                plata_cyp = df_cyp['Saldo'].sum()
-
-                # TARJETAS
-                kw1, kw2, kw3, kw4 = st.columns(4)
-                with kw1: st.metric("Total Dinero Abierto", f"${total_plata_wip:,.0f}")
-                with kw2: st.metric("Total Autos Físicos", f"{autos_totales_unicos}", help="Cantidad de patentes/chasis únicos en el predio")
-                with kw3: st.metric("Mecánica (Autos/$)", f"{autos_mec} / ${plata_mec:,.0f}")
-                with kw4: st.metric("CyP (Autos/$)", f"{autos_cyp} / ${plata_cyp:,.0f}")
-                
-                # GRÁFICO DE BARRAS POR ASESOR
-                st.markdown("##### 👥 Saldo Abierto por Asesor")
-                
-                # Agrupamos por Asesor: Sumamos plata y contamos Autos ÚNICOS para ese asesor
-                df_asesor = df_w.groupby('Nombre_Asesor').agg(
-                    Dinero=('Saldo', 'sum'),
-                    Autos=('Identificador', 'nunique')
-                ).reset_index().sort_values('Dinero', ascending=False)
-                
-                # Gráfico
-                fig_wip = px.bar(df_asesor, x='Nombre_Asesor', y='Dinero', text='Autos',
-                                title="Dinero Pendiente por Asesor (Etiqueta = Cant. Autos)",
-                                color='Dinero', color_continuous_scale='Blues')
-                fig_wip.update_traces(texttemplate='%{text} 🚘', textposition='outside')
-                fig_wip.update_layout(height=400, xaxis_title="", yaxis_title="Monto ($)")
-                st.plotly_chart(fig_wip, use_container_width=True)
-                
-                # Tabla detalle
-                with st.expander("Ver Detalle de Autos"):
-                    st.dataframe(df_w[['Ref.OR', 'Fecha_dt', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']].style.format({'Saldo': "${:,.2f}"}), use_container_width=True)
-
-        elif selected_tab == "📦 Repuestos":
-            st.markdown("### 📦 Repuestos")
             
             # --- 1. INPUT DE PRIMAS / BONOS ---
             col_primas, col_vacia = st.columns([1, 3])
