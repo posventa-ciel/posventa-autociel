@@ -8,6 +8,18 @@ import os
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
+# --- 1. CONFIGURACIÓN Y MAPEOS (LO NUEVO) ---
+# Diccionario para convertir el número de "Rec" en Nombre Real
+ASESORES_MAP = {
+    1: "Claudio Molina", 3: "Belen Juarez", 4: "Fatima Polli", 8: "Daniel Espin",
+    11: "César Oliva", 12: "Hector Corrales", 13: "Nazareno Segovia", 14: "Haydee Garnica",
+    21: "Javier Gutierrez", 22: "Antonio Mogro", 23: "Samuel Antunez", 
+    28: "Fernanda Barranco", 29: "Ricardo Alvarez", 30: "Andrea Martins", 31: "Cristian Portal"
+}
+
+# Códigos de cargo que identifican una orden como "Chapa y Pintura"
+CODIGOS_CYP = ['1B', '3G'] 
+
 # --- ESTILO CSS ---
 st.markdown("""<style>
     .block-container { padding-top: 1rem; padding-bottom: 2rem; }
@@ -127,13 +139,14 @@ def cargar_datos(sheet_id):
             return None
     return data_dict
 
-# --- NUEVAS FUNCIONES IRPV ---
+# --- PROCESAMIENTO CSV INTELIGENTE (BASE) ---
 def leer_csv_inteligente(uploaded_file):
     try:
         uploaded_file.seek(0)
+        # Intentamos detectar encabezado leyendo las primeras lineas
         preview = pd.read_csv(uploaded_file, header=None, nrows=20, sep=None, engine='python', encoding='utf-8', on_bad_lines='skip')
         idx_header = -1
-        keywords = ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA']
+        keywords = ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA', 'REF.OR']
         for i, row in preview.iterrows():
             row_txt = " ".join([str(x).upper() for x in row.values])
             if any(kw in row_txt for kw in keywords):
@@ -152,6 +165,7 @@ def leer_csv_inteligente(uploaded_file):
     except Exception as e:
         return None, str(e)
 
+# --- 1. FUNCIÓN IRPV (FIDELIZACIÓN) ---
 def procesar_irpv(file_v, file_t):
     # 1. Ventas
     df_v, msg_v = leer_csv_inteligente(file_v)
@@ -234,6 +248,64 @@ def procesar_irpv(file_v, file_t):
     res = merged.groupby('Año_Venta')[['R_1er', 'R_2do', 'R_3er']].mean()
     res.columns = ['1er', '2do', '3er']
     return res, "OK"
+
+# --- 2. FUNCIÓN WIP (ÓRDENES ABIERTAS) ---
+def procesar_wip(uploaded_file):
+    try:
+        # 1. Lectura del archivo
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file, sep=',', encoding='utf-8', on_bad_lines='skip')
+        
+        # 2. Normalización de columnas (Quitamos espacios y puntos)
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        # 3. Verificación de columnas clave
+        # En tu archivo las columnas son: 'Tipo', 'Total s/impto', 'Matrícul', 'Rec'
+        if 'Tipo' not in df.columns or 'Total s/impto' not in df.columns:
+            return None, "El archivo no tiene las columnas 'Tipo' o 'Total s/impto'."
+
+        # 4. Limpieza de Dinero (Manejo de decimales)
+        # Tu archivo viene con puntos decimales directos (ej: 211946.06), python lo lee bien directo
+        df['Saldo'] = pd.to_numeric(df['Total s/impto'], errors='coerce').fillna(0)
+
+        # 5. Identificación de Chasis Único (Usamos Matrícul o IDV)
+        # Si Matrícul está vacío, usamos IDV como respaldo
+        if 'Matrícul' in df.columns and 'IDV' in df.columns:
+            df['Identificador'] = df['Matrícul'].fillna(df['IDV'].astype(str))
+        else:
+            # Fallback si falta alguna
+            df['Identificador'] = df['Matrícul'] if 'Matrícul' in df.columns else df['IDV']
+            
+        df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
+
+        # 6. Mapeo de Asesores (Columna 'Rec')
+        def obtener_nombre_asesor(val):
+            try:
+                # Convertimos a entero (ej: 8.0 -> 8)
+                rec_id = int(float(val))
+                return ASESORES_MAP.get(rec_id, f"Asesor {rec_id}")
+            except:
+                return "Sin Asesor"
+        
+        if 'Rec' in df.columns:
+            df['Nombre_Asesor'] = df['Rec'].apply(obtener_nombre_asesor)
+        else:
+            df['Nombre_Asesor'] = "Desconocido"
+
+        # 7. Clasificación Mecánica vs CyP
+        # Miramos si los primeros 2 caracteres del 'Tipo' están en la lista de CyP
+        def clasificar_taller(texto_tipo):
+            if pd.isna(texto_tipo): return 'Mecánica'
+            codigo = str(texto_tipo).strip().upper()[:2] # Toma "1A", "1B", etc.
+            if codigo in CODIGOS_CYP:
+                return 'Chapa y Pintura'
+            return 'Mecánica'
+
+        df['Tipo_Taller'] = df['Tipo'].apply(clasificar_taller)
+
+        return df, "OK"
+    except Exception as e:
+        return None, f"Error procesando el archivo: {str(e)}"
 
 # --- MAIN APP ---
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
@@ -418,6 +490,69 @@ try:
                 with cols[i]: st.markdown(render_kpi_card(tit, real, obj, True), unsafe_allow_html=True)
 
         elif selected_tab == "🛠️ Servicios y Taller":
+            
+            # --- MÓDULO WIP (ÓRDENES ABIERTAS) ---
+            st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
+            if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
+            
+            with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
+                st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.xls' (formato CSV).")
+                up_wip = st.file_uploader("Cargar Reporte", type=["csv"])
+                if up_wip:
+                    df_wip, msg_wip = procesar_wip(up_wip)
+                    if df_wip is not None:
+                        st.session_state.df_wip_cache = df_wip
+                        st.success(f"Reporte cargado: {len(df_wip)} registros procesados.")
+                    else:
+                        st.error(f"Error: {msg_wip}")
+            
+            if st.session_state.df_wip_cache is not None:
+                df_w = st.session_state.df_wip_cache
+                
+                # CÁLCULOS
+                total_plata_wip = df_w['Saldo'].sum()
+                # Contamos Autos únicos por Taller
+                df_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']
+                df_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']
+                
+                autos_totales_unicos = df_w['Identificador'].nunique()
+                
+                autos_mec = df_mec['Identificador'].nunique()
+                plata_mec = df_mec['Saldo'].sum()
+                
+                autos_cyp = df_cyp['Identificador'].nunique()
+                plata_cyp = df_cyp['Saldo'].sum()
+
+                # TARJETAS
+                kw1, kw2, kw3, kw4 = st.columns(4)
+                with kw1: st.metric("Total Dinero Abierto", f"${total_plata_wip:,.0f}")
+                with kw2: st.metric("Total Autos Físicos", f"{autos_totales_unicos}", help="Cantidad de patentes/chasis únicos en el predio")
+                with kw3: st.metric("Mecánica (Autos/$)", f"{autos_mec} / ${plata_mec:,.0f}")
+                with kw4: st.metric("CyP (Autos/$)", f"{autos_cyp} / ${plata_cyp:,.0f}")
+                
+                # GRÁFICO DE BARRAS POR ASESOR
+                st.markdown("##### 👥 Saldo Abierto por Asesor")
+                
+                # Agrupamos por Asesor: Sumamos plata y contamos Autos ÚNICOS para ese asesor
+                df_asesor = df_w.groupby('Nombre_Asesor').agg(
+                    Dinero=('Saldo', 'sum'),
+                    Autos=('Identificador', 'nunique')
+                ).reset_index().sort_values('Dinero', ascending=False)
+                
+                # Gráfico
+                fig_wip = px.bar(df_asesor, x='Nombre_Asesor', y='Dinero', text='Autos',
+                                title="Dinero Pendiente por Asesor (Etiqueta = Cant. Autos)",
+                                color='Dinero', color_continuous_scale='Blues')
+                fig_wip.update_traces(texttemplate='%{text} 🚘', textposition='outside')
+                fig_wip.update_layout(height=400, xaxis_title="", yaxis_title="Monto ($)")
+                st.plotly_chart(fig_wip, use_container_width=True)
+                
+                # Tabla detalle
+                with st.expander("Ver Detalle de Autos"):
+                    st.dataframe(df_w[['Ref.OR', 'Fecha_dt', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']].style.format({'Saldo': "${:,.2f}"}), use_container_width=True)
+                
+                st.markdown("---")
+
             col_main, col_breakdown = st.columns([1, 2])
             obj_mo_total = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)
             
@@ -456,7 +591,6 @@ try:
             st.markdown("---")
             st.markdown("### 🏆 Calidad e Incentivos de Marca")
             
-            # --- MEJORA: INCENTIVOS VISUALES ---
             val_prima_p = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "PEUGEOT"], exclude_keywords=["OBJ"]), 0)
             val_prima_c = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "CITROEN"], exclude_keywords=["OBJ"]), 0)
             obj_prima_p = s_r.get(find_col(data['SERVICIOS'], ["OBJ", "PRIMA", "PEUGEOT"]), 0)
@@ -506,7 +640,6 @@ try:
                 with p_row[0]: st.markdown(render_kpi_small("Videocheck", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
                 with p_row[1]: st.markdown(render_kpi_small("Forfait", ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff), unsafe_allow_html=True)
                 
-                # Tarjeta de Incentivo
                 st.markdown(f"""
                     <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
                         <p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Peugeot</p>
@@ -522,7 +655,6 @@ try:
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
                 
-                # Tarjeta de Incentivo
                 st.markdown(f"""
                     <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;">
                         <p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Citroën</p>
@@ -573,6 +705,7 @@ try:
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
             
+            # --- 1. INPUT DE PRIMAS / BONOS ---
             col_primas, col_vacia = st.columns([1, 3])
             with col_primas:
                 primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
@@ -589,10 +722,12 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
+            # TOTALES
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
             
+            # --- AJUSTE CON PRIMAS ---
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             
@@ -640,8 +775,10 @@ try:
             
             st.markdown("---")
             
+            # --- MEJORA: ASISTENTE DE MARGEN Y SIMULADOR ---
             st.subheader("🏁 Asistente de Equilibrio y Simulador")
             
+            # Asistente
             canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
             vta_premium = df_r[df_r['Canal'].isin(canales_premium)]['Venta Neta'].sum()
             util_premium = df_r[df_r['Canal'].isin(canales_premium)]['Utilidad $'].sum()
@@ -657,6 +794,7 @@ try:
                 else:
                     st.success(f"🟢 **OK:** Mix actual {mg_total_final:.1%}. Margen crítico volumen: **{max(0, margen_critico):.1%}**.")
 
+            # Simulador de Negocio Especial
             st.markdown("#### 📈 Simulador de Operación Especial")
             with st.expander("Abrir Simulador", expanded=True):
                 c_sim1, c_sim2 = st.columns(2)
@@ -680,11 +818,13 @@ try:
                     else:
                         st.error(f"❌ **Riesgoso:** Faltan **${abs(dif_objetivo):,.0f}** para el 21%.")
 
+            # --- 2. CALCULADORA DE MIX IDEAL (Tu código original) ---
             st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
             st.info("Define tu participación ideal por canal y el margen al que aspiras vender.")
             
             col_mix_input, col_mix_res = st.columns([3, 2])
             
+            # Valores por defecto
             default_mix = {}
             default_margin = {}
             if vta_total_neta > 0:
