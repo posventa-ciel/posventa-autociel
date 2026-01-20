@@ -65,32 +65,13 @@ def cargar_datos(sheet_id):
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
+            df.columns = [c.strip().upper().replace(".", "").replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U").replace("Ñ", "N") for c in df.columns]
             
-            # Limpieza de Nombres de Columnas
-            df.columns = [
-                c.strip().upper()
-                .replace(".", "")
-                .replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
-                .replace("Ñ", "N") 
-                for c in df.columns
-            ]
-            
-            # --- LIMPIEZA NUMÉRICA FORMATO ARGENTINO ---
-            # 1. Eliminar puntos de miles (1.000 -> 1000)
-            # 2. Reemplazar comas decimales por puntos (0,50 -> 0.50)
             for col in df.columns:
-                # Excluimos columnas que sabemos que son texto o fechas
                 if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
-                    # Paso 1: Forzar string y quitar simbolos basura
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
-                    
-                    # Paso 2: Detectar si tiene formato "1.000,00"
-                    # Eliminamos el punto (miles)
                     serie = serie.str.replace('.', '', regex=False)
-                    # Reemplazamos la coma (decimal) por punto
                     serie = serie.str.replace(',', '.', regex=False)
-                    
-                    # Paso 3: Convertir a numérico
                     df[col] = pd.to_numeric(serie, errors='coerce').fillna(0.0)
             
             data_dict[h] = df
@@ -199,7 +180,6 @@ def preparar_wip_desde_sheet(df):
     
     col_saldo = find_col(df, ['TOTAL', 'IMPTO']) or find_col(df, ['SALDO'])
     if not col_saldo: return None
-    
     col_matricula = find_col(df, ['MATRICUL'])
     col_idv = find_col(df, ['IDV'])
     col_rec = find_col(df, ['REC'])
@@ -207,7 +187,6 @@ def preparar_wip_desde_sheet(df):
     col_fecha = find_col(df, ['FEC', 'AP'])
     col_modelo = find_col(df, ['MODELO'])
 
-    # El saldo ya fue limpiado en cargar_datos con la lógica de puntos y comas
     df['Saldo'] = df[col_saldo] 
     
     if col_matricula and col_idv:
@@ -222,13 +201,10 @@ def preparar_wip_desde_sheet(df):
         try:
             val_clean = str(val).split('.')[0] 
             return ASESORES_MAP.get(val_clean, f"Asesor {val_clean}")
-        except:
-            return "Sin Asesor"
+        except: return "Sin Asesor"
             
-    if col_rec:
-        df['Nombre_Asesor'] = df[col_rec].apply(obtener_nombre_asesor)
-    else:
-        df['Nombre_Asesor'] = "Desconocido"
+    if col_rec: df['Nombre_Asesor'] = df[col_rec].apply(obtener_nombre_asesor)
+    else: df['Nombre_Asesor'] = "Desconocido"
 
     def clasificar_taller(texto_tipo):
         if pd.isna(texto_tipo): return 'Mecánica'
@@ -243,18 +219,14 @@ def preparar_wip_desde_sheet(df):
         df['Tipo_Taller'] = 'Mecánica'
         df['Tipo'] = 'S/D'
 
-    if col_fecha:
-        df['Fecha_Alta'] = pd.to_datetime(df[col_fecha], dayfirst=True, errors='coerce')
-    else:
-        df['Fecha_Alta'] = pd.NaT
+    if col_fecha: df['Fecha_Alta'] = pd.to_datetime(df[col_fecha], dayfirst=True, errors='coerce')
+    else: df['Fecha_Alta'] = pd.NaT
 
     if col_modelo: df['Modelo'] = df[col_modelo]
     else: df['Modelo'] = ""
-    
     col_ref = find_col(df, ['REF', 'OR'])
     if col_ref: df['Ref.OR'] = df[col_ref]
     else: df['Ref.OR'] = ""
-
     return df
 
 # --- MAIN APP ---
@@ -288,24 +260,18 @@ try:
 
             st.markdown("---")
             st.header("2. Carga IRPV")
-            st.info("El IRPV es un análisis bajo demanda. Sube los archivos aquí si necesitas verlo.")
-            
             if 'df_irpv_cache' not in st.session_state: st.session_state.df_irpv_cache = None
-
             with st.expander("🔄 Historial IRPV", expanded=False):
                 up_v = st.file_uploader("Entregas 0km", type=["csv"], key="v_uploader")
                 up_t = st.file_uploader("Historial Taller", type=["csv"], key="t_uploader")
-                
                 if up_v and up_t:
                     if st.session_state.df_irpv_cache is None:
                         df_irpv, msg_irpv = procesar_irpv(up_v, up_t)
                         if df_irpv is not None:
                             st.session_state.df_irpv_cache = df_irpv
                             st.success("IRPV Procesado OK")
-                        else:
-                            st.error(msg_irpv)
-                else:
-                    st.session_state.df_irpv_cache = None
+                        else: st.error(msg_irpv)
+                else: st.session_state.df_irpv_cache = None
 
         def get_row(df):
             res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
@@ -330,42 +296,6 @@ try:
         prog_t = d_t / d_h if d_h > 0 else 0
         prog_t = min(prog_t, 1.0)
 
-        # DATA HISTORICO
-        def get_hist_data(sheet_name):
-            df = data[sheet_name]
-            df = df[df['Año'] == año_sel].sort_values('Mes')
-            df = df.groupby('Mes').last().reset_index()
-            df['NombreMes'] = df['Mes'].map(meses_nom)
-            return df
-
-        h_cal = get_hist_data('CALENDARIO')
-        h_ser = get_hist_data('SERVICIOS')
-        h_rep = get_hist_data('REPUESTOS')
-        h_tal = get_hist_data('TALLER')
-        h_cyp_j = get_hist_data('CyP JUJUY')
-        h_cyp_s = get_hist_data('CyP SALTA')
-
-        # --- PORTADA ---
-        st.markdown(f'''
-        <div class="portada-container">
-            <div class="portada-left">
-                <h1>Autociel - Tablero Posventa</h1>
-                <h3>📅 {meses_nom.get(mes_sel)} {año_sel}</h3>
-            </div>
-            <div class="portada-right">
-                <div>Avance: <b>{d_t:g}</b>/{d_h:g} días ({prog_t:.1%})</div>
-                <div style="background: rgba(255,255,255,0.3); height: 6px; border-radius: 4px; width: 100%;">
-                    <div style="background: #fff; width: {prog_t*100}%; height: 100%; border-radius: 4px;"></div>
-                </div>
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
-
-        menu_opts = ["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"]
-        selected_tab = st.radio("", menu_opts, horizontal=True, label_visibility="collapsed")
-        st.markdown("---")
-
-        # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
             obj_parcial = obj_mes * prog_t
             proy = (real / d_t) * d_h if d_t > 0 else 0
@@ -380,7 +310,6 @@ try:
                 daily_val = real / d_t if d_t > 0 else 0
                 fmt_daily = "${:,.0f}" if is_currency else "{:,.1f}"
                 daily_html = f'<div style="font-size:0.75rem; color:#00235d; background-color:#eef2f7; padding: 1px 6px; border-radius:4px; display:inline-block; margin-bottom:4px;">Prom: <b>{fmt_daily.format(daily_val)}</b> /día</div>'
-
             html = '<div class="kpi-card">'
             html += f'<div><p>{title}</p><h2>{fmt.format(real)}</h2>{daily_html}</div>'
             html += f'<div><div class="kpi-subtext">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
@@ -414,7 +343,6 @@ try:
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TERCEROS"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["MO", "TER"], exclude_keywords=["OBJ"])
         if not c_ter: c_ter = find_col(data['SERVICIOS'], ["TERCERO"], exclude_keywords=["OBJ", "MO", "COSTO"])
-
         val_cli = s_r.get(c_cli, 0) if c_cli else 0
         val_gar = s_r.get(c_gar, 0) if c_gar else 0
         val_int = s_r.get(c_int, 0) if c_int else 0
@@ -564,18 +492,14 @@ try:
             # --- MÓDULO WIP (ÓRDENES ABIERTAS) - AHORA DESDE GOOGLE SHEETS ---
             st.markdown("---")
             st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
-            
             if 'WIP' in data and not data['WIP'].empty:
                 df_w = preparar_wip_desde_sheet(data['WIP'])
-                
                 if df_w is not None and not df_w.empty:
                     lista_asesores = sorted(df_w['Nombre_Asesor'].unique().tolist())
                     col_filtro, col_metricas_mini = st.columns([1, 3])
                     with col_filtro:
                         asesor_seleccionado = st.selectbox("👤 Filtrar por Asesor:", ["Todos"] + lista_asesores)
-                    
                     df_filtrado = df_w[df_w['Nombre_Asesor'] == asesor_seleccionado] if asesor_seleccionado != "Todos" else df_w
-
                     f_plata = df_filtrado['Saldo'].sum()
                     f_autos = df_filtrado['Identificador'].nunique()
                     f_mec = df_filtrado[df_filtrado['Tipo_Taller'] == 'Mecánica']
@@ -584,7 +508,6 @@ try:
                     f_autos_mec = f_mec['Identificador'].nunique()
                     f_plata_cyp = f_cyp['Saldo'].sum()
                     f_autos_cyp = f_cyp['Identificador'].nunique()
-
                     kw1, kw2, kw3, kw4 = st.columns(4)
                     with kw1: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Dinero Abierto ({asesor_seleccionado})</div><div style="font-size:1.5rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata:,.0f}</div><div style="font-size:0.75rem; color:#888;">Saldo pendiente</div></div>', unsafe_allow_html=True)
                     with kw2: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Autos en Taller ({asesor_seleccionado})</div><div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{f_autos}</div><div style="font-size:0.75rem; color:#888;">Vehículos físicos</div></div>', unsafe_allow_html=True)
@@ -613,16 +536,20 @@ try:
                     cols_ver = ['Ref.OR', 'Fecha_Alta', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']
                     cols_finales = [c for c in cols_ver if c in df_filtrado.columns]
                     st.dataframe(df_filtrado[cols_finales].style.format({'Saldo': "${:,.2f}", 'Fecha_Alta': '{:%d-%m-%Y}'}), use_container_width=True)
-                else:
-                    st.warning("⚠️ La hoja 'WIP' está vacía o no tiene las columnas correctas.")
-            else:
-                st.info("ℹ️ Para ver el WIP, crea una hoja llamada 'WIP' en tu Google Sheet y pega ahí los datos del reporte.")
+                else: st.warning("⚠️ La hoja 'WIP' está vacía o no tiene las columnas correctas.")
+            else: st.info("ℹ️ Para ver el WIP, crea una hoja llamada 'WIP' en tu Google Sheet y pega ahí los datos del reporte.")
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
-            col_primas, col_vacia = st.columns([1, 3])
-            with col_primas:
-                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
+            
+            # --- NUEVO MÓDULO ESTRATÉGICO DE COMPRAS (SCORING VS STOCK) ---
+            st.markdown("#### 📉 Plan de Reducción de Stock & Scoring 360")
+            
+            col_in_s1, col_in_s2 = st.columns(2)
+            with col_in_s1:
+                obj_compra_terminal = st.number_input("🎯 Objetivo Compra Terminal ($)", min_value=0.0, step=1000000.0, help="El objetivo de compra mensual que asigna la terminal.")
+            with col_in_s2:
+                compra_real_mes = st.number_input("🛒 Compra Real del Mes ($)", min_value=0.0, step=1000000.0, help="Lo que realmente llevas comprado o estimas comprar este mes.")
 
             detalles = []
             for c in canales_repuestos:
@@ -636,6 +563,74 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
+            costo_venta_total = df_r['Costo'].sum() if not df_r.empty else 0
+            val_stock_actual = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+            
+            # CÁLCULOS ESTRATÉGICOS
+            techo_stock_80 = costo_venta_total * 0.80  # Regla: Comprar 20% menos de lo que sale
+            piso_scoring_60 = obj_compra_terminal * 0.60 # Regla: Minimo 60% del objetivo
+            
+            # Lógica del Semáforo
+            estado_compra = "Neutro"
+            color_estado = "gray"
+            msg_estado = "Esperando datos..."
+            
+            if compra_real_mes > 0 and costo_venta_total > 0:
+                variacion_stock = compra_real_mes - costo_venta_total
+                nuevo_stock_val = val_stock_actual + variacion_stock
+                # Estimamos meses de stock con el costo de venta actual (proyección simple)
+                meses_stock_proy = nuevo_stock_val / costo_venta_total 
+                meses_stock_act = val_stock_actual / costo_venta_total
+                delta_meses = meses_stock_proy - meses_stock_act
+                
+                # Evaluación
+                if piso_scoring_60 > techo_stock_80:
+                    st.warning(f"⚠️ **CONFLICTO DETECTADO:** El mínimo para Scoring (${piso_scoring_60:,.0f}) es MAYOR que tu límite para bajar stock (${techo_stock_80:,.0f}). Deberás sacrificar reducción de stock para cumplir con la marca.")
+                
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                with col_kpi1:
+                    st.metric("Piso Scoring (60%)", f"${piso_scoring_60:,.0f}", delta=f"{compra_real_mes - piso_scoring_60:,.0f} vs Real", delta_color="normal")
+                with col_kpi2:
+                    st.metric("Techo Stock (Regla 20%)", f"${techo_stock_80:,.0f}", delta=f"{compra_real_mes - techo_stock_80:,.0f} vs Real", delta_color="inverse")
+                with col_kpi3:
+                    if delta_meses < 0:
+                        st.metric("Reducción Estimada", f"{abs(delta_meses):.2f} meses", "📉 Bajando Stock", delta_color="normal")
+                    else:
+                        st.metric("Aumento Estimado", f"{delta_meses:.2f} meses", "📈 Subiendo Stock", delta_color="inverse")
+
+                # Gráfico de Gauge (Termómetro)
+                fig_gauge = go.Figure(go.Indicator(
+                    mode = "gauge+number+delta",
+                    value = compra_real_mes,
+                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    title = {'text': "Nivel de Compra vs Objetivos"},
+                    delta = {'reference': techo_stock_80, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
+                    gauge = {
+                        'axis': {'range': [0, max(compra_real_mes, obj_compra_terminal, costo_venta_total)*1.1]},
+                        'bar': {'color': "#00235d"},
+                        'steps': [
+                            {'range': [0, piso_scoring_60], 'color': "#ffc107"}, # Zona Riesgo Scoring
+                            {'range': [piso_scoring_60, techo_stock_80], 'color': "#28a745"}, # Zona Óptima (Cumple ambos)
+                            {'range': [techo_stock_80, costo_venta_total], 'color': "#fd7e14"}, # Zona Aumento Stock Leve
+                            {'range': [costo_venta_total, max(compra_real_mes, obj_compra_terminal)*1.5], 'color': "#dc3545"} # Zona Peligro
+                        ],
+                        'threshold': {
+                            'line': {'color': "black", 'width': 4},
+                            'thickness': 0.75,
+                            'value': obj_compra_terminal
+                        }
+                    }
+                ))
+                st.plotly_chart(fig_gauge, use_container_width=True)
+                st.caption("Referencias: Amarilla (Riesgo Scoring) | Verde (Zona Ideal: Cumple Scoring y Baja Stock) | Naranja (Sube Stock pero < Venta) | Roja (Compra > Venta). La línea negra es el Objetivo Total Terminal.")
+            
+            st.markdown("---")
+            # --- FIN NUEVO MÓDULO ---
+
+            col_primas, col_vacia = st.columns([1, 3])
+            with col_primas:
+                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
+
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
@@ -643,13 +638,12 @@ try:
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
-            val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
             c_main, c_kpis = st.columns([1, 3])
             with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
-                meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
+                meses_stock = val_stock_actual / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
@@ -672,9 +666,9 @@ try:
                 p_obs = float(r_r.get(find_col(data['REPUESTOS'], ["OBSOLETO"]), 0))
                 p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
                 f = 1 if p_vivo <= 1 else 100
-                df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
+                df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock_actual*(p_vivo/f), val_stock_actual*(p_obs/f), val_stock_actual*(p_muerto/f)]})
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
-                st.markdown(f'<div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;"><p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;"><p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock_actual:,.0f}</p></div>', unsafe_allow_html=True)
             
             st.markdown("---")
             st.subheader("🏁 Asistente de Equilibrio y Simulador")
