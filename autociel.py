@@ -319,11 +319,12 @@ try:
 
         canales_repuestos = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
 
+        # --- BARRA LATERAL (CENTRO DE CARGA) ---
         with st.sidebar:
             if os.path.exists("logo.png"):
                 st.image("logo.png", use_container_width=True)
                 
-            st.header("Filtros")
+            st.header("1. Filtros Temporales")
             años_disp = sorted([int(a) for a in data['CALENDARIO']['Año'].unique() if a > 0], reverse=True)
             año_sel = st.selectbox("📅 Año", años_disp)
             
@@ -331,6 +332,43 @@ try:
             df_year = data['CALENDARIO'][data['CALENDARIO']['Año'] == año_sel]
             meses_disp = sorted(df_year['Mes'].unique(), reverse=True)
             mes_sel = st.selectbox("📅 Mes", meses_disp, format_func=lambda x: meses_nom.get(x, "N/A"))
+
+            st.markdown("---")
+            st.header("2. Carga de Archivos")
+            
+            # SESSION STATE INIT
+            if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
+            if 'df_irpv_cache' not in st.session_state: st.session_state.df_irpv_cache = None
+
+            with st.expander("📂 Órdenes Abiertas (WIP)", expanded=False):
+                up_wip = st.file_uploader("Subir Reporte WIP", type=["csv", "xls", "xlsx"], key="wip_uploader")
+                if up_wip:
+                    if st.session_state.df_wip_cache is None: # Process only if not processed
+                        df_wip, msg_wip = procesar_wip(up_wip)
+                        if df_wip is not None:
+                            st.session_state.df_wip_cache = df_wip
+                            st.success("WIP Cargado OK")
+                        else:
+                            st.error(f"Error: {msg_wip}")
+                else:
+                    st.session_state.df_wip_cache = None # Clear if removed
+
+            with st.expander("🔄 Historial IRPV", expanded=False):
+                up_v = st.file_uploader("Entregas 0km", type=["csv"], key="v_uploader")
+                up_t = st.file_uploader("Historial Taller", type=["csv"], key="t_uploader")
+                
+                if up_v and up_t:
+                    if st.session_state.df_irpv_cache is None:
+                        df_irpv, msg_irpv = procesar_irpv(up_v, up_t)
+                        if df_irpv is not None:
+                            st.session_state.df_irpv_cache = df_irpv
+                            st.success("IRPV Procesado OK")
+                        else:
+                            st.error(msg_irpv)
+                else:
+                    st.session_state.df_irpv_cache = None
+
+            st.info("💡 Nota: Los archivos se mantienen al cambiar de pestaña, pero se borran si actualizas el navegador (F5).")
 
         def get_row(df):
             res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
@@ -503,7 +541,7 @@ try:
                 fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) 
                 st.plotly_chart(fig_mo, use_container_width=True)
 
-            k1, k2, k3, k4, k5 = st.columns(5) # AHORA SON 5 COLUMNAS
+            k1, k2, k3, k4, k5 = st.columns(5)
             
             # CÁLCULOS KPI
             c_cpus = find_col(data['SERVICIOS'], ["CPUS"], exclude_keywords=["OBJ"])
@@ -524,13 +562,10 @@ try:
             hf_ci = t_r.get(find_col(data['TALLER'], ["FACT", "CI"]), 0)
             tp_hs = (hf_cc+hf_cg+hf_ci) / div
             
-            # TICKET REPUESTOS (NUEVO)
-            # Buscamos venta repuestos asociada a Taller (Taller + Garantía + Interna)
-            # Nota: Usamos r_r (fila del mes seleccionado en REPUESTOS)
+            # TICKET REPUESTOS
             v_rep_taller = r_r.get(find_col(data['REPUESTOS'], ["VENTA", "TALLER"], exclude_keywords=["OBJ"]), 0)
             v_rep_gar = r_r.get(find_col(data['REPUESTOS'], ["VENTA", "GAR"], exclude_keywords=["OBJ"]), 0)
             v_rep_int = r_r.get(find_col(data['REPUESTOS'], ["VENTA", "INT"], exclude_keywords=["OBJ"]), 0)
-            
             total_rep_service = v_rep_taller + v_rep_gar + v_rep_int
             tp_rep = total_rep_service / div
 
@@ -654,29 +689,15 @@ try:
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
-            # --- MÓDULO WIP (ÓRDENES ABIERTAS) - AL FINAL DE SERVICIOS ---
+            # --- MÓDULO WIP (ÓRDENES ABIERTAS) - LEER DESDE CACHE ---
             st.markdown("---")
             st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
-            if 'df_wip_cache' not in st.session_state: st.session_state.df_wip_cache = None
-            
-            with st.expander("Subir Reporte de Órdenes Abiertas", expanded=(st.session_state.df_wip_cache is None)):
-                st.info("Sube el archivo 'REPORTE DE OR ABIERTAS.csv' (o Excel).")
-                up_wip = st.file_uploader("Cargar Reporte", type=["csv", "xls", "xlsx"])
-                if up_wip:
-                    df_wip, msg_wip = procesar_wip(up_wip)
-                    if df_wip is not None:
-                        st.session_state.df_wip_cache = df_wip
-                        st.success(f"Reporte cargado: {len(df_wip)} registros procesados.")
-                    else:
-                        st.error(f"Error: {msg_wip}")
             
             if st.session_state.df_wip_cache is not None:
                 df_w = st.session_state.df_wip_cache
                 
-                # --- FILTROS DE INTERACCIÓN ---
                 lista_asesores = sorted(df_w['Nombre_Asesor'].unique().tolist())
                 col_filtro, col_metricas_mini = st.columns([1, 3])
-                
                 with col_filtro:
                     asesor_seleccionado = st.selectbox("👤 Filtrar por Asesor:", ["Todos"] + lista_asesores)
                 
@@ -685,10 +706,6 @@ try:
                 else:
                     df_filtrado = df_w
 
-                # CÁLCULOS GENERALES (Siempre Total)
-                total_plata_wip = df_w['Saldo'].sum()
-                autos_totales_unicos = df_w['Identificador'].nunique()
-                
                 # CÁLCULOS FILTRADOS
                 f_plata = df_filtrado['Saldo'].sum()
                 f_autos = df_filtrado['Identificador'].nunique()
@@ -740,7 +757,6 @@ try:
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # --- SECCIÓN GRÁFICA: ASESORES Y CARGOS ---
                 col_graf_asesor, col_graf_cargo = st.columns([2, 1])
                 
                 with col_graf_asesor:
@@ -779,7 +795,6 @@ try:
                     fig_cargos.update_layout(height=500, xaxis_title="Cant. Órdenes", yaxis_title="", showlegend=False)
                     st.plotly_chart(fig_cargos, use_container_width=True)
                 
-                # --- TABLA DETALLE FILTRADA ---
                 st.markdown(f"##### 📋 Detalle de Autos: {asesor_seleccionado}")
                 
                 cols_ver = ['Ref.OR', 'Fecha_Alta', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']
@@ -792,6 +807,8 @@ try:
                     }), 
                     use_container_width=True
                 )
+            else:
+                st.info("👈 Sube el archivo de 'Órdenes Abiertas' en la barra lateral para ver este módulo.")
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
@@ -1038,25 +1055,7 @@ try:
             # --- MÓDULO IRPV CON MEMORIA (SESSION STATE) ---
             st.markdown("---")
             st.subheader("🔄 Fidelización (IRPV)")
-            st.info("Sube los archivos una sola vez. Los datos se mantendrán aunque cambies de pestaña.")
             
-            if 'df_irpv_cache' not in st.session_state:
-                st.session_state.df_irpv_cache = None
-
-            col_up1, col_up2 = st.columns(2)
-            with col_up1:
-                up_v = st.file_uploader("Entregas 0km (CSV)", type=["csv"], key="v_irpv_memory")
-            with col_up2:
-                up_t = st.file_uploader("Historial Taller (CSV)", type=["csv"], key="t_irpv_memory")
-            
-            if up_v and up_t and st.session_state.df_irpv_cache is None:
-                with st.spinner("Analizando retención de clientes..."):
-                    df_irpv, msg = procesar_irpv(up_v, up_t)
-                    if df_irpv is not None:
-                        st.session_state.df_irpv_cache = df_irpv
-                    else:
-                        st.error(msg)
-
             if st.session_state.df_irpv_cache is not None:
                 df_res = st.session_state.df_irpv_cache
                 
@@ -1075,6 +1074,8 @@ try:
                 if st.button("🗑️ Borrar datos y cargar nuevos archivos"):
                     st.session_state.df_irpv_cache = None
                     st.rerun()
+            else:
+                 st.info("👈 Sube los archivos 'Ventas' y 'Taller' en la barra lateral para ver este análisis.")
             
             st.markdown("---")
             st.markdown("#### 📊 Análisis Histórico Mensual")
