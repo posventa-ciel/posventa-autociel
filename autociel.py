@@ -250,42 +250,65 @@ def procesar_irpv(file_v, file_t):
     return res, "OK"
 
 def procesar_wip(uploaded_file):
+    df = None
+    debug_info = []
+
+    # Lista de intentos: (Separador, Codificación, Decimal, Miles)
+    # Ponemos PRIMERO el punto y coma (;) porque es el formato de tu archivo actual.
+    intentos = [
+        (';', 'utf-8', ',', '.'),       # Tu formato actual (CSV exportado bien)
+        (';', 'latin-1', ',', '.'),     # Alternativa común Windows
+        (',', 'utf-8', '.', ','),       # CSV estándar inglés
+        (',', 'latin-1', '.', ','),     # CSV estándar español
+        ('\t', 'utf-16', ',', '.'),     # Pegado desde Excel
+    ]
+
+    for sep, enc, dec, thou in intentos:
+        try:
+            uploaded_file.seek(0)
+            df_temp = pd.read_csv(uploaded_file, sep=sep, encoding=enc, on_bad_lines='skip')
+            
+            # Limpieza básica de columnas para verificar
+            df_temp.columns = [str(c).strip() for c in df_temp.columns]
+            
+            # VERIFICACIÓN CLAVE: ¿Existen las columnas que necesitamos?
+            # Si no están, asumimos que este separador no sirvió.
+            if 'Tipo' in df_temp.columns and 'Total s/impto' in df_temp.columns:
+                df = df_temp
+                break # ¡Éxito! Salimos del bucle
+            else:
+                debug_info.append(f"Leído con '{sep}' ({enc}) pero faltan columnas. Cols encontradas: {list(df_temp.columns)}")
+        except Exception as e:
+            debug_info.append(f"Fallo con '{sep}' ({enc}): {str(e)}")
+
+    # Intento final: Excel nativo (por si acaso vuelves a subir el .xls original)
+    if df is None:
+        try:
+            uploaded_file.seek(0)
+            df = pd.read_excel(uploaded_file)
+            df.columns = [str(c).strip() for c in df.columns]
+             # Verificación Excel
+            if 'Tipo' not in df.columns:
+                df = None # Falso positivo
+        except Exception as e:
+            debug_info.append(f"Fallo Excel: {str(e)}")
+
+    # Si después de todo df sigue siendo None...
+    if df is None:
+        return None, f"No se pudo leer el archivo. Verifica que sea el correcto.\nDetalles técnicos: {'; '.join(debug_info[:3])}..."
+
+    # --- PROCESAMIENTO DE DATOS ---
     try:
-        # Detectamos el tipo de archivo por su extensión
-        filename = uploaded_file.name.lower()
-        uploaded_file.seek(0)
+        # 1. Limpieza de Dinero
+        # Tu archivo usa punto para miles y coma para decimales (ej: 211.946,06)
+        # Lo convertimos a formato estándar (sin puntos, coma -> punto)
+        col_saldo = 'Total s/impto'
         
-        if filename.endswith('.csv'):
-            try:
-                # Intentamos leer como CSV estándar (UTF-8)
-                df = pd.read_csv(uploaded_file, sep=',', encoding='utf-8', on_bad_lines='skip')
-            except:
-                # Si falla, intentamos con codificación latina (común en windows antiguos)
-                uploaded_file.seek(0)
-                df = pd.read_csv(uploaded_file, sep=',', encoding='latin-1', on_bad_lines='skip')
-        else:
-            # Asumimos que es Excel (.xls o .xlsx)
-            try:
-                df = pd.read_excel(uploaded_file)
-            except:
-                # A veces los sistemas bajan "falsos" excel que son CSV disfrazados
-                uploaded_file.seek(0)
-                try:
-                    df = pd.read_csv(uploaded_file, sep='\t', encoding='latin-1')
-                except:
-                     return None, "No se pudo leer el archivo Excel/CSV."
+        # Convertimos a string, quitamos puntos de mil, cambiamos coma decimal por punto
+        df['Saldo'] = df[col_saldo].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+        df['Saldo'] = pd.to_numeric(df['Saldo'], errors='coerce').fillna(0)
 
-        # 2. Normalización de columnas (Quitamos espacios y puntos)
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        # 3. Verificación de columnas clave
-        if 'Tipo' not in df.columns or 'Total s/impto' not in df.columns:
-            return None, "El archivo no tiene las columnas 'Tipo' o 'Total s/impto'."
-
-        # 4. Limpieza de Dinero
-        df['Saldo'] = pd.to_numeric(df['Total s/impto'], errors='coerce').fillna(0)
-
-        # 5. Identificación de Chasis Único
+        # 2. Identificación de Chasis Único
         if 'Matrícul' in df.columns and 'IDV' in df.columns:
             df['Identificador'] = df['Matrícul'].fillna(df['IDV'].astype(str))
         else:
@@ -293,7 +316,7 @@ def procesar_wip(uploaded_file):
             
         df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
 
-        # 6. Mapeo de Asesores
+        # 3. Mapeo de Asesores
         def obtener_nombre_asesor(val):
             try:
                 rec_id = int(float(val))
@@ -306,7 +329,7 @@ def procesar_wip(uploaded_file):
         else:
             df['Nombre_Asesor'] = "Desconocido"
 
-        # 7. Clasificación Mecánica vs CyP
+        # 4. Clasificación Mecánica vs CyP
         def clasificar_taller(texto_tipo):
             if pd.isna(texto_tipo): return 'Mecánica'
             codigo = str(texto_tipo).strip().upper()[:2]
@@ -317,8 +340,9 @@ def procesar_wip(uploaded_file):
         df['Tipo_Taller'] = df['Tipo'].apply(clasificar_taller)
 
         return df, "OK"
+        
     except Exception as e:
-        return None, f"Error procesando el archivo: {str(e)}"
+        return None, f"Error procesando datos: {str(e)}"
 
 # --- MAIN APP ---
 ID_SHEET = "1yJgaMR0nEmbKohbT_8Vj627Ma4dURwcQTQcQLPqrFwk"
