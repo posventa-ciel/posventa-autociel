@@ -503,7 +503,9 @@ try:
                 fig_mo.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=160) 
                 st.plotly_chart(fig_mo, use_container_width=True)
 
-            k1, k2, k3, k4 = st.columns(4)
+            k1, k2, k3, k4, k5 = st.columns(5) # AHORA SON 5 COLUMNAS
+            
+            # CÁLCULOS KPI
             c_cpus = find_col(data['SERVICIOS'], ["CPUS"], exclude_keywords=["OBJ"])
             c_tus_others = find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], exclude_keywords=["OBJ"])
             real_cpus = s_r.get(c_cpus, 0)
@@ -511,17 +513,32 @@ try:
             obj_cpus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'CPUS']), 1)
             obj_tus = s_r.get(find_col(data['SERVICIOS'], ['OBJ', 'TUS']), 1)
             div = real_cpus if real_cpus > 0 else 1
+            
+            # TICKET M.O.
             tp_mo = real_mo_total / div
+            tgt_tp_mo = obj_mo_total / obj_cpus if obj_cpus > 0 else 0
+            
+            # TICKET HORAS
             hf_cc = t_r.get(find_col(data['TALLER'], ["FACT", "CC"]), 0)
             hf_cg = t_r.get(find_col(data['TALLER'], ["FACT", "CG"]), 0)
             hf_ci = t_r.get(find_col(data['TALLER'], ["FACT", "CI"]), 0)
             tp_hs = (hf_cc+hf_cg+hf_ci) / div
-            tgt_tp_mo = obj_mo_total / obj_cpus if obj_cpus > 0 else 0
+            
+            # TICKET REPUESTOS (NUEVO)
+            # Buscamos venta repuestos asociada a Taller (Taller + Garantía + Interna)
+            # Nota: Usamos r_r (fila del mes seleccionado en REPUESTOS)
+            v_rep_taller = r_r.get(find_col(data['REPUESTOS'], ["VENTA", "TALLER"], exclude_keywords=["OBJ"]), 0)
+            v_rep_gar = r_r.get(find_col(data['REPUESTOS'], ["VENTA", "GAR"], exclude_keywords=["OBJ"]), 0)
+            v_rep_int = r_r.get(find_col(data['REPUESTOS'], ["VENTA", "INT"], exclude_keywords=["OBJ"]), 0)
+            
+            total_rep_service = v_rep_taller + v_rep_gar + v_rep_int
+            tp_rep = total_rep_service / div
 
             with k1: st.markdown(render_kpi_card("TUS Total", real_tus, obj_tus, is_currency=False, show_daily=True), unsafe_allow_html=True)
             with k2: st.markdown(render_kpi_card("CPUS (Entradas)", real_cpus, obj_cpus, is_currency=False, show_daily=True), unsafe_allow_html=True)
             with k3: st.markdown(render_kpi_small("Ticket Prom. (Hs)", tp_hs, None, None, None, "{:.2f} hs"), unsafe_allow_html=True)
-            with k4: st.markdown(render_kpi_small("Ticket Prom. ($)", tp_mo, tgt_tp_mo, None, None, "${:,.0f}"), unsafe_allow_html=True)
+            with k4: st.markdown(render_kpi_small("Ticket Prom. MO", tp_mo, tgt_tp_mo, None, None, "${:,.0f}"), unsafe_allow_html=True)
+            with k5: st.markdown(render_kpi_small("Ticket Prom. Rep", tp_rep, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
 
             # --- SECCIÓN: CALIDAD E INCENTIVOS ---
             st.markdown("---")
@@ -672,11 +689,7 @@ try:
                 total_plata_wip = df_w['Saldo'].sum()
                 autos_totales_unicos = df_w['Identificador'].nunique()
                 
-                # Cálculos Filtrados o Totales según lo que se muestra abajo?
-                # Las tarjetas de arriba suelen ser TOTALES para tener el pantallazo, pero si filtramos
-                # quizás quieras ver los datos del filtro. 
-                # Haremos que las TARJETAS sean DINÁMICAS según el filtro también.
-                
+                # CÁLCULOS FILTRADOS
                 f_plata = df_filtrado['Saldo'].sum()
                 f_autos = df_filtrado['Identificador'].nunique()
                 
@@ -732,7 +745,6 @@ try:
                 
                 with col_graf_asesor:
                     st.markdown("##### 👥 Saldo Abierto por Asesor (Ranking Global)")
-                    # Ranking siempre global para comparar
                     df_asesor = df_w.groupby('Nombre_Asesor').agg(
                         Dinero=('Saldo', 'sum'),
                         Autos=('Identificador', 'nunique')
@@ -751,7 +763,6 @@ try:
 
                 with col_graf_cargo:
                     st.markdown(f"##### 📊 Cantidad por Cargo ({asesor_seleccionado})")
-                    # Extraer código corto del cargo (Ej: "1A", "3G")
                     df_filtrado['Codigo_Cargo'] = df_filtrado['Tipo'].astype(str).str.split().str[0]
                     
                     df_cargos = df_filtrado.groupby('Codigo_Cargo').agg(
@@ -762,7 +773,7 @@ try:
                     fig_cargos = px.bar(df_cargos, x='Cantidad', y='Codigo_Cargo', text='Cantidad',
                                         orientation='h',
                                         title="",
-                                        hover_data={'Dinero':':$,.0f'}, # Tooltip con dinero
+                                        hover_data={'Dinero':':$,.0f'},
                                         color='Cantidad', color_continuous_scale='Reds')
                     
                     fig_cargos.update_layout(height=500, xaxis_title="Cant. Órdenes", yaxis_title="", showlegend=False)
