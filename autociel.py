@@ -253,49 +253,83 @@ def procesar_wip(uploaded_file):
     df = None
     debug_info = []
 
-    # Lista de intentos: (Separador, Codificación, Decimal, Miles)
-    # Ponemos PRIMERO el punto y coma (;) porque es el formato de tu archivo actual.
     intentos = [
-        (';', 'utf-8', ',', '.'),       # Tu formato actual (CSV exportado bien)
-        (';', 'latin-1', ',', '.'),     # Alternativa común Windows
-        (',', 'utf-8', '.', ','),       # CSV estándar inglés
-        (',', 'latin-1', '.', ','),     # CSV estándar español
-        ('\t', 'utf-16', ',', '.'),     # Pegado desde Excel
+        (';', 'utf-8', ',', '.'),       
+        (';', 'latin-1', ',', '.'),     
+        (',', 'utf-8', '.', ','),       
+        (',', 'latin-1', '.', ','),     
+        ('\t', 'utf-16', ',', '.'),     
     ]
 
     for sep, enc, dec, thou in intentos:
         try:
             uploaded_file.seek(0)
             df_temp = pd.read_csv(uploaded_file, sep=sep, encoding=enc, on_bad_lines='skip')
-            
-            # Limpieza básica de columnas para verificar
             df_temp.columns = [str(c).strip() for c in df_temp.columns]
             
-            # VERIFICACIÓN CLAVE: ¿Existen las columnas que necesitamos?
-            # Si no están, asumimos que este separador no sirvió.
             if 'Tipo' in df_temp.columns and 'Total s/impto' in df_temp.columns:
                 df = df_temp
-                break # ¡Éxito! Salimos del bucle
-            else:
-                debug_info.append(f"Leído con '{sep}' ({enc}) pero faltan columnas. Cols encontradas: {list(df_temp.columns)}")
+                break 
         except Exception as e:
-            debug_info.append(f"Fallo con '{sep}' ({enc}): {str(e)}")
+            debug_info.append(str(e))
 
-    # Intento final: Excel nativo (por si acaso vuelves a subir el .xls original)
     if df is None:
         try:
             uploaded_file.seek(0)
             df = pd.read_excel(uploaded_file)
             df.columns = [str(c).strip() for c in df.columns]
-             # Verificación Excel
-            if 'Tipo' not in df.columns:
-                df = None # Falso positivo
-        except Exception as e:
-            debug_info.append(f"Fallo Excel: {str(e)}")
+            if 'Tipo' not in df.columns: df = None 
+        except: pass
 
-    # Si después de todo df sigue siendo None...
     if df is None:
-        return None, f"No se pudo leer el archivo. Verifica que sea el correcto.\nDetalles técnicos: {'; '.join(debug_info[:3])}..."
+        return None, "No se pudo leer el archivo. Verifica el formato."
+
+    try:
+        # 1. Limpieza de Dinero
+        col_saldo = 'Total s/impto'
+        df['Saldo'] = df[col_saldo].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
+        df['Saldo'] = pd.to_numeric(df['Saldo'], errors='coerce').fillna(0)
+
+        # 2. Identificación
+        if 'Matrícul' in df.columns and 'IDV' in df.columns:
+            df['Identificador'] = df['Matrícul'].fillna(df['IDV'].astype(str))
+        else:
+            df['Identificador'] = df['Matrícul'] if 'Matrícul' in df.columns else df['IDV']
+        df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
+
+        # 3. Mapeo de Asesores
+        def obtener_nombre_asesor(val):
+            try:
+                rec_id = int(float(val))
+                return ASESORES_MAP.get(rec_id, f"Asesor {rec_id}")
+            except:
+                return "Sin Asesor"
+        
+        if 'Rec' in df.columns:
+            df['Nombre_Asesor'] = df['Rec'].apply(obtener_nombre_asesor)
+        else:
+            df['Nombre_Asesor'] = "Desconocido"
+
+        # 4. Clasificación
+        def clasificar_taller(texto_tipo):
+            if pd.isna(texto_tipo): return 'Mecánica'
+            codigo = str(texto_tipo).strip().upper()[:2]
+            if codigo in CODIGOS_CYP: return 'Chapa y Pintura'
+            return 'Mecánica'
+
+        df['Tipo_Taller'] = df['Tipo'].apply(clasificar_taller)
+        
+        # 5. FECHAS (Corrección del error)
+        if 'Fec.ap' in df.columns:
+            # Convertimos la fecha de apertura
+            df['Fecha_Alta'] = pd.to_datetime(df['Fec.ap'], dayfirst=True, errors='coerce')
+        else:
+            df['Fecha_Alta'] = pd.NaT
+
+        return df, "OK"
+        
+    except Exception as e:
+        return None, f"Error procesando datos: {str(e)}"
 
     # --- PROCESAMIENTO DE DATOS ---
     try:
