@@ -55,18 +55,18 @@ def find_col(df, include_keywords, exclude_keywords=[]):
                 return col
     return ""
 
-# --- CARGA DE DATOS (AHORA INCLUYE WIP) ---
+# --- CARGA DE DATOS ROBUSTA ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
-    # AGREGAMOS 'WIP' A LAS HOJAS A CARGAR
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP']
     data_dict = {}
+    
     for h in hojas:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
             
-            # Limpieza de nombres de columnas
+            # Limpieza de Nombres de Columnas
             df.columns = [
                 c.strip().upper()
                 .replace(".", "")
@@ -75,23 +75,32 @@ def cargar_datos(sheet_id):
                 for c in df.columns
             ]
             
-            # Limpieza de datos numéricos (excepto fechas/textos clave)
+            # --- LIMPIEZA NUMÉRICA FORMATO ARGENTINO ---
+            # 1. Eliminar puntos de miles (1.000 -> 1000)
+            # 2. Reemplazar comas decimales por puntos (0,50 -> 0.50)
             for col in df.columns:
-                if "FECHA" not in col and "CANAL" not in col and "ESTADO" not in col and "MATRICUL" not in col and "MODELO" not in col and "DESCRIPCION" not in col and "TIPO" not in col:
-                    df[col] = df[col].astype(str).str.replace(r'[\$%\s]', '', regex=True).str.replace(',', '.')
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                # Excluimos columnas que sabemos que son texto o fechas
+                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
+                    # Paso 1: Forzar string y quitar simbolos basura
+                    serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
+                    
+                    # Paso 2: Detectar si tiene formato "1.000,00"
+                    # Eliminamos el punto (miles)
+                    serie = serie.str.replace('.', '', regex=False)
+                    # Reemplazamos la coma (decimal) por punto
+                    serie = serie.str.replace(',', '.', regex=False)
+                    
+                    # Paso 3: Convertir a numérico
+                    df[col] = pd.to_numeric(serie, errors='coerce').fillna(0.0)
             
             data_dict[h] = df
         except Exception as e:
-            # Si falla WIP (ej: no creaste la hoja aun), no rompe todo el app, solo avisa
-            if h != 'WIP': 
-                st.error(f"Error cargando hoja {h}: {e}")
-            else:
-                pass # WIP es opcional si no está creada la hoja
+            if h != 'WIP': st.error(f"Error cargando hoja {h}: {e}")
+            else: pass 
                 
     return data_dict
 
-# --- PROCESAMIENTO IRPV (SOLO ESTO QUEDA CON UPLOAD MANUAL) ---
+# --- PROCESAMIENTO IRPV ---
 def leer_csv_inteligente(uploaded_file):
     try:
         uploaded_file.seek(0)
@@ -188,8 +197,6 @@ def procesar_irpv(file_v, file_t):
 def preparar_wip_desde_sheet(df):
     if df is None or df.empty: return None
     
-    # Mapeo de columnas basado en lo que cargaste a Sheets
-    # Buscamos columnas clave
     col_saldo = find_col(df, ['TOTAL', 'IMPTO']) or find_col(df, ['SALDO'])
     if not col_saldo: return None
     
@@ -200,10 +207,9 @@ def preparar_wip_desde_sheet(df):
     col_fecha = find_col(df, ['FEC', 'AP'])
     col_modelo = find_col(df, ['MODELO'])
 
-    # Normalización
-    df['Saldo'] = df[col_saldo] # Ya viene numérico por cargar_datos
+    # El saldo ya fue limpiado en cargar_datos con la lógica de puntos y comas
+    df['Saldo'] = df[col_saldo] 
     
-    # Identificador
     if col_matricula and col_idv:
         df['Identificador'] = df[col_matricula].replace('0', np.nan).fillna(df[col_idv].astype(str))
     elif col_matricula:
@@ -212,10 +218,9 @@ def preparar_wip_desde_sheet(df):
         df['Identificador'] = "S/D"
     df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
 
-    # Asesor
     def obtener_nombre_asesor(val):
         try:
-            val_clean = str(val).split('.')[0] # Quitar decimales si vienen como string "11.0"
+            val_clean = str(val).split('.')[0] 
             return ASESORES_MAP.get(val_clean, f"Asesor {val_clean}")
         except:
             return "Sin Asesor"
@@ -225,7 +230,6 @@ def preparar_wip_desde_sheet(df):
     else:
         df['Nombre_Asesor'] = "Desconocido"
 
-    # Tipo Taller
     def clasificar_taller(texto_tipo):
         if pd.isna(texto_tipo): return 'Mecánica'
         codigo = str(texto_tipo).strip().upper()[:2]
@@ -234,18 +238,16 @@ def preparar_wip_desde_sheet(df):
 
     if col_tipo:
         df['Tipo_Taller'] = df[col_tipo].apply(clasificar_taller)
-        df['Tipo'] = df[col_tipo] # Guardamos para grafico de cargos
+        df['Tipo'] = df[col_tipo] 
     else:
         df['Tipo_Taller'] = 'Mecánica'
         df['Tipo'] = 'S/D'
 
-    # Fecha
     if col_fecha:
         df['Fecha_Alta'] = pd.to_datetime(df[col_fecha], dayfirst=True, errors='coerce')
     else:
         df['Fecha_Alta'] = pd.NaT
 
-    # Otros datos para tabla
     if col_modelo: df['Modelo'] = df[col_modelo]
     else: df['Modelo'] = ""
     
@@ -262,7 +264,6 @@ try:
     data = cargar_datos(ID_SHEET)
     
     if data:
-        # Preprocesamiento Fechas General
         for h in ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA']:
             if h in data:
                 col_f = find_col(data[h], ["FECHA"]) or data[h].columns[0]
