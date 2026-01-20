@@ -249,39 +249,53 @@ def procesar_irpv(file_v, file_t):
     res.columns = ['1er', '2do', '3er']
     return res, "OK"
 
-# --- 2. FUNCIÓN WIP (ÓRDENES ABIERTAS) ---
 def procesar_wip(uploaded_file):
     try:
-        # 1. Lectura del archivo
+        # Detectamos el tipo de archivo por su extensión
+        filename = uploaded_file.name.lower()
         uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file, sep=',', encoding='utf-8', on_bad_lines='skip')
         
+        if filename.endswith('.csv'):
+            try:
+                # Intentamos leer como CSV estándar (UTF-8)
+                df = pd.read_csv(uploaded_file, sep=',', encoding='utf-8', on_bad_lines='skip')
+            except:
+                # Si falla, intentamos con codificación latina (común en windows antiguos)
+                uploaded_file.seek(0)
+                df = pd.read_csv(uploaded_file, sep=',', encoding='latin-1', on_bad_lines='skip')
+        else:
+            # Asumimos que es Excel (.xls o .xlsx)
+            try:
+                df = pd.read_excel(uploaded_file)
+            except:
+                # A veces los sistemas bajan "falsos" excel que son CSV disfrazados
+                uploaded_file.seek(0)
+                try:
+                    df = pd.read_csv(uploaded_file, sep='\t', encoding='latin-1')
+                except:
+                     return None, "No se pudo leer el archivo Excel/CSV."
+
         # 2. Normalización de columnas (Quitamos espacios y puntos)
         df.columns = [str(c).strip() for c in df.columns]
         
         # 3. Verificación de columnas clave
-        # En tu archivo las columnas son: 'Tipo', 'Total s/impto', 'Matrícul', 'Rec'
         if 'Tipo' not in df.columns or 'Total s/impto' not in df.columns:
             return None, "El archivo no tiene las columnas 'Tipo' o 'Total s/impto'."
 
-        # 4. Limpieza de Dinero (Manejo de decimales)
-        # Tu archivo viene con puntos decimales directos (ej: 211946.06), python lo lee bien directo
+        # 4. Limpieza de Dinero
         df['Saldo'] = pd.to_numeric(df['Total s/impto'], errors='coerce').fillna(0)
 
-        # 5. Identificación de Chasis Único (Usamos Matrícul o IDV)
-        # Si Matrícul está vacío, usamos IDV como respaldo
+        # 5. Identificación de Chasis Único
         if 'Matrícul' in df.columns and 'IDV' in df.columns:
             df['Identificador'] = df['Matrícul'].fillna(df['IDV'].astype(str))
         else:
-            # Fallback si falta alguna
             df['Identificador'] = df['Matrícul'] if 'Matrícul' in df.columns else df['IDV']
             
         df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
 
-        # 6. Mapeo de Asesores (Columna 'Rec')
+        # 6. Mapeo de Asesores
         def obtener_nombre_asesor(val):
             try:
-                # Convertimos a entero (ej: 8.0 -> 8)
                 rec_id = int(float(val))
                 return ASESORES_MAP.get(rec_id, f"Asesor {rec_id}")
             except:
@@ -293,10 +307,9 @@ def procesar_wip(uploaded_file):
             df['Nombre_Asesor'] = "Desconocido"
 
         # 7. Clasificación Mecánica vs CyP
-        # Miramos si los primeros 2 caracteres del 'Tipo' están en la lista de CyP
         def clasificar_taller(texto_tipo):
             if pd.isna(texto_tipo): return 'Mecánica'
-            codigo = str(texto_tipo).strip().upper()[:2] # Toma "1A", "1B", etc.
+            codigo = str(texto_tipo).strip().upper()[:2]
             if codigo in CODIGOS_CYP:
                 return 'Chapa y Pintura'
             return 'Mecánica'
