@@ -9,7 +9,6 @@ import os
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
 # --- 1. CONFIGURACIÓN Y MAPEOS ---
-# Diccionario para convertir el número de "Rec" en Nombre Real
 ASESORES_MAP = {
     1: "Claudio Molina", 3: "Belen Juarez", 4: "Fatima Polli", 8: "Daniel Espin",
     11: "César Oliva", 12: "Hector Corrales", 13: "Nazareno Segovia", 14: "Haydee Garnica",
@@ -17,7 +16,6 @@ ASESORES_MAP = {
     28: "Fernanda Barranco", 29: "Ricardo Alvarez", 30: "Andrea Martins", 31: "Cristian Portal"
 }
 
-# Códigos de cargo que identifican una orden como "Chapa y Pintura"
 CODIGOS_CYP = ['1B', '3G'] 
 
 # --- ESTILO CSS ---
@@ -62,15 +60,15 @@ st.markdown("""<style>
     
     .metric-card { 
         background-color: white; 
-        border: 1px solid #eee; 
-        padding: 10px 10px 6px 10px;
+        border: 1px solid #dee2e6; 
+        padding: 15px;
         border-radius: 8px; 
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
         text-align: center; 
         height: 100%; 
         display: flex; 
         flex-direction: column; 
-        justify-content: space-between; 
+        justify-content: center;
         min-height: 110px; 
     }
     
@@ -84,21 +82,6 @@ st.markdown("""<style>
         color: #666;
     }
     
-    div.row-widget.stRadio > div { flex-direction: row; align-items: stretch; }
-    div.row-widget.stRadio > div[role="radiogroup"] > label { 
-        background-color: #ffffff; 
-        border: 1px solid #e0e0e0;
-        padding: 8px 16px;
-        border-radius: 5px;
-        margin-right: 5px;
-        font-weight: bold;
-        color: #00235d;
-    }
-    div.row-widget.stRadio > div[role="radiogroup"] > label[data-baseweb="radio"] { 
-        background-color: #00235d; 
-        color: white;
-    }
-
     .cyp-detail { background-color: #f8f9fa; padding: 8px; border-radius: 6px; font-size: 0.8rem; margin-top: 5px; border-left: 3px solid #00235d; line-height: 1.3; }
     .cyp-header { font-weight: bold; color: #00235d; font-size: 0.85rem; margin-bottom: 2px; display: block; }
 </style>""", unsafe_allow_html=True)
@@ -143,7 +126,6 @@ def cargar_datos(sheet_id):
 def leer_csv_inteligente(uploaded_file):
     try:
         uploaded_file.seek(0)
-        # Intentamos detectar encabezado leyendo las primeras lineas
         preview = pd.read_csv(uploaded_file, header=None, nrows=20, sep=None, engine='python', encoding='utf-8', on_bad_lines='skip')
         idx_header = -1
         keywords = ['BASTIDOR', 'VIN', 'CHASIS', 'MATRICULA', 'REF.OR']
@@ -167,7 +149,6 @@ def leer_csv_inteligente(uploaded_file):
 
 # --- 1. FUNCIÓN IRPV (FIDELIZACIÓN) ---
 def procesar_irpv(file_v, file_t):
-    # 1. Ventas
     df_v, msg_v = leer_csv_inteligente(file_v)
     if df_v is None: return None, f"Ventas: {msg_v}"
     df_v.columns = [str(c).upper().strip() for c in df_v.columns]
@@ -187,7 +168,6 @@ def procesar_irpv(file_v, file_t):
     df_v['VIN'] = df_v[col_vin].astype(str).str.strip().str.upper()
     df_v = df_v.dropna(subset=['VIN', 'Fecha_Entrega'])
 
-    # 2. Taller
     df_t, msg_t = leer_csv_inteligente(file_t)
     if df_t is None: return None, f"Taller: {msg_t}"
     df_t.columns = [str(c).upper().strip() for c in df_t.columns]
@@ -209,7 +189,6 @@ def procesar_irpv(file_v, file_t):
         mask = ~df_t[col_or].astype(str).str.contains('CHAPA|PINTURA|SINIESTRO', case=False, na=False)
         df_t = df_t[mask]
 
-    # Clasificación Híbrida
     def clasif_hibrida(row):
         k = row['Km']
         t = row['Texto']
@@ -224,22 +203,21 @@ def procesar_irpv(file_v, file_t):
     pivot_dates = df_validos.pivot_table(index='VIN', columns='Hito', values='Fecha_Servicio', aggfunc='min').reset_index()
     merged = pd.merge(df_v, pivot_dates, on='VIN', how='left')
 
-    # Lógica Secuencial y Madurez
     hoy = datetime.now()
     def evaluar(row, actual, anterior=None):
         if actual == '1er':
             base = row['Fecha_Entrega']
         else:
             base = row.get(anterior, pd.NaT)
-            if pd.isna(base): return np.nan # Cadena rota
+            if pd.isna(base): return np.nan 
         
         if pd.isna(base): return np.nan
         limite = base + timedelta(days=365)
         hecho = row.get(actual, pd.NaT)
         
-        if not pd.isna(hecho): return 1.0 # Éxito
-        if hoy >= limite: return 0.0 # Vencido
-        return np.nan # Aún en tiempo (no cuenta)
+        if not pd.isna(hecho): return 1.0 
+        if hoy >= limite: return 0.0 
+        return np.nan 
 
     merged['R_1er'] = merged.apply(lambda r: evaluar(r, '1er'), axis=1)
     merged['R_2do'] = merged.apply(lambda r: evaluar(r, '2do', '1er'), axis=1)
@@ -254,7 +232,6 @@ def procesar_wip(uploaded_file):
     df = None
     debug_info = []
 
-    # Lista de intentos: (Separador, Codificación, Decimal, Miles)
     intentos = [
         (';', 'utf-8', ',', '.'),       
         (';', 'latin-1', ',', '.'),     
@@ -275,7 +252,6 @@ def procesar_wip(uploaded_file):
         except Exception as e:
             debug_info.append(str(e))
 
-    # Intento Excel nativo
     if df is None:
         try:
             uploaded_file.seek(0)
@@ -288,19 +264,16 @@ def procesar_wip(uploaded_file):
         return None, "No se pudo leer el archivo. Verifica el formato."
 
     try:
-        # 1. Limpieza de Dinero
         col_saldo = 'Total s/impto'
         df['Saldo'] = df[col_saldo].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
         df['Saldo'] = pd.to_numeric(df['Saldo'], errors='coerce').fillna(0)
 
-        # 2. Identificación
         if 'Matrícul' in df.columns and 'IDV' in df.columns:
             df['Identificador'] = df['Matrícul'].fillna(df['IDV'].astype(str))
         else:
             df['Identificador'] = df['Matrícul'] if 'Matrícul' in df.columns else df['IDV']
         df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
 
-        # 3. Mapeo de Asesores
         def obtener_nombre_asesor(val):
             try:
                 rec_id = int(float(val))
@@ -313,7 +286,6 @@ def procesar_wip(uploaded_file):
         else:
             df['Nombre_Asesor'] = "Desconocido"
 
-        # 4. Clasificación
         def clasificar_taller(texto_tipo):
             if pd.isna(texto_tipo): return 'Mecánica'
             codigo = str(texto_tipo).strip().upper()[:2]
@@ -322,8 +294,6 @@ def procesar_wip(uploaded_file):
 
         df['Tipo_Taller'] = df['Tipo'].apply(clasificar_taller)
         
-        # 5. FECHAS (Corrección del error 'Fecha_dt')
-        # Buscamos la columna que contenga la fecha de apertura
         if 'Fec.ap' in df.columns:
             df['Fecha_Alta'] = pd.to_datetime(df['Fec.ap'], dayfirst=True, errors='coerce')
         else:
@@ -708,12 +678,44 @@ try:
                 autos_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']['Identificador'].nunique()
                 plata_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']['Saldo'].sum()
 
-                # TARJETAS KPI
+                # TARJETAS KPI ESTILIZADAS (HTML)
                 kw1, kw2, kw3, kw4 = st.columns(4)
-                with kw1: st.metric("Total Dinero Abierto", f"${total_plata_wip:,.0f}")
-                with kw2: st.metric("Total Autos Físicos", f"{autos_totales_unicos}", help="Cantidad de patentes/chasis únicos en el predio")
-                with kw3: st.metric("Mecánica (Autos/$)", f"{autos_mec} / ${plata_mec:,.0f}")
-                with kw4: st.metric("CyP (Autos/$)", f"{autos_cyp} / ${plata_cyp:,.0f}")
+                
+                with kw1:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Total Dinero Abierto</div>
+                        <div style="font-size:1.5rem; color:#00235d; font-weight:bold; margin-top:5px;">${total_plata_wip:,.0f}</div>
+                        <div style="font-size:0.75rem; color:#888;">Saldo pendiente total</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with kw2:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Total Autos en Taller</div>
+                        <div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{autos_totales_unicos}</div>
+                        <div style="font-size:0.75rem; color:#888;">Vehículos físicos</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with kw3:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Mecánica</div>
+                        <div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${plata_mec:,.0f}</div>
+                        <div style="font-size:0.8rem; color:#28a745; font-weight:bold; margin-top:2px;">🚗 {autos_mec} autos</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with kw4:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Chapa y Pintura</div>
+                        <div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${plata_cyp:,.0f}</div>
+                        <div style="font-size:0.8rem; color:#17a2b8; font-weight:bold; margin-top:2px;">🚙 {autos_cyp} autos</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
                 # --- GRÁFICO HORIZONTAL ---
                 st.markdown("##### 👥 Saldo Abierto por Asesor")
