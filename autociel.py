@@ -668,15 +668,25 @@ try:
                 else:
                     df_filtrado = df_w
 
-                # CÁLCULOS GENERALES
+                # CÁLCULOS GENERALES (Siempre Total)
                 total_plata_wip = df_w['Saldo'].sum()
                 autos_totales_unicos = df_w['Identificador'].nunique()
                 
-                autos_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']['Identificador'].nunique()
-                plata_mec = df_w[df_w['Tipo_Taller'] == 'Mecánica']['Saldo'].sum()
+                # Cálculos Filtrados o Totales según lo que se muestra abajo?
+                # Las tarjetas de arriba suelen ser TOTALES para tener el pantallazo, pero si filtramos
+                # quizás quieras ver los datos del filtro. 
+                # Haremos que las TARJETAS sean DINÁMICAS según el filtro también.
                 
-                autos_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']['Identificador'].nunique()
-                plata_cyp = df_w[df_w['Tipo_Taller'] == 'Chapa y Pintura']['Saldo'].sum()
+                f_plata = df_filtrado['Saldo'].sum()
+                f_autos = df_filtrado['Identificador'].nunique()
+                
+                f_mec = df_filtrado[df_filtrado['Tipo_Taller'] == 'Mecánica']
+                f_cyp = df_filtrado[df_filtrado['Tipo_Taller'] == 'Chapa y Pintura']
+                
+                f_plata_mec = f_mec['Saldo'].sum()
+                f_autos_mec = f_mec['Identificador'].nunique()
+                f_plata_cyp = f_cyp['Saldo'].sum()
+                f_autos_cyp = f_cyp['Identificador'].nunique()
 
                 # TARJETAS KPI ESTILIZADAS (HTML)
                 kw1, kw2, kw3, kw4 = st.columns(4)
@@ -684,17 +694,17 @@ try:
                 with kw1:
                     st.markdown(f"""
                     <div class="metric-card">
-                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Total Dinero Abierto</div>
-                        <div style="font-size:1.5rem; color:#00235d; font-weight:bold; margin-top:5px;">${total_plata_wip:,.0f}</div>
-                        <div style="font-size:0.75rem; color:#888;">Saldo pendiente total</div>
+                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Dinero Abierto ({asesor_seleccionado})</div>
+                        <div style="font-size:1.5rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata:,.0f}</div>
+                        <div style="font-size:0.75rem; color:#888;">Saldo pendiente</div>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 with kw2:
                     st.markdown(f"""
                     <div class="metric-card">
-                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Total Autos en Taller</div>
-                        <div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{autos_totales_unicos}</div>
+                        <div style="font-size:0.85rem; color:#666; font-weight:600;">Autos en Taller ({asesor_seleccionado})</div>
+                        <div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{f_autos}</div>
                         <div style="font-size:0.75rem; color:#888;">Vehículos físicos</div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -703,8 +713,8 @@ try:
                     st.markdown(f"""
                     <div class="metric-card">
                         <div style="font-size:0.85rem; color:#666; font-weight:600;">Mecánica</div>
-                        <div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${plata_mec:,.0f}</div>
-                        <div style="font-size:0.8rem; color:#28a745; font-weight:bold; margin-top:2px;">🚗 {autos_mec} autos</div>
+                        <div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata_mec:,.0f}</div>
+                        <div style="font-size:0.8rem; color:#28a745; font-weight:bold; margin-top:2px;">🚗 {f_autos_mec} autos</div>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -712,29 +722,51 @@ try:
                     st.markdown(f"""
                     <div class="metric-card">
                         <div style="font-size:0.85rem; color:#666; font-weight:600;">Chapa y Pintura</div>
-                        <div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${plata_cyp:,.0f}</div>
-                        <div style="font-size:0.8rem; color:#17a2b8; font-weight:bold; margin-top:2px;">🚙 {autos_cyp} autos</div>
+                        <div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata_cyp:,.0f}</div>
+                        <div style="font-size:0.8rem; color:#17a2b8; font-weight:bold; margin-top:2px;">🚙 {f_autos_cyp} autos</div>
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # --- GRÁFICO HORIZONTAL ---
-                st.markdown("##### 👥 Saldo Abierto por Asesor")
+                # --- SECCIÓN GRÁFICA: ASESORES Y CARGOS ---
+                col_graf_asesor, col_graf_cargo = st.columns([2, 1])
                 
-                df_asesor = df_w.groupby('Nombre_Asesor').agg(
-                    Dinero=('Saldo', 'sum'),
-                    Autos=('Identificador', 'nunique')
-                ).reset_index().sort_values('Dinero', ascending=True)
-                
-                df_asesor['Etiqueta'] = df_asesor.apply(lambda x: f"{x['Autos']} autos (${x['Dinero']/1000:.0f}k)", axis=1)
+                with col_graf_asesor:
+                    st.markdown("##### 👥 Saldo Abierto por Asesor (Ranking Global)")
+                    # Ranking siempre global para comparar
+                    df_asesor = df_w.groupby('Nombre_Asesor').agg(
+                        Dinero=('Saldo', 'sum'),
+                        Autos=('Identificador', 'nunique')
+                    ).reset_index().sort_values('Dinero', ascending=True)
+                    
+                    df_asesor['Etiqueta'] = df_asesor.apply(lambda x: f"{x['Autos']} autos (${x['Dinero']/1000:.0f}k)", axis=1)
 
-                fig_wip = px.bar(df_asesor, x='Dinero', y='Nombre_Asesor', text='Etiqueta',
-                                 orientation='h', 
-                                 title="Ranking de Saldo Pendiente (Dinero)",
-                                 color='Dinero', color_continuous_scale='Blues')
-                
-                fig_wip.update_traces(textposition='outside')
-                fig_wip.update_layout(height=500, xaxis_title="Monto ($)", yaxis_title="")
-                st.plotly_chart(fig_wip, use_container_width=True)
+                    fig_wip = px.bar(df_asesor, x='Dinero', y='Nombre_Asesor', text='Etiqueta',
+                                     orientation='h', 
+                                     title="",
+                                     color='Dinero', color_continuous_scale='Blues')
+                    
+                    fig_wip.update_traces(textposition='outside')
+                    fig_wip.update_layout(height=500, xaxis_title="Monto ($)", yaxis_title="")
+                    st.plotly_chart(fig_wip, use_container_width=True)
+
+                with col_graf_cargo:
+                    st.markdown(f"##### 📊 Cantidad por Cargo ({asesor_seleccionado})")
+                    # Extraer código corto del cargo (Ej: "1A", "3G")
+                    df_filtrado['Codigo_Cargo'] = df_filtrado['Tipo'].astype(str).str.split().str[0]
+                    
+                    df_cargos = df_filtrado.groupby('Codigo_Cargo').agg(
+                        Cantidad=('Identificador', 'count'), 
+                        Dinero=('Saldo', 'sum')
+                    ).reset_index().sort_values('Cantidad', ascending=True)
+
+                    fig_cargos = px.bar(df_cargos, x='Cantidad', y='Codigo_Cargo', text='Cantidad',
+                                        orientation='h',
+                                        title="",
+                                        hover_data={'Dinero':':$,.0f'}, # Tooltip con dinero
+                                        color='Cantidad', color_continuous_scale='Reds')
+                    
+                    fig_cargos.update_layout(height=500, xaxis_title="Cant. Órdenes", yaxis_title="", showlegend=False)
+                    st.plotly_chart(fig_cargos, use_container_width=True)
                 
                 # --- TABLA DETALLE FILTRADA ---
                 st.markdown(f"##### 📋 Detalle de Autos: {asesor_seleccionado}")
