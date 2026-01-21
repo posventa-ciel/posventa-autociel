@@ -50,7 +50,9 @@ def find_col(df, include_keywords, exclude_keywords=[]):
     if df is None: return ""
     for col in df.columns:
         col_upper = col.upper()
+        # Verifica que TODAS las palabras clave de inclusión estén
         if all(k.upper() in col_upper for k in include_keywords):
+            # Verifica que NINGUNA de las de exclusión esté
             if not any(x.upper() in col_upper for x in exclude_keywords):
                 return col
     return ""
@@ -670,8 +672,16 @@ try:
             st.markdown("---")
             st.markdown("#### 📉 Control de Flujo: Compras vs Costo de Venta")
             
-            # Lectura automática de Columna AB (Compra/Entrada)
-            col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRA", "ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+            # Lectura automática de Columna AB (Compra/Entrada) - Lógica MEJORADA
+            # Intento 1: Buscar "COMPRA"
+            col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+            # Intento 2: Buscar "ENTRADA" si no encuentra "COMPRA"
+            if not col_compra_sheet:
+                col_compra_sheet = find_col(data['REPUESTOS'], ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+             # Intento 3: Buscar "COMPRAS" (plural)
+            if not col_compra_sheet:
+                col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+
             compra_real_sheet = float(r_r.get(col_compra_sheet, 0)) if col_compra_sheet else 0.0
 
             # Objetivo Terminal (Manual)
