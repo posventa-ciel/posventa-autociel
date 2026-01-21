@@ -77,18 +77,10 @@ def cargar_datos(sheet_id):
             
             # --- LIMPIEZA NUMÉRICA FORMATO ARGENTINO ---
             for col in df.columns:
-                # Excluimos columnas que sabemos que son texto o fechas
                 if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
-                    # Paso 1: Forzar string y quitar simbolos basura
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
-                    
-                    # Paso 2: Detectar si tiene formato "1.000,00"
-                    # Eliminamos el punto (miles)
                     serie = serie.str.replace('.', '', regex=False)
-                    # Reemplazamos la coma (decimal) por punto
                     serie = serie.str.replace(',', '.', regex=False)
-                    
-                    # Paso 3: Convertir a numérico
                     df[col] = pd.to_numeric(serie, errors='coerce').fillna(0.0)
             
             data_dict[h] = df
@@ -205,7 +197,6 @@ def preparar_wip_desde_sheet(df):
     col_fecha = find_col(df, ['FEC', 'AP'])
     col_modelo = find_col(df, ['MODELO'])
 
-    # El saldo ya fue limpiado en cargar_datos con la lógica de puntos y comas
     df['Saldo'] = df[col_saldo] 
     
     if col_matricula and col_idv:
@@ -286,7 +277,6 @@ try:
 
             st.markdown("---")
             st.header("2. Carga IRPV")
-            st.info("El IRPV es un análisis bajo demanda. Sube los archivos aquí si necesitas verlo.")
             
             if 'df_irpv_cache' not in st.session_state: st.session_state.df_irpv_cache = None
 
@@ -619,14 +609,7 @@ try:
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
             
-            # --- MÓDULO ESTRATÉGICO DE COMPRAS (Nuevo añadido) ---
-            st.markdown("#### 📉 Plan de Compra y Stock (Estrategia 2026)")
-            col_in_s1, col_in_s2 = st.columns(2)
-            with col_in_s1:
-                obj_compra_terminal = st.number_input("🎯 Objetivo Compra Terminal ($)", min_value=0.0, step=1000000.0, help="El objetivo de compra mensual que asigna la terminal.")
-            with col_in_s2:
-                compra_real_mes = st.number_input("🛒 Compra Real del Mes ($)", min_value=0.0, step=1000000.0, help="Lo que realmente llevas comprado o estimas comprar este mes.")
-                
+            # --- SECCIÓN 1: DETALLE OPERATIVO Y STOCK ---
             col_primas, col_vacia = st.columns([1, 3])
             with col_primas:
                 primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
@@ -643,46 +626,6 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
-            # --- CÁLCULOS ESTRATÉGICOS (Nuevo añadido) ---
-            costo_venta_total = df_r['Costo'].sum() if not df_r.empty else 0
-            val_stock_actual = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
-            
-            techo_stock_80 = costo_venta_total * 0.80  # Regla 20% menos de la venta
-            piso_scoring_60 = obj_compra_terminal * 0.60 # Regla Scoring
-
-            if compra_real_mes > 0 and costo_venta_total > 0:
-                variacion_stock = compra_real_mes - costo_venta_total
-                nuevo_stock_val = val_stock_actual + variacion_stock
-                meses_stock_proy = nuevo_stock_val / costo_venta_total 
-                meses_stock_act = val_stock_actual / costo_venta_total
-                delta_meses = meses_stock_proy - meses_stock_act
-                
-                # Evaluación
-                if piso_scoring_60 > techo_stock_80:
-                    st.warning(f"⚠️ **CONFLICTO:** El mínimo Scoring (${piso_scoring_60:,.0f}) es > al techo de stock (${techo_stock_80:,.0f}). Sacrificarás reducción de stock.")
-                
-                ck1, ck2, ck3 = st.columns(3)
-                ck1.metric("Piso Scoring (60%)", f"${piso_scoring_60:,.0f}", f"{compra_real_mes - piso_scoring_60:,.0f} vs Real")
-                ck2.metric("Techo Stock (Regla 80%)", f"${techo_stock_80:,.0f}", f"{compra_real_mes - techo_stock_80:,.0f} vs Real", delta_color="inverse")
-                if delta_meses < 0:
-                     ck3.metric("Reducción Estimada", f"{abs(delta_meses):.2f} meses", "📉 Bajando Stock", delta_color="normal")
-                else:
-                     ck3.metric("Aumento Estimado", f"{delta_meses:.2f} meses", "📈 Subiendo Stock", delta_color="inverse")
-
-                # Gráfico Gauge
-                fig_gauge = go.Figure(go.Indicator(
-                    mode = "gauge+number+delta", value = compra_real_mes, title = {'text': "Nivel de Compra"},
-                    delta = {'reference': techo_stock_80, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
-                    gauge = {
-                        'axis': {'range': [0, max(compra_real_mes, obj_compra_terminal)*1.1]}, 'bar': {'color': "#00235d"},
-                        'steps': [{'range': [0, piso_scoring_60], 'color': "#ffc107"}, {'range': [piso_scoring_60, techo_stock_80], 'color': "#28a745"}, {'range': [techo_stock_80, costo_venta_total], 'color': "#fd7e14"}],
-                        'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': obj_compra_terminal}
-                    }
-                ))
-                st.plotly_chart(fig_gauge, use_container_width=True)
-            st.markdown("---")
-            # --- FIN MÓDULO NUEVO ---
-
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
@@ -723,6 +666,57 @@ try:
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 st.markdown(f'<div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;"><p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p></div>', unsafe_allow_html=True)
             
+            # --- SECCIÓN 2: CONTROL DE FLUJO: COMPRAS VS COSTO (UBICACIÓN SOLICITADA) ---
+            st.markdown("---")
+            st.markdown("#### 📉 Control de Flujo: Compras vs Costo de Venta")
+            
+            # Lectura automática de Columna AB (Compra/Entrada)
+            col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRA", "ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+            compra_real_sheet = float(r_r.get(col_compra_sheet, 0)) if col_compra_sheet else 0.0
+
+            # Objetivo Terminal (Manual)
+            col_obj_term_in, _ = st.columns([1, 2])
+            with col_obj_term_in:
+                obj_compra_terminal = st.number_input("🎯 Objetivo Compra Stellantis ($)", min_value=0.0, step=1000000.0, value=0.0)
+
+            # Cálculos de Comparación
+            costo_venta_total = df_r['Costo'].sum() if not df_r.empty else 0
+            diferencia_flujo = compra_real_sheet - costo_venta_total
+            
+            # Regla del 20%: Costo de Venta debe ser mayor a Compras en un 20%
+            # Es decir: Costo >= Compra * 1.20
+            ratio_reduccion = costo_venta_total / compra_real_sheet if compra_real_sheet > 0 else 0
+            objetivo_ratio = 1.20 # 20% más
+
+            k_f1, k_f2, k_f3 = st.columns(3)
+            k_f1.metric("Compra Real (Sheet)", f"${compra_real_sheet:,.0f}", help="Dato tomado de Columna AB del Excel")
+            k_f2.metric("Costo de Venta Total", f"${costo_venta_total:,.0f}")
+            
+            if diferencia_flujo > 0:
+                k_f3.metric("Flujo de Stock", f"+${diferencia_flujo:,.0f}", "📈 Stock Subiendo", delta_color="inverse")
+            else:
+                k_f3.metric("Flujo de Stock", f"-${abs(diferencia_flujo):,.0f}", "📉 Stock Bajando", delta_color="normal")
+
+            # Alertas
+            st.markdown("##### 🚦 Semáforo de Reducción")
+            if compra_real_sheet == 0:
+                st.warning("⚠️ No se detectaron compras en la columna del Excel (Busco columnas llamadas 'COMPRA' o 'ENTRADA').")
+            else:
+                if ratio_reduccion >= objetivo_ratio:
+                    st.success(f"✅ **OBJETIVO CUMPLIDO:** Estás vendiendo un {((ratio_reduccion-1)*100):.1f}% más de lo que compras (Meta: 20%). El stock baja correctamente.")
+                elif ratio_reduccion > 1.0:
+                    st.info(f"⚠️ **ALERTA LEVE:** El stock baja, pero lento. Vendes solo un {((ratio_reduccion-1)*100):.1f}% más de lo que compras (Meta: 20%).")
+                else:
+                    st.error(f"❌ **ALERTA CRÍTICA:** Estás comprando más de lo que vendes. El stock está subiendo.")
+
+            # Scoring check
+            piso_scoring = obj_compra_terminal * 0.60
+            if obj_compra_terminal > 0:
+                st.caption(f"Referencia Scoring: Debes comprar al menos ${piso_scoring:,.0f} (60% del obj). Compra actual: ${compra_real_sheet:,.0f}")
+                if compra_real_sheet < piso_scoring:
+                    st.error("⚠️ Cuidado: Estás por debajo del piso de compra para el Scoring.")
+
+            # --- SECCIÓN 3: SIMULADORES Y ESTRATEGIA (AL FINAL) ---
             st.markdown("---")
             st.subheader("🏁 Asistente de Equilibrio y Simulador")
             canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
