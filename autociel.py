@@ -50,9 +50,7 @@ def find_col(df, include_keywords, exclude_keywords=[]):
     if df is None: return ""
     for col in df.columns:
         col_upper = col.upper()
-        # Verifica que TODAS las palabras clave de inclusión estén
         if all(k.upper() in col_upper for k in include_keywords):
-            # Verifica que NINGUNA de las de exclusión esté
             if not any(x.upper() in col_upper for x in exclude_keywords):
                 return col
     return ""
@@ -68,7 +66,6 @@ def cargar_datos(sheet_id):
         try:
             df = pd.read_csv(url, dtype=str).fillna("0")
             
-            # Limpieza de Nombres de Columnas
             df.columns = [
                 c.strip().upper()
                 .replace(".", "")
@@ -77,7 +74,6 @@ def cargar_datos(sheet_id):
                 for c in df.columns
             ]
             
-            # --- LIMPIEZA NUMÉRICA FORMATO ARGENTINO ---
             for col in df.columns:
                 if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
@@ -936,6 +932,36 @@ try:
                 c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
 
             st.markdown("#### 📦 Repuestos")
+            # --- NUEVO GRÁFICO HISTÓRICO DE FLUJO DE STOCK (COMPRA VS COSTO) ---
+            h_rep['CostoTotalMes'] = 0
+            for c in canales_repuestos:
+                 col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
+                 if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
+            
+            # Buscar columna de COMPRA en el histórico (Misma lógica que en la pestaña Repuestos)
+            col_compra_hist = find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+            if not col_compra_hist: col_compra_hist = find_col(h_rep, ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+            if not col_compra_hist: col_compra_hist = find_col(h_rep, ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+            
+            h_rep['CompraTotalMes'] = h_rep[col_compra_hist] if col_compra_hist else 0
+            h_rep['VariacionStock'] = h_rep['CompraTotalMes'] - h_rep['CostoTotalMes']
+            
+            # Métricas Acumuladas
+            total_var_anual = h_rep['VariacionStock'].sum()
+            txt_var_anual = "Bajando Stock" if total_var_anual < 0 else "Subiendo Stock"
+            delta_color_anual = "normal" if total_var_anual < 0 else "inverse"
+            st.metric("Variación Acumulada Anual", f"${total_var_anual:,.0f}", txt_var_anual, delta_color=delta_color_anual)
+
+            # Gráfico de Barras Comparativo
+            fig_flow = go.Figure()
+            fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CompraTotalMes'], name='Compras (Entradas)', marker_color='#00235d'))
+            fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CostoTotalMes'], name='Costo Venta (Salidas)', marker_color='#fd7e14'))
+            # Línea de Saldo
+            fig_flow.add_trace(go.Scatter(x=h_rep['NombreMes'], y=h_rep['VariacionStock'], name='Saldo (Variación Stock)', mode='lines+markers', line=dict(color='gray', width=2, dash='dot')))
+            
+            st.plotly_chart(fig_flow.update_layout(title="📉 Flujo de Stock: Compras vs Costo de Venta", barmode='group', height=400), use_container_width=True)
+            # --- FIN NUEVO GRÁFICO ---
+
             col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
             fig_stk = go.Figure()
             if col_vivo: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
@@ -948,11 +974,6 @@ try:
                 col_vta = find_col(h_rep, ["VENTA", c], exclude_keywords=["OBJ"])
                 if col_vta: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c))
             st.plotly_chart(fig_mix.update_layout(barmode='stack', title="Venta Total por Canal (Apilado)", height=300), use_container_width=True)
-            
-            h_rep['CostoTotalMes'] = 0
-            for c in canales_repuestos:
-                 col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
-                 if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
             
             h_rep['CostoPromedio3M'] = h_rep['CostoTotalMes'].rolling(window=3, min_periods=1).mean()
             col_val_stock = find_col(h_rep, ["VALOR", "STOCK"])
