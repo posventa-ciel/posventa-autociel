@@ -255,9 +255,8 @@ try:
             if h in data:
                 col_f = find_col(data[h], ["FECHA"]) or data[h].columns[0]
                 data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f], dayfirst=True, errors='coerce')
-                # Forzar INT en Año y Mes para evitar errores de float
-                data[h]['Mes'] = data[h]['Fecha_dt'].dt.month.fillna(0).astype(int)
-                data[h]['Año'] = data[h]['Fecha_dt'].dt.year.fillna(0).astype(int)
+                data[h]['Mes'] = data[h]['Fecha_dt'].dt.month
+                data[h]['Año'] = data[h]['Fecha_dt'].dt.year
 
         canales_repuestos = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
 
@@ -295,8 +294,7 @@ try:
                     st.session_state.df_irpv_cache = None
 
         def get_row(df):
-            # Filtro robusto por INT
-            res = df[(df['Año'] == int(año_sel)) & (df['Mes'] == int(mes_sel))].sort_values('Fecha_dt')
+            res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
             return res.iloc[-1] if not res.empty else pd.Series(dtype='object')
 
         c_r = get_row(data['CALENDARIO'])
@@ -378,12 +376,9 @@ try:
             html += f'<div style="margin-top:5px;"><div style="width:100%; background:#e0e0e0; height:5px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:5px; border-radius:10px;"></div></div></div></div></div>'
             return html
 
-        def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial", help_text=None):
+        def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial"):
             subtext_html = "<div style='height:15px;'></div>"
             footer_html = ""
-            # Hack simple para tooltip nativo de HTML usando 'title'
-            tooltip_attr = f'title="{help_text}"' if help_text else ''
-            
             if target is not None:
                 delta = val - target
                 color = "#28a745" if delta >= 0 else "#dc3545"
@@ -393,8 +388,7 @@ try:
                 proy_delta = projection - target_mensual
                 color_proy = "#28a745" if proy_delta >= 0 else "#dc3545"
                 footer_html = f'<div class="metric-footer"><div>Obj. Mes: <b>{format_str.format(target_mensual)}</b></div><div style="color:{color_proy}">Proy: <b>{format_str.format(projection)}</b></div></div>'
-            
-            html = f'<div class="metric-card" {tooltip_attr} style="cursor:help;"><div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>{subtext_html}</div>{footer_html}</div>'
+            html = f'<div class="metric-card"><div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>{subtext_html}</div>{footer_html}</div>'
             return html
 
         # --- LÓGICA DE COLUMNAS (SERVICIOS) ---
@@ -479,7 +473,7 @@ try:
                 c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
                 if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 val_real = s_r.get(c_real, 0)
-                df_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == int(año_sel)) & (data['SERVICIOS']['Mes'] == int(mes_sel))]
+                df_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == año_sel) & (data['SERVICIOS']['Mes'] == mes_sel)]
                 if not df_mes.empty and c_obj: val_obj_mensual = df_mes[c_obj].max() 
                 else: val_obj_mensual = 0
                 val_proyeccion = val_real / prog_t if prog_t > 0 else 0
@@ -630,13 +624,17 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
+            # --- CÁLCULO DE TOTALES ---
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
-            costo_total_mes_actual = df_r['Costo'].sum() if not df_r.empty else 0
+            
+            # Costo Real Acumulado del Mes en Curso (Enero en tu ejemplo)
+            costo_total_mes_actual_real = df_r['Costo'].sum() if not df_r.empty else 0
+            
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
             c_main, c_kpis = st.columns([1, 3])
@@ -644,52 +642,73 @@ try:
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
                 
-                # --- LÓGICA DE MESES DE STOCK: PROMEDIO MOVIL 3 MESES (USANDO FECHAS REALES) ---
+                # --- LÓGICA DE MESES DE STOCK (PROMEDIO TRIMESTRAL CON PROYECCIÓN) ---
                 def obtener_costo_mes_historico(d_target):
-                    # Búsqueda robusta por fecha, independiente de columnas "Año/Mes"
+                    # Busca en TODO el dataframe de REPUESTOS (histórico)
                     df_h = data['REPUESTOS']
-                    t_y, t_m = d_target.year, d_target.month
-                    # Filtra usando el objeto datetime directamente para evitar errores de tipo
-                    rows = df_h[
-                        (df_h['Fecha_dt'].dt.year == t_y) & 
-                        (df_h['Fecha_dt'].dt.month == t_m)
-                    ]
+                    rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
                     if rows.empty: return 0.0
                     total_c = 0
                     for ch in canales_repuestos:
                         col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
-                        if col_c: total_c += rows[col_c].sum()
+                        if col_c: 
+                            try: total_c += rows[col_c].astype(float).sum()
+                            except: pass
                     return total_c
 
-                # Fecha actual seleccionada
-                date_curr = datetime(int(año_sel), int(mes_sel), 1)
+                # Fechas para buscar hacia atrás
+                date_curr = datetime(año_sel, mes_sel, 1) # Mes Seleccionado (Ej: Enero)
+                date_prev1 = (date_curr - timedelta(days=1)).replace(day=1) # Mes -1 (Ej: Diciembre)
+                date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1) # Mes -2 (Ej: Noviembre)
                 
-                # Costo Proyectado Actual
-                costo_mes_actual_proy = (costo_total_mes_actual / prog_t) if prog_t > 0 else costo_total_mes_actual
+                # 1. Obtener Costos Históricos
+                costo_mes_minus_1 = obtener_costo_mes_historico(date_prev1) # Diciembre
+                costo_mes_minus_2 = obtener_costo_mes_historico(date_prev2) # Noviembre
                 
-                # Mes -1 y Mes -2
-                date_prev1 = (date_curr - timedelta(days=1)).replace(day=1)
-                costo_prev1 = obtener_costo_mes_historico(date_prev1)
-                
-                date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1)
-                costo_prev2 = obtener_costo_mes_historico(date_prev2)
-                
-                # Cálculo de Promedio (Manejando 0s)
-                if costo_prev1 == 0 and costo_prev2 == 0:
-                    promedio_costo_3m = costo_mes_actual_proy
-                elif costo_prev2 == 0:
-                     promedio_costo_3m = (costo_prev1 + costo_mes_actual_proy) / 2
+                # 2. Calcular Proyección del Mes Actual
+                # Si prog_t (avance días hábiles) es 0, evitamos división por cero.
+                if prog_t > 0:
+                    costo_mes_actual_proy = costo_total_mes_actual_real / prog_t
                 else:
-                    promedio_costo_3m = (costo_prev2 + costo_prev1 + costo_mes_actual_proy) / 3
+                    costo_mes_actual_proy = costo_total_mes_actual_real # Fallback si recién empieza el mes
 
-                meses_stock = val_stock / promedio_costo_3m if promedio_costo_3m > 0 else 0
+                # 3. Calcular Promedio Trimestral
+                # Sumamos (Nov + Dic + EneroProyectado) / 3
+                suma_trimestral = costo_mes_minus_2 + costo_mes_minus_1 + costo_mes_actual_proy
+                promedio_costo_3m = suma_trimestral / 3 if suma_trimestral > 0 else 0
+
+                # 4. Cálculo Final Meses Stock
+                if promedio_costo_3m > 0:
+                    meses_stock = val_stock / promedio_costo_3m
+                else:
+                    meses_stock = 0
                 
-                # TOOLTIP DEPURADOR (Se ve al pasar el mouse por la tarjeta)
-                help_debug = f"Nov ({date_prev2.strftime('%b')}): ${costo_prev2:,.0f} | Dic ({date_prev1.strftime('%b')}): ${costo_prev1:,.0f} | Actual Proy: ${costo_mes_actual_proy:,.0f}"
-
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
-                with r4: st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.1f}", help_text=help_debug), unsafe_allow_html=True)
+                with r4: 
+                    # KPI FINAL
+                    st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.2f}"), unsafe_allow_html=True)
+            
+            # --- DETALLE DEL CÁLCULO (AUDITORÍA) ---
+            with st.expander("ℹ️ Ver desglose del cálculo de Stock (Auditoría)", expanded=False):
+                st.markdown(f"""
+                **Fórmula:** `Valor Stock` / `Promedio Trimestral de Costo de Venta`
+                
+                * 📦 **Valor Stock Actual:** `${val_stock:,.0f}`
+                
+                **Cálculo del Promedio (Costo de Venta):**
+                1.  📅 **{meses_nom.get(date_prev2.month)}:** `${costo_mes_minus_2:,.0f}` (Histórico Real)
+                2.  📅 **{meses_nom.get(date_prev1.month)}:** `${costo_mes_minus_1:,.0f}` (Histórico Real)
+                3.  📅 **{meses_nom.get(date_curr.month)} (Proyectado):** `${costo_mes_actual_proy:,.0f}`
+                    * *Real al momento:* `${costo_total_mes_actual_real:,.0f}`
+                    * *Avance mes:* `{prog_t:.1%}`
+                
+                ---
+                * **Suma Trimestre:** `${suma_trimestral:,.0f}`
+                * **Promedio Mensual:** `${promedio_costo_3m:,.0f}`
+                
+                👉 **Resultado:** `${val_stock:,.0f}` / `${promedio_costo_3m:,.0f}` = **{meses_stock:.2f} meses**
+                """)
 
             if not df_r.empty:
                 t_vb = df_r['Venta Bruta'].sum()
@@ -718,12 +737,9 @@ try:
             st.markdown("#### 📉 Control de Flujo: Compras vs Costo de Venta")
             
             # Lectura automática de Columna AB (Compra/Entrada) - Lógica MEJORADA
-            # Intento 1: Buscar "COMPRA"
             col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
-            # Intento 2: Buscar "ENTRADA" si no encuentra "COMPRA"
             if not col_compra_sheet:
                 col_compra_sheet = find_col(data['REPUESTOS'], ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
-             # Intento 3: Buscar "COMPRAS" (plural)
             if not col_compra_sheet:
                 col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
 
@@ -738,8 +754,6 @@ try:
             costo_venta_total = df_r['Costo'].sum() if not df_r.empty else 0
             diferencia_flujo = compra_real_sheet - costo_venta_total
             
-            # Regla del 20%: Costo de Venta debe ser mayor a Compras en un 20%
-            # Es decir: Costo >= Compra * 1.20
             ratio_reduccion = costo_venta_total / compra_real_sheet if compra_real_sheet > 0 else 0
             objetivo_ratio = 1.20 # 20% más
 
