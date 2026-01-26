@@ -255,8 +255,9 @@ try:
             if h in data:
                 col_f = find_col(data[h], ["FECHA"]) or data[h].columns[0]
                 data[h]['Fecha_dt'] = pd.to_datetime(data[h][col_f], dayfirst=True, errors='coerce')
-                data[h]['Mes'] = data[h]['Fecha_dt'].dt.month
-                data[h]['Año'] = data[h]['Fecha_dt'].dt.year
+                # Forzar INT en Año y Mes para evitar errores de float
+                data[h]['Mes'] = data[h]['Fecha_dt'].dt.month.fillna(0).astype(int)
+                data[h]['Año'] = data[h]['Fecha_dt'].dt.year.fillna(0).astype(int)
 
         canales_repuestos = ['MOSTRADOR', 'TALLER', 'INTERNA', 'GAR', 'CYP', 'MAYORISTA', 'SEGUROS']
 
@@ -294,7 +295,8 @@ try:
                     st.session_state.df_irpv_cache = None
 
         def get_row(df):
-            res = df[(df['Año'] == año_sel) & (df['Mes'] == mes_sel)].sort_values('Fecha_dt')
+            # Filtro robusto por INT
+            res = df[(df['Año'] == int(año_sel)) & (df['Mes'] == int(mes_sel))].sort_values('Fecha_dt')
             return res.iloc[-1] if not res.empty else pd.Series(dtype='object')
 
         c_r = get_row(data['CALENDARIO'])
@@ -376,9 +378,12 @@ try:
             html += f'<div style="margin-top:5px;"><div style="width:100%; background:#e0e0e0; height:5px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:5px; border-radius:10px;"></div></div></div></div></div>'
             return html
 
-        def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial"):
+        def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial", help_text=None):
             subtext_html = "<div style='height:15px;'></div>"
             footer_html = ""
+            # Hack simple para tooltip nativo de HTML usando 'title'
+            tooltip_attr = f'title="{help_text}"' if help_text else ''
+            
             if target is not None:
                 delta = val - target
                 color = "#28a745" if delta >= 0 else "#dc3545"
@@ -388,7 +393,8 @@ try:
                 proy_delta = projection - target_mensual
                 color_proy = "#28a745" if proy_delta >= 0 else "#dc3545"
                 footer_html = f'<div class="metric-footer"><div>Obj. Mes: <b>{format_str.format(target_mensual)}</b></div><div style="color:{color_proy}">Proy: <b>{format_str.format(projection)}</b></div></div>'
-            html = f'<div class="metric-card"><div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>{subtext_html}</div>{footer_html}</div>'
+            
+            html = f'<div class="metric-card" {tooltip_attr} style="cursor:help;"><div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>{subtext_html}</div>{footer_html}</div>'
             return html
 
         # --- LÓGICA DE COLUMNAS (SERVICIOS) ---
@@ -473,7 +479,7 @@ try:
                 c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main, brand])
                 if not c_obj: c_obj = find_col(data['SERVICIOS'], ["OBJ", keyword_main])
                 val_real = s_r.get(c_real, 0)
-                df_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == año_sel) & (data['SERVICIOS']['Mes'] == mes_sel)]
+                df_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == int(año_sel)) & (data['SERVICIOS']['Mes'] == int(mes_sel))]
                 if not df_mes.empty and c_obj: val_obj_mensual = df_mes[c_obj].max() 
                 else: val_obj_mensual = 0
                 val_proyeccion = val_real / prog_t if prog_t > 0 else 0
@@ -638,36 +644,37 @@ try:
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
                 
-                # --- NUEVA LÓGICA DE MESES DE STOCK (PROMEDIO MOVIL 3 MESES CON CRUCE DE AÑO) ---
+                # --- LÓGICA DE MESES DE STOCK: PROMEDIO MOVIL 3 MESES (USANDO FECHAS REALES) ---
                 def obtener_costo_mes_historico(d_target):
-                    # Busca en TODO el dataframe de REPUESTOS (histórico)
+                    # Búsqueda robusta por fecha, independiente de columnas "Año/Mes"
                     df_h = data['REPUESTOS']
-                    # Filtra por el año y mes solicitados
-                    rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
+                    t_y, t_m = d_target.year, d_target.month
+                    # Filtra usando el objeto datetime directamente para evitar errores de tipo
+                    rows = df_h[
+                        (df_h['Fecha_dt'].dt.year == t_y) & 
+                        (df_h['Fecha_dt'].dt.month == t_m)
+                    ]
                     if rows.empty: return 0.0
                     total_c = 0
-                    # Suma el costo de todos los canales configurados
                     for ch in canales_repuestos:
                         col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
                         if col_c: total_c += rows[col_c].sum()
                     return total_c
 
-                # Fecha actual seleccionada en el menú lateral
-                date_curr = datetime(año_sel, mes_sel, 1)
+                # Fecha actual seleccionada
+                date_curr = datetime(int(año_sel), int(mes_sel), 1)
                 
-                # Costo Proyectado del Mes Actual
-                # Si estamos a día 20 (prog_t=0.6), proyecta el 100%. Si prog_t es 0, usa el real para no dividir por cero.
+                # Costo Proyectado Actual
                 costo_mes_actual_proy = (costo_total_mes_actual / prog_t) if prog_t > 0 else costo_total_mes_actual
                 
-                # Mes -1 (Calcula fecha exacta restando días para evitar errores de cambio de año)
+                # Mes -1 y Mes -2
                 date_prev1 = (date_curr - timedelta(days=1)).replace(day=1)
                 costo_prev1 = obtener_costo_mes_historico(date_prev1)
                 
-                # Mes -2
                 date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1)
                 costo_prev2 = obtener_costo_mes_historico(date_prev2)
                 
-                # Lógica de Promedio (evita ceros si faltan datos históricos)
+                # Cálculo de Promedio (Manejando 0s)
                 if costo_prev1 == 0 and costo_prev2 == 0:
                     promedio_costo_3m = costo_mes_actual_proy
                 elif costo_prev2 == 0:
@@ -677,9 +684,12 @@ try:
 
                 meses_stock = val_stock / promedio_costo_3m if promedio_costo_3m > 0 else 0
                 
+                # TOOLTIP DEPURADOR (Se ve al pasar el mouse por la tarjeta)
+                help_debug = f"Nov ({date_prev2.strftime('%b')}): ${costo_prev2:,.0f} | Dic ({date_prev1.strftime('%b')}): ${costo_prev1:,.0f} | Actual Proy: ${costo_mes_actual_proy:,.0f}"
+
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
-                with r4: st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
+                with r4: st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.1f}", help_text=help_debug), unsafe_allow_html=True)
 
             if not df_r.empty:
                 t_vb = df_r['Venta Bruta'].sum()
