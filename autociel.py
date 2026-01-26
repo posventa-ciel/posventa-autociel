@@ -638,35 +638,36 @@ try:
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
                 
-                # --- NUEVA LÓGICA DE MESES DE STOCK (PROMEDIO MOVIL 3 MESES) ---
+                # --- NUEVA LÓGICA DE MESES DE STOCK (PROMEDIO MOVIL 3 MESES CON CRUCE DE AÑO) ---
                 def obtener_costo_mes_historico(d_target):
-                    # Busca en todo el dataframe de REPUESTOS si existe ese Año/Mes y suma sus costos
-                    # Asume que data['REPUESTOS'] tiene columnas Año y Mes
+                    # Busca en TODO el dataframe de REPUESTOS (histórico)
                     df_h = data['REPUESTOS']
+                    # Filtra por el año y mes solicitados
                     rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
                     if rows.empty: return 0.0
-                    # Sumar costos de canales
                     total_c = 0
+                    # Suma el costo de todos los canales configurados
                     for ch in canales_repuestos:
                         col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
                         if col_c: total_c += rows[col_c].sum()
                     return total_c
 
-                # Fecha actual seleccionada
+                # Fecha actual seleccionada en el menú lateral
                 date_curr = datetime(año_sel, mes_sel, 1)
                 
                 # Costo Proyectado del Mes Actual
+                # Si estamos a día 20 (prog_t=0.6), proyecta el 100%. Si prog_t es 0, usa el real para no dividir por cero.
                 costo_mes_actual_proy = (costo_total_mes_actual / prog_t) if prog_t > 0 else costo_total_mes_actual
                 
-                # Mes -1
-                date_prev1 = date_curr - pd.DateOffset(months=1)
+                # Mes -1 (Calcula fecha exacta restando días para evitar errores de cambio de año)
+                date_prev1 = (date_curr - timedelta(days=1)).replace(day=1)
                 costo_prev1 = obtener_costo_mes_historico(date_prev1)
                 
                 # Mes -2
-                date_prev2 = date_curr - pd.DateOffset(months=2)
+                date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1)
                 costo_prev2 = obtener_costo_mes_historico(date_prev2)
                 
-                # Si no hay datos históricos (ej: primer mes de uso), usar solo el actual proyectado para no romper el cálculo
+                # Lógica de Promedio (evita ceros si faltan datos históricos)
                 if costo_prev1 == 0 and costo_prev2 == 0:
                     promedio_costo_3m = costo_mes_actual_proy
                 elif costo_prev2 == 0:
@@ -676,6 +677,16 @@ try:
 
                 meses_stock = val_stock / promedio_costo_3m if promedio_costo_3m > 0 else 0
                 
+                # --- VISUALIZACIÓN DE DEBUG (SOLO PARA TI) ---
+                st.info(f"""
+                **📊 Desglose del Cálculo de Stock (Promedio Móvil 3 Meses):**
+                * 📅 **{date_prev2.strftime('%B-%Y')}:** ${costo_prev2:,.0f} (Histórico)
+                * 📅 **{date_prev1.strftime('%B-%Y')}:** ${costo_prev1:,.0f} (Histórico)
+                * 📅 **Actual (Proyectado):** ${costo_mes_actual_proy:,.0f} (Real: ${costo_total_mes_actual:,.0f})
+                * ➗ **Promedio de Costo:** ${promedio_costo_3m:,.0f}
+                * 📦 **Resultado:** ${val_stock:,.0f} / ${promedio_costo_3m:,.0f} = **{meses_stock:.2f} meses**
+                """)
+
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
