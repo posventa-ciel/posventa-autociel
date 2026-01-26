@@ -637,10 +637,48 @@ try:
             with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
-                meses_stock = val_stock / costo_total_mes_actual if costo_total_mes_actual > 0 else 0
+                
+                # --- NUEVA LÓGICA DE MESES DE STOCK (PROMEDIO MOVIL 3 MESES) ---
+                def obtener_costo_mes_historico(d_target):
+                    # Busca en todo el dataframe de REPUESTOS si existe ese Año/Mes y suma sus costos
+                    # Asume que data['REPUESTOS'] tiene columnas Año y Mes
+                    df_h = data['REPUESTOS']
+                    rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
+                    if rows.empty: return 0.0
+                    # Sumar costos de canales
+                    total_c = 0
+                    for ch in canales_repuestos:
+                        col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
+                        if col_c: total_c += rows[col_c].sum()
+                    return total_c
+
+                # Fecha actual seleccionada
+                date_curr = datetime(año_sel, mes_sel, 1)
+                
+                # Costo Proyectado del Mes Actual
+                costo_mes_actual_proy = (costo_total_mes_actual / prog_t) if prog_t > 0 else costo_total_mes_actual
+                
+                # Mes -1
+                date_prev1 = date_curr - pd.DateOffset(months=1)
+                costo_prev1 = obtener_costo_mes_historico(date_prev1)
+                
+                # Mes -2
+                date_prev2 = date_curr - pd.DateOffset(months=2)
+                costo_prev2 = obtener_costo_mes_historico(date_prev2)
+                
+                # Si no hay datos históricos (ej: primer mes de uso), usar solo el actual proyectado para no romper el cálculo
+                if costo_prev1 == 0 and costo_prev2 == 0:
+                    promedio_costo_3m = costo_mes_actual_proy
+                elif costo_prev2 == 0:
+                     promedio_costo_3m = (costo_prev1 + costo_mes_actual_proy) / 2
+                else:
+                    promedio_costo_3m = (costo_prev2 + costo_prev1 + costo_mes_actual_proy) / 3
+
+                meses_stock = val_stock / promedio_costo_3m if promedio_costo_3m > 0 else 0
+                
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
-                with r4: st.markdown(render_kpi_small("Meses Stock", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
+                with r4: st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
 
             if not df_r.empty:
                 t_vb = df_r['Venta Bruta'].sum()
