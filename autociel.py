@@ -677,16 +677,6 @@ try:
 
                 meses_stock = val_stock / promedio_costo_3m if promedio_costo_3m > 0 else 0
                 
-                # --- VISUALIZACIÓN DE DEBUG (SOLO PARA TI) ---
-                st.info(f"""
-                **📊 Desglose del Cálculo de Stock (Promedio Móvil 3 Meses):**
-                * 📅 **{date_prev2.strftime('%B-%Y')}:** ${costo_prev2:,.0f} (Histórico)
-                * 📅 **{date_prev1.strftime('%B-%Y')}:** ${costo_prev1:,.0f} (Histórico)
-                * 📅 **Actual (Proyectado):** ${costo_mes_actual_proy:,.0f} (Real: ${costo_total_mes_actual:,.0f})
-                * ➗ **Promedio de Costo:** ${promedio_costo_3m:,.0f}
-                * 📦 **Resultado:** ${val_stock:,.0f} / ${promedio_costo_3m:,.0f} = **{meses_stock:.2f} meses**
-                """)
-
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.1f}"), unsafe_allow_html=True)
