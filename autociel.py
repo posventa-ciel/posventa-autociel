@@ -627,6 +627,7 @@ try:
             # --- CÁLCULO DE TOTALES ---
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
+            
             # Calculamos % de Participación (Mix) para la tabla
             if vta_total_neta > 0:
                 df_r['% Part.'] = df_r['Venta Neta'] / vta_total_neta
@@ -648,7 +649,7 @@ try:
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
                 
-                # --- LÓGICA DE MESES DE STOCK (CORREGIDA: ÚLTIMA FILA) ---
+                # --- LÓGICA DE MESES DE STOCK (CORREGIDA) ---
                 def obtener_costo_mes_historico(d_target):
                     df_h = data['REPUESTOS']
                     rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
@@ -686,7 +687,6 @@ try:
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: 
                     # --- LÓGICA DE COLORES DE STOCK ---
-                    # Objetivo: < 3 (Verde), 3-5 (Amarillo), > 5 (Rojo)
                     color_stk = "#dc3545" # Rojo por defecto
                     icon_stk = "🛑"
                     estado_txt = "Crítico"
@@ -700,7 +700,6 @@ try:
                         icon_stk = "⚠️"
                         estado_txt = "Medio"
                     
-                    # Generamos el HTML manual
                     html_stock = f'''
                     <div class="metric-card">
                         <div>
@@ -716,19 +715,15 @@ try:
                     '''
                     st.markdown(html_stock, unsafe_allow_html=True)
 
-           if not df_r.empty:
+            if not df_r.empty:
                 # --- TABLA MEJORADA CON COSTOS Y DESCUENTOS ---
                 st.markdown("##### 📊 Rentabilidad y Costos por Canal")
                 
                 # Definición de Colores para el Margen
                 def color_margen(val):
-                    # ROJO: Si el margen es menor al 15%
-                    # AMARILLO: Si está entre 15% y 25%
-                    # VERDE: Si es mayor al 25%
                     color = '#dc3545' if val < 0.15 else ('#ffc107' if val < 0.25 else '#28a745')
                     return f'color: {color}; font-weight: bold;'
                 
-                # Agregamos "Venta Bruta", "Desc." y "Costo" a las columnas visibles
                 cols_finales = ["Canal", "Venta Bruta", "Desc.", "Venta Neta", "Costo", "Utilidad $", "Margen %", "% Part."]
                 
                 st.dataframe(
@@ -737,7 +732,7 @@ try:
                         "Venta Bruta": "${:,.0f}", 
                         "Desc.": "${:,.0f}",
                         "Venta Neta": "${:,.0f}", 
-                        "Costo": "${:,.0f}",      # Nueva columna
+                        "Costo": "${:,.0f}",
                         "Utilidad $": "${:,.0f}", 
                         "Margen %": "{:.1%}",
                         "% Part.": "{:.1%}"
@@ -759,11 +754,10 @@ try:
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 st.markdown(f'<div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;"><p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p></div>', unsafe_allow_html=True)
             
-            # --- SECCIÓN 2: CONTROL DE FLUJO: COMPRAS VS COSTO (UBICACIÓN SOLICITADA) ---
+            # --- SECCIÓN 2: CONTROL DE FLUJO: COMPRAS VS COSTO ---
             st.markdown("---")
             st.markdown("#### 📉 Control de Flujo: Compras vs Costo de Venta")
             
-            # Lectura automática de Columna AB (Compra/Entrada) - Lógica MEJORADA
             col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
             if not col_compra_sheet:
                 col_compra_sheet = find_col(data['REPUESTOS'], ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
