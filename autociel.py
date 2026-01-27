@@ -627,12 +627,18 @@ try:
             # --- CÁLCULO DE TOTALES ---
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
+            # Calculamos % de Participación (Mix) para la tabla
+            if vta_total_neta > 0:
+                df_r['% Part.'] = df_r['Venta Neta'] / vta_total_neta
+            else:
+                df_r['% Part.'] = 0.0
+
             util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
             util_total_final = util_total_operativa + primas_input
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             
-            # Costo Real Acumulado del Mes en Curso (Enero en tu ejemplo)
+            # Costo Real Acumulado del Mes en Curso
             costo_total_mes_actual_real = df_r['Costo'].sum() if not df_r.empty else 0
             
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
@@ -642,53 +648,35 @@ try:
             with c_kpis:
                 r2, r3, r4 = st.columns(3)
                 
-                # --- LÓGICA DE MESES DE STOCK (PROMEDIO TRIMESTRAL CON PROYECCIÓN) ---
+                # --- LÓGICA DE MESES DE STOCK (CORREGIDA: ÚLTIMA FILA) ---
                 def obtener_costo_mes_historico(d_target):
-                    # Busca en TODO el dataframe de REPUESTOS (histórico)
                     df_h = data['REPUESTOS']
-                    
-                    # Filtramos las filas de ese Año y Mes
                     rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
-                    
                     if rows.empty: return 0.0
-                    
-                    # CORRECCIÓN: Tomamos solo la última fila encontrada (el cierre del mes)
-                    # para evitar duplicaciones si hay múltiples registros del mismo mes.
                     last_row = rows.iloc[-1]
-                    
                     total_c = 0
                     for ch in canales_repuestos:
                         col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
                         if col_c: 
-                            try: 
-                                # Convertimos a float el valor de esa columna en la última fila
-                                val = float(last_row[col_c])
-                                total_c += val
+                            try: total_c += float(last_row[col_c])
                             except: pass
                     return total_c
 
-                # Fechas para buscar hacia atrás
-                date_curr = datetime(año_sel, mes_sel, 1) # Mes Seleccionado (Ej: Enero)
-                date_prev1 = (date_curr - timedelta(days=1)).replace(day=1) # Mes -1 (Ej: Diciembre)
-                date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1) # Mes -2 (Ej: Noviembre)
+                date_curr = datetime(año_sel, mes_sel, 1) 
+                date_prev1 = (date_curr - timedelta(days=1)).replace(day=1) 
+                date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1) 
                 
-                # 1. Obtener Costos Históricos
-                costo_mes_minus_1 = obtener_costo_mes_historico(date_prev1) # Diciembre
-                costo_mes_minus_2 = obtener_costo_mes_historico(date_prev2) # Noviembre
+                costo_mes_minus_1 = obtener_costo_mes_historico(date_prev1) 
+                costo_mes_minus_2 = obtener_costo_mes_historico(date_prev2)
                 
-                # 2. Calcular Proyección del Mes Actual
-                # Si prog_t (avance días hábiles) es 0, evitamos división por cero.
                 if prog_t > 0:
                     costo_mes_actual_proy = costo_total_mes_actual_real / prog_t
                 else:
-                    costo_mes_actual_proy = costo_total_mes_actual_real # Fallback si recién empieza el mes
+                    costo_mes_actual_proy = costo_total_mes_actual_real 
 
-                # 3. Calcular Promedio Trimestral
-                # Sumamos (Nov + Dic + EneroProyectado) / 3
                 suma_trimestral = costo_mes_minus_2 + costo_mes_minus_1 + costo_mes_actual_proy
                 promedio_costo_3m = suma_trimestral / 3 if suma_trimestral > 0 else 0
 
-                # 4. Cálculo Final Meses Stock
                 if promedio_costo_3m > 0:
                     meses_stock = val_stock / promedio_costo_3m
                 else:
@@ -697,22 +685,57 @@ try:
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: 
-                    # KPI FINAL
-                    st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.2f}"), unsafe_allow_html=True)
+                    # --- LÓGICA DE COLORES DE STOCK PERSONALIZADA ---
+                    # Objetivo: < 3 (Verde), 3-5 (Amarillo), > 5 (Rojo)
+                    color_stk = "#dc3545" # Rojo por defecto
+                    icon_stk = "⚠️"
+                    if meses_stock <= 3.0:
+                        color_stk = "#28a745" # Verde
+                        icon_stk = "✅"
+                    elif meses_stock <= 5.0:
+                        color_stk = "#ffc107" # Amarillo
+                        icon_stk = "⚠️"
+                    
+                    # Generamos el HTML manual para tener control total del color
+                    html_stock = f'''
+                    <div class="metric-card">
+                        <div>
+                            <p style="color:#666; font-size:0.8rem; margin-bottom:2px;">Meses Stock (Prom 3M)</p>
+                            <h3 style="color:{color_stk}; margin:0; font-size:1.3rem;">{meses_stock:.2f}</h3>
+                            <div style="height:15px;"></div>
+                        </div>
+                        <div class="metric-footer">
+                            <div>Obj: <b>3.0</b></div>
+                            <div style="color:{color_stk}">{icon_stk} Est: <b>{("Alto" if meses_stock > 5 else ("Medio" if meses_stock > 3 else "Óptimo"))}</b></div>
+                        </div>
+                    </div>
+                    '''
+                    st.markdown(html_stock, unsafe_allow_html=True)
 
             if not df_r.empty:
-                t_vb = df_r['Venta Bruta'].sum()
-                t_desc = df_r['Desc.'].sum()
-                t_vn = df_r['Venta Neta'].sum()
-                t_cost = df_r['Costo'].sum()
-                t_ut = df_r['Utilidad $'].sum()
-                t_mg = t_ut / t_vn if t_vn != 0 else 0
-                df_show = pd.concat([df_r, pd.DataFrame([{"Canal": "TOTAL OPERATIVO", "Venta Bruta": t_vb, "Desc.": t_desc, "Venta Neta": t_vn, "Costo": t_cost, "Utilidad $": t_ut, "Margen %": t_mg}])], ignore_index=True)
-                st.dataframe(df_show.style.format({"Venta Bruta": "${:,.0f}", "Desc.": "${:,.0f}", "Venta Neta": "${:,.0f}", "Costo": "${:,.0f}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"}), use_container_width=True, hide_index=True)
+                # --- TABLA MEJORADA CON FORMATO CONDICIONAL ---
+                st.markdown("##### 📊 Rentabilidad por Canal")
+                
+                # Función para colorear el margen
+                def color_margen(val):
+                    color = 'red' if val < 0.15 else ('orange' if val < 0.25 else 'green')
+                    return f'color: {color}; font-weight: bold;'
+                
+                # Columnas a mostrar
+                cols_finales = ["Canal", "Venta Neta", "% Part.", "Utilidad $", "Margen %"]
+                
+                st.dataframe(
+                    df_r[cols_finales].style
+                    .format({"Venta Neta": "${:,.0f}", "% Part.": "{:.1%}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"})
+                    .applymap(color_margen, subset=['Margen %'])
+                    .background_gradient(subset=['Venta Neta'], cmap="Blues"),
+                    use_container_width=True, 
+                    hide_index=True
+                )
             
             c1, c2 = st.columns(2)
             with c1: 
-                if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación"), use_container_width=True)
+                if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación (Venta Bruta)"), use_container_width=True)
             with c2:
                 p_vivo = float(r_r.get(find_col(data['REPUESTOS'], ["VIVO"]), 0))
                 p_obs = float(r_r.get(find_col(data['REPUESTOS'], ["OBSOLETO"]), 0))
