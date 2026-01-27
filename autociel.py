@@ -685,18 +685,22 @@ try:
                 with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
                 with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
                 with r4: 
-                    # --- LÓGICA DE COLORES DE STOCK PERSONALIZADA ---
+                    # --- LÓGICA DE COLORES DE STOCK ---
                     # Objetivo: < 3 (Verde), 3-5 (Amarillo), > 5 (Rojo)
                     color_stk = "#dc3545" # Rojo por defecto
-                    icon_stk = "⚠️"
+                    icon_stk = "🛑"
+                    estado_txt = "Crítico"
+                    
                     if meses_stock <= 3.0:
                         color_stk = "#28a745" # Verde
                         icon_stk = "✅"
+                        estado_txt = "Óptimo"
                     elif meses_stock <= 5.0:
                         color_stk = "#ffc107" # Amarillo
                         icon_stk = "⚠️"
+                        estado_txt = "Medio"
                     
-                    # Generamos el HTML manual para tener control total del color
+                    # Generamos el HTML manual
                     html_stock = f'''
                     <div class="metric-card">
                         <div>
@@ -706,29 +710,28 @@ try:
                         </div>
                         <div class="metric-footer">
                             <div>Obj: <b>3.0</b></div>
-                            <div style="color:{color_stk}">{icon_stk} Est: <b>{("Alto" if meses_stock > 5 else ("Medio" if meses_stock > 3 else "Óptimo"))}</b></div>
+                            <div style="color:{color_stk}">{icon_stk} Est: <b>{estado_txt}</b></div>
                         </div>
                     </div>
                     '''
                     st.markdown(html_stock, unsafe_allow_html=True)
 
             if not df_r.empty:
-                # --- TABLA MEJORADA CON FORMATO CONDICIONAL ---
+                # --- TABLA MEJORADA (SIN MATPLOTLIB) ---
                 st.markdown("##### 📊 Rentabilidad por Canal")
                 
-                # Función para colorear el margen
+                # Función para colorear el margen (Texto)
                 def color_margen(val):
-                    color = 'red' if val < 0.15 else ('orange' if val < 0.25 else 'green')
+                    color = '#dc3545' if val < 0.15 else ('#ffc107' if val < 0.25 else '#28a745')
                     return f'color: {color}; font-weight: bold;'
                 
-                # Columnas a mostrar
                 cols_finales = ["Canal", "Venta Neta", "% Part.", "Utilidad $", "Margen %"]
                 
+                # Usamos solo applymap para el color del texto, sin background_gradient
                 st.dataframe(
                     df_r[cols_finales].style
                     .format({"Venta Neta": "${:,.0f}", "% Part.": "{:.1%}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"})
-                    .applymap(color_margen, subset=['Margen %'])
-                    .background_gradient(subset=['Venta Neta'], cmap="Blues"),
+                    .applymap(color_margen, subset=['Margen %']),
                     use_container_width=True, 
                     hide_index=True
                 )
