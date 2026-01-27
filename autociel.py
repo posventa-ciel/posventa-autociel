@@ -716,18 +716,42 @@ try:
                     st.markdown(html_stock, unsafe_allow_html=True)
 
             if not df_r.empty:
-                # --- TABLA MEJORADA CON COSTOS Y DESCUENTOS ---
+                # --- TABLA MEJORADA CON TOTALES ---
                 st.markdown("##### 📊 Rentabilidad y Costos por Canal")
                 
-                # Definición de Colores para el Margen
+                # 1. Calculamos los Totales Verticales
+                t_vb = df_r['Venta Bruta'].sum()
+                t_desc = df_r['Desc.'].sum()
+                t_vn = df_r['Venta Neta'].sum()
+                t_cost = df_r['Costo'].sum()
+                t_ut = df_r['Utilidad $'].sum()
+                t_mg = t_ut / t_vn if t_vn != 0 else 0
+                
+                # 2. Creamos la fila de Total
+                row_total = pd.DataFrame([{
+                    "Canal": "TOTAL OPERATIVO", 
+                    "Venta Bruta": t_vb, 
+                    "Desc.": t_desc, 
+                    "Venta Neta": t_vn, 
+                    "Costo": t_cost, 
+                    "Utilidad $": t_ut, 
+                    "Margen %": t_mg,
+                    "% Part.": 1.0  # El total es el 100%
+                }])
+                
+                # 3. Unimos los datos con el total
+                df_show = pd.concat([df_r, row_total], ignore_index=True)
+                
+                # Definición de Colores para el Margen (Texto)
                 def color_margen(val):
                     color = '#dc3545' if val < 0.15 else ('#ffc107' if val < 0.25 else '#28a745')
                     return f'color: {color}; font-weight: bold;'
                 
                 cols_finales = ["Canal", "Venta Bruta", "Desc.", "Venta Neta", "Costo", "Utilidad $", "Margen %", "% Part."]
                 
+                # 4. Mostramos la tabla final
                 st.dataframe(
-                    df_r[cols_finales].style
+                    df_show[cols_finales].style
                     .format({
                         "Venta Bruta": "${:,.0f}", 
                         "Desc.": "${:,.0f}",
