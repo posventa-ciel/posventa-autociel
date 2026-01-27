@@ -646,13 +646,24 @@ try:
                 def obtener_costo_mes_historico(d_target):
                     # Busca en TODO el dataframe de REPUESTOS (histórico)
                     df_h = data['REPUESTOS']
+                    
+                    # Filtramos las filas de ese Año y Mes
                     rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
+                    
                     if rows.empty: return 0.0
+                    
+                    # CORRECCIÓN: Tomamos solo la última fila encontrada (el cierre del mes)
+                    # para evitar duplicaciones si hay múltiples registros del mismo mes.
+                    last_row = rows.iloc[-1]
+                    
                     total_c = 0
                     for ch in canales_repuestos:
                         col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
                         if col_c: 
-                            try: total_c += rows[col_c].astype(float).sum()
+                            try: 
+                                # Convertimos a float el valor de esa columna en la última fila
+                                val = float(last_row[col_c])
+                                total_c += val
                             except: pass
                     return total_c
 
