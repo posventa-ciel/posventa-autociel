@@ -699,27 +699,6 @@ try:
                 with r4: 
                     # KPI FINAL
                     st.markdown(render_kpi_small("Meses Stock (Prom 3M)", meses_stock, 4.0, None, None, "{:.2f}"), unsafe_allow_html=True)
-            
-            # --- DETALLE DEL CÁLCULO (AUDITORÍA) ---
-            with st.expander("ℹ️ Ver desglose del cálculo de Stock (Auditoría)", expanded=False):
-                st.markdown(f"""
-                **Fórmula:** `Valor Stock` / `Promedio Trimestral de Costo de Venta`
-                
-                * 📦 **Valor Stock Actual:** `${val_stock:,.0f}`
-                
-                **Cálculo del Promedio (Costo de Venta):**
-                1.  📅 **{meses_nom.get(date_prev2.month)}:** `${costo_mes_minus_2:,.0f}` (Histórico Real)
-                2.  📅 **{meses_nom.get(date_prev1.month)}:** `${costo_mes_minus_1:,.0f}` (Histórico Real)
-                3.  📅 **{meses_nom.get(date_curr.month)} (Proyectado):** `${costo_mes_actual_proy:,.0f}`
-                    * *Real al momento:* `${costo_total_mes_actual_real:,.0f}`
-                    * *Avance mes:* `{prog_t:.1%}`
-                
-                ---
-                * **Suma Trimestre:** `${suma_trimestral:,.0f}`
-                * **Promedio Mensual:** `${promedio_costo_3m:,.0f}`
-                
-                👉 **Resultado:** `${val_stock:,.0f}` / `${promedio_costo_3m:,.0f}` = **{meses_stock:.2f} meses**
-                """)
 
             if not df_r.empty:
                 t_vb = df_r['Venta Bruta'].sum()
