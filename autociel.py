@@ -716,21 +716,32 @@ try:
                     '''
                     st.markdown(html_stock, unsafe_allow_html=True)
 
-            if not df_r.empty:
-                # --- TABLA MEJORADA (SIN MATPLOTLIB) ---
-                st.markdown("##### 📊 Rentabilidad por Canal")
+           if not df_r.empty:
+                # --- TABLA MEJORADA CON COSTOS Y DESCUENTOS ---
+                st.markdown("##### 📊 Rentabilidad y Costos por Canal")
                 
-                # Función para colorear el margen (Texto)
+                # Definición de Colores para el Margen
                 def color_margen(val):
+                    # ROJO: Si el margen es menor al 15%
+                    # AMARILLO: Si está entre 15% y 25%
+                    # VERDE: Si es mayor al 25%
                     color = '#dc3545' if val < 0.15 else ('#ffc107' if val < 0.25 else '#28a745')
                     return f'color: {color}; font-weight: bold;'
                 
-                cols_finales = ["Canal", "Venta Neta", "% Part.", "Utilidad $", "Margen %"]
+                # Agregamos "Venta Bruta", "Desc." y "Costo" a las columnas visibles
+                cols_finales = ["Canal", "Venta Bruta", "Desc.", "Venta Neta", "Costo", "Utilidad $", "Margen %", "% Part."]
                 
-                # Usamos solo applymap para el color del texto, sin background_gradient
                 st.dataframe(
                     df_r[cols_finales].style
-                    .format({"Venta Neta": "${:,.0f}", "% Part.": "{:.1%}", "Utilidad $": "${:,.0f}", "Margen %": "{:.1%}"})
+                    .format({
+                        "Venta Bruta": "${:,.0f}", 
+                        "Desc.": "${:,.0f}",
+                        "Venta Neta": "${:,.0f}", 
+                        "Costo": "${:,.0f}",      # Nueva columna
+                        "Utilidad $": "${:,.0f}", 
+                        "Margen %": "{:.1%}",
+                        "% Part.": "{:.1%}"
+                    })
                     .applymap(color_margen, subset=['Margen %']),
                     use_container_width=True, 
                     hide_index=True
