@@ -928,7 +928,14 @@ try:
             s_f_t = cs_r.get(c_mo_t_s, 0)
             s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
             s_total_fact = s_f_p + s_f_t + s_f_r
-            s_obj_fact = cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1)
+            s_total_fact = s_f_p + s_f_t + s_f_r
+            
+            # --- OBJETIVOS SALTA (NUEVOS Y VIEJO) ---
+            s_obj_mo = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'MO']), 0))
+            s_obj_rep = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'REP']), 0))
+            s_obj_fact = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'FACT'], exclude_keywords=['MO', 'REP', 'PRE']), 1))
+
+            c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             s_panos_prop = cs_r.get(c_panos_s, 0)
