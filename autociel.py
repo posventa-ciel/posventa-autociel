@@ -969,36 +969,51 @@ try:
             s_m_rep = s_f_r - s_c_rep
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
-            c_jujuy, c_salta = st.columns(2)
-            with c_jujuy:
-                st.subheader("Sede Jujuy")
+            c# --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
+            
+            # Fila 1: Títulos
+            c_tit1, c_tit2 = st.columns(2)
+            with c_tit1: st.subheader("Sede Jujuy")
+            with c_tit2: st.subheader("Sede Salta")
+            
+            # Fila 2: Facturación
+            c_f_j, c_f_s = st.columns(2)
+            with c_f_j:
                 st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
-                st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
-                st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
-                html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
-                st.markdown(html_ter_j, unsafe_allow_html=True)
-                
-            with c_salta:
-                st.subheader("Sede Salta")
-                
+            with c_f_s:
                 if s_obj_mo > 0 or s_obj_rep > 0:
-                    st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo), unsafe_allow_html=True)
-                    st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
-                    st.markdown(f'<div style="text-align: right; font-size: 0.75rem; color: #888; margin-top: -5px; margin-bottom: 10px;">Facturación Total CyP: <b>${s_total_fact:,.0f}</b> (Obj Total: ${s_obj_fact:,.0f})</div>', unsafe_allow_html=True)
+                    # Ponemos MO y Repuestos lado a lado para no perder altura
+                    sc1, sc2 = st.columns(2)
+                    with sc1: st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo), unsafe_allow_html=True)
+                    with sc2: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align: right; font-size: 0.75rem; color: #888; margin-top: -5px; margin-bottom: 5px;">Facturación Total CyP: <b>${s_total_fact:,.0f}</b> (Obj Total: ${s_obj_fact:,.0f})</div>', unsafe_allow_html=True)
                 else:
                     st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
 
-                st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
-                st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
-                
+            # Fila 3: Paños Propios
+            c_p_j, c_p_s = st.columns(2)
+            with c_p_j: st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+            with c_p_s: st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
+
+            # Fila 4: Paños/Técnico
+            c_pt_j, c_pt_s = st.columns(2)
+            with c_pt_j: st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
+            with c_pt_s: st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
+
+            # Fila 5: Detalles Secundarios
+            c_det_j, c_det_s = st.columns(2)
+            with c_det_j:
+                html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
+                st.markdown(html_ter_j, unsafe_allow_html=True)
+            with c_det_s:
                 html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
                 st.markdown(html_ter_s, unsafe_allow_html=True)
-                
                 if s_f_r > 0:
                     margen_rep_pesos = s_f_r - s_c_rep
-                    html_rep_s = f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Costo: <span style="color:#666;">${s_c_rep:,.0f}</span><br>Mg: <b style="color:#28a745;">${margen_rep_pesos:,.0f}</b> ({s_mg_rep_pct:.1%})</div>'
+                    html_rep_s = f'<div class="cyp-detail" style="border-left-color: #28a745; margin-top:5px;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Costo: <span style="color:#666;">${s_c_rep:,.0f}</span><br>Mg: <b style="color:#28a745;">${margen_rep_pesos:,.0f}</b> ({s_mg_rep_pct:.1%})</div>'
                     st.markdown(html_rep_s, unsafe_allow_html=True)
 
+            # Fila 6: Gráficos de Torta
             g_jujuy, g_salta = st.columns(2)
             with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
             with g_salta: 
