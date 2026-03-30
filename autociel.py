@@ -930,11 +930,26 @@ try:
             s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
             s_total_fact = s_f_p + s_f_t + s_f_r
             
-            # --- OBJETIVOS SALTA (NUEVOS Y VIEJOS) ---
+            # --- LECTURA DE DATOS SALTA ---
+            # Mano de Obra (Columnas F y G)
+            c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ', 'PRE'])
+            s_f_p = cs_r.get(c_mo_s, 0)
+            s_f_t = cs_r.get(c_mo_t_s, 0)
+            
+            # Repuestos (Columna H) - CORREGIDO: Excluimos 'OBJ' para saltar la columna D
+            c_fact_rep_s = find_col(data['CyP SALTA'], ['FACT', 'REP'], exclude_keywords=['OBJ', 'COSTO'])
+            if not c_fact_rep_s: c_fact_rep_s = find_col(data['CyP SALTA'], ['REP'], exclude_keywords=['OBJ', 'COSTO'])
+            s_f_r = cs_r.get(c_fact_rep_s, 0)
+            
+            s_total_fact = s_f_p + s_f_t + s_f_r
+            
+            # Objetivos (Columnas C, D y B)
             s_obj_mo = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'MO']), 0))
             s_obj_rep = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'REP']), 0))
             s_obj_fact = float(cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"], exclude_keywords=["MO", "REP", "PRE"]), 1))
             
+            # Paños y Productividad
             c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             s_panos_prop = cs_r.get(c_panos_s, 0)
@@ -944,10 +959,13 @@ try:
             s_cant_tec = cs_r.get(c_tec_s, 1)
             s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
             s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
-            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER']), 0)
+            
+            # Costos y Márgenes (Columnas I y J)
+            s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER'], exclude_keywords=['OBJ']), 0)
             s_m_ter = s_f_t - s_c_ter
             s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
-            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP']), 0)
+            
+            s_c_rep = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'REP'], exclude_keywords=['OBJ']), 0)
             s_m_rep = s_f_r - s_c_rep
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
