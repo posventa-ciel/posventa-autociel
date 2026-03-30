@@ -902,6 +902,8 @@ try:
 
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
+            
+            # --- LECTURA DE DATOS JUJUY ---
             c_mo_j = find_col(data['CyP JUJUY'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
             if not c_mo_t_j: c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
@@ -909,58 +911,50 @@ try:
             j_f_t = cj_r.get(c_mo_t_j, 0)
             j_total_fact = j_f_p + j_f_t
             j_obj_fact = cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)
+            
             c_panos_j = find_col(data['CyP JUJUY'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_j: c_panos_j = find_col(data['CyP JUJUY'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             j_panos_prop = cj_r.get(c_panos_j, 0)
             j_obj_panos = cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'PANOS']), 1)
+            
             c_tec_j = find_col(data['CyP JUJUY'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
             if not c_tec_j: c_tec_j = find_col(data['CyP JUJUY'], ['DOTACION'])
             j_cant_tec = cj_r.get(c_tec_j, 1)
             j_ratio = j_panos_prop / j_cant_tec if j_cant_tec > 0 else 0
+            
             j_panos_ter = cj_r.get(find_col(data['CyP JUJUY'], ['PANOS', 'TER']), 0)
             j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
             j_m_ter = j_f_t - j_c_ter
             j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
             
-            c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
-            c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
-            if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ'])
-            s_f_p = cs_r.get(c_mo_s, 0)
-            s_f_t = cs_r.get(c_mo_t_s, 0)
-            s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
-            s_total_fact = s_f_p + s_f_t + s_f_r
-            
             # --- LECTURA DE DATOS SALTA ---
-            # Mano de Obra (Columnas F y G)
             c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ', 'PRE'])
+            if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ', 'PRE'])
             s_f_p = cs_r.get(c_mo_s, 0)
             s_f_t = cs_r.get(c_mo_t_s, 0)
             
-            # Repuestos (Columna H) - CORREGIDO: Excluimos 'OBJ' para saltar la columna D
             c_fact_rep_s = find_col(data['CyP SALTA'], ['FACT', 'REP'], exclude_keywords=['OBJ', 'COSTO'])
             if not c_fact_rep_s: c_fact_rep_s = find_col(data['CyP SALTA'], ['REP'], exclude_keywords=['OBJ', 'COSTO'])
             s_f_r = cs_r.get(c_fact_rep_s, 0)
             
             s_total_fact = s_f_p + s_f_t + s_f_r
             
-            # Objetivos (Columnas C, D y B)
             s_obj_mo = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'MO']), 0))
             s_obj_rep = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'REP']), 0))
             s_obj_fact = float(cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"], exclude_keywords=["MO", "REP", "PRE"]), 1))
             
-            # Paños y Productividad
             c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             s_panos_prop = cs_r.get(c_panos_s, 0)
             s_obj_panos = cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'PANOS']), 1)
+            
             c_tec_s = find_col(data['CyP SALTA'], ['TECNICO'], exclude_keywords=['PRODUCTIVIDAD'])
             if not c_tec_s: c_tec_s = find_col(data['CyP SALTA'], ['DOTACION'])
             s_cant_tec = cs_r.get(c_tec_s, 1)
             s_ratio = s_panos_prop / s_cant_tec if s_cant_tec > 0 else 0
-            s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
             
-            # Costos y Márgenes (Columnas I y J)
+            s_panos_ter = cs_r.get(find_col(data['CyP SALTA'], ['PANOS', 'TER']), 0)
             s_c_ter = cs_r.get(find_col(data['CyP SALTA'], ['COSTO', 'TER'], exclude_keywords=['OBJ']), 0)
             s_m_ter = s_f_t - s_c_ter
             s_mg_ter_pct = s_m_ter/s_f_t if s_f_t > 0 else 0
@@ -969,8 +963,7 @@ try:
             s_m_rep = s_f_r - s_c_rep
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
-            c# --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
-            
+            # --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
             # Fila 1: Títulos
             c_tit1, c_tit2 = st.columns(2)
             with c_tit1: st.subheader("Sede Jujuy")
@@ -982,7 +975,6 @@ try:
                 st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
             with c_f_s:
                 if s_obj_mo > 0 or s_obj_rep > 0:
-                    # Ponemos MO y Repuestos lado a lado para no perder altura
                     sc1, sc2 = st.columns(2)
                     with sc1: st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo), unsafe_allow_html=True)
                     with sc2: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
