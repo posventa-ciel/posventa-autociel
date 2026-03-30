@@ -921,6 +921,7 @@ try:
             j_c_ter = cj_r.get(find_col(data['CyP JUJUY'], ['COSTO', 'TER']), 0)
             j_m_ter = j_f_t - j_c_ter
             j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
+            
             c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
             if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ'])
@@ -928,14 +929,12 @@ try:
             s_f_t = cs_r.get(c_mo_t_s, 0)
             s_f_r = cs_r.get(find_col(data['CyP SALTA'], ['FACT', 'REP']), 0)
             s_total_fact = s_f_p + s_f_t + s_f_r
-            s_total_fact = s_f_p + s_f_t + s_f_r
             
-            # --- OBJETIVOS SALTA (NUEVOS Y VIEJO) ---
-            s_obj_mo = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'MO']), 0))
-            s_obj_rep = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'REP']), 0))
-            s_obj_fact = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'FACT'], exclude_keywords=['MO', 'REP', 'PRE']), 1))
-
-            c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+            # --- OBJETIVOS SALTA (NUEVOS Y VIEJOS) ---
+            s_obj_mo = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'MO']), 0))
+            s_obj_rep = float(cs_r.get(find_col(data['CyP SALTA'], ['OBJ', 'REP']), 0))
+            s_obj_fact = float(cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"], exclude_keywords=["MO", "REP", "PRE"]), 1))
+            
             c_panos_s = find_col(data['CyP SALTA'], ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             if not c_panos_s: c_panos_s = find_col(data['CyP SALTA'], ['PAÑOS'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             s_panos_prop = cs_r.get(c_panos_s, 0)
@@ -960,37 +959,34 @@ try:
                 st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
                 html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
                 st.markdown(html_ter_j, unsafe_allow_html=True)
+                
             with c_salta:
                 st.subheader("Sede Salta")
-                st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                
+                if s_obj_mo > 0 or s_obj_rep > 0:
+                    st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo), unsafe_allow_html=True)
+                    st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
+                    st.markdown(f'<div style="text-align: right; font-size: 0.75rem; color: #888; margin-top: -5px; margin-bottom: 10px;">Facturación Total CyP: <b>${s_total_fact:,.0f}</b> (Obj Total: ${s_obj_fact:,.0f})</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+
                 st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
                 st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
                 
-                # Detalle de Terceros (Mantiene el formato original)
                 html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
                 st.markdown(html_ter_s, unsafe_allow_html=True)
                 
-                # --- BLOQUE ACTUALIZADO: REPUESTOS SALTA ---
                 if s_f_r > 0:
-                    # Calculamos el margen en pesos para mostrarlo
                     margen_rep_pesos = s_f_r - s_c_rep
-                    html_rep_s = f'''
-                    <div class="cyp-detail" style="border-left-color: #28a745;">
-                        <span class="cyp-header" style="color:#28a745">📦 Repuestos Salta</span>
-                        Facturación: <b>${s_f_r:,.0f}</b><br>
-                        Costo: <span style="color:#666;">${s_c_rep:,.0f}</span><br>
-                        Margen: <b style="color:#28a745;">${margen_rep_pesos:,.0f}</b> ({s_mg_rep_pct:.1%})
-                    </div>
-                    '''
+                    html_rep_s = f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Costo: <span style="color:#666;">${s_c_rep:,.0f}</span><br>Mg: <b style="color:#28a745;">${margen_rep_pesos:,.0f}</b> ({s_mg_rep_pct:.1%})</div>'
                     st.markdown(html_rep_s, unsafe_allow_html=True)
-                    
+
             g_jujuy, g_salta = st.columns(2)
             with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
             with g_salta: 
                 vals_s, nams_s = [s_f_p, s_f_t], ["MO Pura", "Terceros"]
                 if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
                 st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
-
         elif selected_tab == "📈 Histórico":
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             st.markdown("#### 🛠️ Servicios")
