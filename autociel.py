@@ -1120,11 +1120,24 @@ try:
             if col_muerto: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
             st.plotly_chart(fig_stk.update_layout(barmode='stack', title="Salud de Stock", height=300), use_container_width=True)
 
+            # --- EVOLUCIÓN Y TENDENCIA POR CANALES ---
+            c_mix1, c_mix2 = st.columns(2)
+            
             fig_mix = go.Figure()
+            fig_tendencia = go.Figure()
+            
             for c in canales_repuestos:
                 col_vta = find_col(h_rep, ["VENTA", c], exclude_keywords=["OBJ"])
-                if col_vta: fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c))
-            st.plotly_chart(fig_mix.update_layout(barmode='stack', title="Venta Total por Canal (Apilado)", height=300), use_container_width=True)
+                if col_vta: 
+                    # Agregamos la barra al gráfico apilado
+                    fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c))
+                    # Agregamos la línea al nuevo gráfico de tendencia
+                    fig_tendencia.add_trace(go.Scatter(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c, mode='lines+markers'))
+            
+            with c_mix1:
+                st.plotly_chart(fig_mix.update_layout(barmode='stack', title="Composición del Volumen (Apilado)", height=350, legend=dict(orientation="h", y=-0.2)), use_container_width=True)
+            with c_mix2:
+                st.plotly_chart(fig_tendencia.update_layout(title="📈 Tendencia de Crecimiento por Canal", height=350, legend=dict(orientation="h", y=-0.2)), use_container_width=True)
             
             h_rep['CostoPromedio3M'] = h_rep['CostoTotalMes'].rolling(window=3, min_periods=1).mean()
             col_val_stock = find_col(h_rep, ["VALOR", "STOCK"])
