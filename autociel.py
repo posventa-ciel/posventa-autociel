@@ -958,10 +958,25 @@ try:
                 st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
                 st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
                 st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
+                
+                # Detalle de Terceros (Mantiene el formato original)
                 html_ter_s = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{s_panos_ter:,.0f}</b> | Fact: ${s_f_t:,.0f}<br>Mg: <b>${s_m_ter:,.0f}</b> ({s_mg_ter_pct:.1%})</div>'
                 st.markdown(html_ter_s, unsafe_allow_html=True)
-                if s_f_r > 0: st.markdown(f'<div class="cyp-detail" style="border-left-color: #28a745;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Mg: <b>${s_m_rep:,.0f}</b> ({s_mg_rep_pct:.1%})</div>', unsafe_allow_html=True)
-
+                
+                # --- BLOQUE ACTUALIZADO: REPUESTOS SALTA ---
+                if s_f_r > 0:
+                    # Calculamos el margen en pesos para mostrarlo
+                    margen_rep_pesos = s_f_r - s_c_rep
+                    html_rep_s = f'''
+                    <div class="cyp-detail" style="border-left-color: #28a745;">
+                        <span class="cyp-header" style="color:#28a745">📦 Repuestos Salta</span>
+                        Facturación: <b>${s_f_r:,.0f}</b><br>
+                        Costo: <span style="color:#666;">${s_c_rep:,.0f}</span><br>
+                        Margen: <b style="color:#28a745;">${margen_rep_pesos:,.0f}</b> ({s_mg_rep_pct:.1%})
+                    </div>
+                    '''
+                    st.markdown(html_rep_s, unsafe_allow_html=True)
+                    
             g_jujuy, g_salta = st.columns(2)
             with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
             with g_salta: 
