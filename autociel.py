@@ -761,7 +761,7 @@ try:
                         "Margen %": "{:.1%}",
                         "% Part.": "{:.1%}"
                     })
-                    .applymap(color_margen, subset=['Margen %']),
+                    .map(color_margen, subset=['Margen %']),
                     use_container_width=True, 
                     hide_index=True
                 )
