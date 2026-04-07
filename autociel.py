@@ -650,11 +650,44 @@ try:
             
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
-            c_main, c_kpis = st.columns([1, 3])
-            with c_main: st.markdown(render_kpi_card("Fact. Bruta", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
-            with c_kpis:
-                r2, r3, r4 = st.columns(3)
-                
+            # --- NUEVOS CÁLCULOS DE MÁRGENES ---
+            desc_total = df_r['Desc.'].sum() if not df_r.empty else 0
+            ganancia_primaria = vta_total_neta - costo_total_mes_actual_real
+            pct_margen_primario = (ganancia_primaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
+            
+            ganancia_secundaria = ganancia_primaria + primas_input
+            pct_margen_secundario = (ganancia_secundaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
+
+            # --- RENDERIZADO DE TARJETAS FINANCIERAS ---
+            st.markdown("#### 📊 Análisis Financiero y Márgenes")
+            
+            # FILA 1: Negocio Puro (Primario)
+            c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+            def formato_p(val): return "${:,.0f}".format(val).replace(",", ".")
+            
+            c_r1.markdown(f'<div class="metric-card"><div class="metric-title">Venta Bruta</div><div class="metric-value-money" style="color:#00235d;">{formato_p(vta_total_bruta)}</div></div>', unsafe_allow_html=True)
+            c_r2.markdown(f'<div class="metric-card"><div class="metric-title">Costo Repuestos</div><div class="metric-value-money" style="color:#dc3545;">{formato_p(costo_total_mes_actual_real)}</div></div>', unsafe_allow_html=True)
+            c_r3.markdown(f'<div class="metric-card"><div class="metric-title">Margen Bruto Primario</div><div class="metric-value-money" style="color:#28a745;">{formato_p(ganancia_primaria)}</div></div>', unsafe_allow_html=True)
+            c_r4.markdown(f'<div class="metric-card"><div class="metric-title">% Margen Primario</div><div class="metric-value-number" style="color:#17a2b8;">{pct_margen_primario:.2f}%</div><div class="metric-subtitle-gray">Sobre Venta Bruta</div></div>', unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # FILA 2: Flujo y Negocio Final (Secundario)
+            c_s1, c_s2, c_s3, c_s4 = st.columns(4)
+            c_s1.markdown(f'<div class="metric-card"><div class="metric-title">Descuentos Otorgados</div><div class="metric-value-money" style="color:#fd7e14;">{formato_p(desc_total)}</div></div>', unsafe_allow_html=True)
+            c_s2.markdown(f'<div class="metric-card"><div class="metric-title">Incentivos / Primas</div><div class="metric-value-money" style="color:#6f42c1;">{formato_p(primas_input)}</div></div>', unsafe_allow_html=True)
+            c_s3.markdown(f'<div class="metric-card" style="border: 2px solid #28a745; background-color: #f8f9fa;"><div class="metric-title">Margen Bruto Secundario</div><div class="metric-value-money" style="color:#28a745;">{formato_p(ganancia_secundaria)}</div></div>', unsafe_allow_html=True)
+            c_s4.markdown(f'<div class="metric-card" style="border: 2px solid #17a2b8; background-color: #f8f9fa;"><div class="metric-title">% Margen Secundario</div><div class="metric-value-number" style="color:#17a2b8;">{pct_margen_secundario:.2f}%</div><div class="metric-subtitle-gray">Flujo Real (S/ Bruta)</div></div>', unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # FILA 3: Stock y Objetivos (Separado para que respire)
+            st.markdown("#### 📦 Gestión de Stock y Objetivos")
+            c_obj, c_stk = st.columns(2)
+            with c_obj:
+                st.markdown(render_kpi_card("Cumplimiento Objetivo Ventas", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
+            
+            with c_stk:
                 # --- LÓGICA DE MESES DE STOCK (CORREGIDA) ---
                 def obtener_costo_mes_historico(d_target):
                     df_h = data['REPUESTOS']
@@ -689,37 +722,34 @@ try:
                 else:
                     meses_stock = 0
                 
-                with r2: st.markdown(render_kpi_small("Utilidad Total (+Primas)", util_total_final, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
-                with r3: st.markdown(render_kpi_small("Margen Global Real", mg_total_final, 0.21, None, None, "{:.1%}"), unsafe_allow_html=True)
-                with r4: 
-                    # --- LÓGICA DE COLORES DE STOCK ---
-                    color_stk = "#dc3545" # Rojo por defecto
-                    icon_stk = "🛑"
-                    estado_txt = "Crítico"
-                    
-                    if meses_stock <= 3.0:
-                        color_stk = "#28a745" # Verde
-                        icon_stk = "✅"
-                        estado_txt = "Óptimo"
-                    elif meses_stock <= 5.0:
-                        color_stk = "#ffc107" # Amarillo
-                        icon_stk = "⚠️"
-                        estado_txt = "Medio"
-                    
-                    html_stock = f'''
-                    <div class="metric-card">
-                        <div>
-                            <p style="color:#666; font-size:0.8rem; margin-bottom:2px;">Meses Stock (Prom 3M)</p>
-                            <h3 style="color:{color_stk}; margin:0; font-size:1.3rem;">{meses_stock:.2f}</h3>
-                            <div style="height:15px;"></div>
-                        </div>
-                        <div class="metric-footer">
-                            <div>Obj: <b>3.0</b></div>
-                            <div style="color:{color_stk}">{icon_stk} Est: <b>{estado_txt}</b></div>
-                        </div>
+                # LÓGICA DE COLORES DE STOCK
+                color_stk = "#dc3545" # Rojo por defecto
+                icon_stk = "🛑"
+                estado_txt = "Crítico"
+                
+                if meses_stock <= 3.0:
+                    color_stk = "#28a745" # Verde
+                    icon_stk = "✅"
+                    estado_txt = "Óptimo"
+                elif meses_stock <= 5.0:
+                    color_stk = "#ffc107" # Amarillo
+                    icon_stk = "⚠️"
+                    estado_txt = "Medio"
+                
+                html_stock = f'''
+                <div class="metric-card" style="padding: 18px;">
+                    <div>
+                        <p style="color:#666; font-size:0.9rem; margin-bottom:5px; font-weight: bold;">Meses Stock (Prom 3M)</p>
+                        <h3 style="color:{color_stk}; margin:0; font-size:1.8rem;">{meses_stock:.2f}</h3>
+                        <div style="height:10px;"></div>
                     </div>
-                    '''
-                    st.markdown(html_stock, unsafe_allow_html=True)
+                    <div class="metric-footer" style="font-size: 0.85rem;">
+                        <div>Obj: <b>3.0</b></div>
+                        <div style="color:{color_stk}">{icon_stk} Est: <b>{estado_txt}</b></div>
+                    </div>
+                </div>
+                '''
+                st.markdown(html_stock, unsafe_allow_html=True)
 
             if not df_r.empty:
                 # --- TABLA MEJORADA CON TOTALES ---
