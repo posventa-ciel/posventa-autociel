@@ -502,7 +502,10 @@ try:
                 p_row = st.columns(2)
                 with p_row[0]: st.markdown(render_kpi_small("Videocheck", vc_p_r, vc_p_p, vc_p_m, vc_p_proy, fmt_vc), unsafe_allow_html=True)
                 with p_row[1]: st.markdown(render_kpi_small("Forfait", ff_p_r, ff_p_p, ff_p_m, ff_p_proy, fmt_ff), unsafe_allow_html=True)
-                st.markdown(f'<div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;"><p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Peugeot</p><p style="margin: 0; color: #28a745; font-size: 1.1rem; font-weight: bold;">${val_prima_p:,.0f}</p><p style="margin: 0; color: #999; font-size: 0.65rem;">Techo de Meta: ${obj_prima_p:,.0f}</p></div>', unsafe_allow_html=True)
+                
+                pct_prima_p = (val_prima_p / obj_prima_p * 100) if obj_prima_p > 0 else 0
+                color_pct_p = "#28a745" if pct_prima_p >= 90 else ("#ffc107" if pct_prima_p >= 50 else "#dc3545")
+                st.markdown(f'<div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;"><p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Peugeot</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_prima_p:,.0f}</p><div style="display:flex; justify-content:center; align-items:center; gap: 10px; margin-top: 4px;"><span style="color: #999; font-size: 0.75rem;">Potencial: ${obj_prima_p:,.0f}</span><span style="background-color: {color_pct_p}20; color: {color_pct_p}; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem;">{pct_prima_p:.1f}% Alcanzado</span></div></div>', unsafe_allow_html=True)
 
             with c_citroen:
                 st.markdown("#### 🔴 Citroën")
@@ -510,7 +513,10 @@ try:
                 c_row = st.columns(2)
                 with c_row[0]: st.markdown(render_kpi_small("Videocheck", vc_c_r, vc_c_p, vc_c_m, vc_c_proy, fmt_vc), unsafe_allow_html=True)
                 with c_row[1]: st.markdown(render_kpi_small("Forfait", ff_c_r, ff_c_p, ff_c_m, ff_c_proy, fmt_ff), unsafe_allow_html=True)
-                st.markdown(f'<div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;"><p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Citroën</p><p style="margin: 0; color: #28a745; font-size: 1.1rem; font-weight: bold;">${val_prima_c:,.0f}</p><p style="margin: 0; color: #999; font-size: 0.65rem;">Techo de Meta: ${obj_prima_c:,.0f}</p></div>', unsafe_allow_html=True)
+                
+                pct_prima_c = (val_prima_c / obj_prima_c * 100) if obj_prima_c > 0 else 0
+                color_pct_c = "#28a745" if pct_prima_c >= 90 else ("#ffc107" if pct_prima_c >= 50 else "#dc3545")
+                st.markdown(f'<div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; margin-top: 10px; text-align: center;"><p style="margin: 0; color: #666; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">Posible Cobro Citroën</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_prima_c:,.0f}</p><div style="display:flex; justify-content:center; align-items:center; gap: 10px; margin-top: 4px;"><span style="color: #999; font-size: 0.75rem;">Potencial: ${obj_prima_c:,.0f}</span><span style="background-color: {color_pct_c}20; color: {color_pct_c}; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8rem;">{pct_prima_c:.1f}% Alcanzado</span></div></div>', unsafe_allow_html=True)
             
             st.markdown("---")
             st.markdown("### ⚙️ Taller")
