@@ -1076,6 +1076,60 @@ try:
             st.markdown("---")
             st.markdown("#### 📊 Análisis Histórico Mensual")
 
+            # --- NUEVO: EVOLUCIÓN DE FACTURACIÓN CONSOLIDADA ---
+            st.markdown("##### 💰 Evolución de Facturación Total")
+            
+            # Recopilamos la facturación de cada unidad de negocio por mes
+            fact_mensual = []
+            for mes in h_cal['Mes'].unique():
+                nom_mes = h_cal[h_cal['Mes'] == mes]['NombreMes'].iloc[0]
+                
+                # Servicios
+                f_ser = 0
+                row_ser = h_ser[h_ser['Mes'] == mes]
+                if not row_ser.empty:
+                    for kw in ["CLI", "GAR", "INT", "TERCERO", "TERCEROS", "TER"]:
+                        c = find_col(h_ser, ["MO", kw], exclude_keywords=["OBJ"])
+                        if c: f_ser += float(row_ser[c].iloc[0] or 0)
+                
+                # Repuestos
+                f_rep = 0
+                row_rep = h_rep[h_rep['Mes'] == mes]
+                if not row_rep.empty:
+                    for can in canales_repuestos:
+                        c = find_col(h_rep, ["VENTA", can], exclude_keywords=["OBJ"])
+                        if c: f_rep += float(row_rep[c].iloc[0] or 0)
+                        
+                # CyP Jujuy
+                f_cj = 0
+                row_cj = h_cyp_j[h_cyp_j['Mes'] == mes]
+                if not row_cj.empty:
+                    c1 = find_col(h_cyp_j, ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+                    c2 = find_col(h_cyp_j, ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(h_cyp_j, ['MO', 'TER'], exclude_keywords=['OBJ'])
+                    if c1: f_cj += float(row_cj[c1].iloc[0] or 0)
+                    if c2: f_cj += float(row_cj[c2].iloc[0] or 0)
+                    
+                # CyP Salta
+                f_cs = 0
+                row_cs = h_cyp_s[h_cyp_s['Mes'] == mes]
+                if not row_cs.empty:
+                    c1 = find_col(h_cyp_s, ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+                    c2 = find_col(h_cyp_s, ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(h_cyp_s, ['MO', 'TER'], exclude_keywords=['OBJ'])
+                    c3 = find_col(h_cyp_s, ['FACT', 'REP'], exclude_keywords=['OBJ', 'COSTO']) or find_col(h_cyp_s, ['REP'], exclude_keywords=['OBJ', 'COSTO'])
+                    if c1: f_cs += float(row_cs[c1].iloc[0] or 0)
+                    if c2: f_cs += float(row_cs[c2].iloc[0] or 0)
+                    if c3: f_cs += float(row_cs[c3].iloc[0] or 0)
+
+                fact_mensual.append({"Mes": nom_mes, "Servicios": f_ser, "Repuestos": f_rep, "CyP Jujuy": f_cj, "CyP Salta": f_cs})
+
+            df_fact_hist = pd.DataFrame(fact_mensual)
+            if not df_fact_hist.empty:
+                # Transformamos para Plotly
+                df_fact_melt = df_fact_hist.melt(id_vars="Mes", var_name="Unidad", value_name="Facturación")
+                fig_fact = px.bar(df_fact_melt, x="Mes", y="Facturación", color="Unidad", title="", text_auto='$.3s', color_discrete_sequence=['#00235d', '#00A8E8', '#28a745', '#ffc107'])
+                st.plotly_chart(fig_fact.update_layout(barmode='stack', height=400, yaxis_title="Monto Facturado ($)"), use_container_width=True)
+            # --- FIN EVOLUCIÓN FACTURACIÓN ---
+
             col_hab_hist = find_col(h_cal, ["HAB"])
             col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "EFIC"])
             if not col_tecs_hist: col_tecs_hist = find_col(h_tal, ["MECANICOS"], exclude_keywords=["PROD"])
