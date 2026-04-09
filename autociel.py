@@ -1202,6 +1202,46 @@ try:
             
             st.plotly_chart(fig_flow.update_layout(title="📉 Flujo de Stock: Compras vs Costo de Venta", barmode='group', height=400), use_container_width=True)
             # --- FIN NUEVO GRÁFICO ---
+            # --- NUEVO: PROYECCIÓN DE DISMINUCIÓN DE STOCK ---
+            st.markdown("##### 🔭 Proyección y Meta de Disminución de Stock")
+            
+            # Calculamos el promedio de reducción de los últimos 3 meses
+            ultimos_3 = h_rep.tail(3)
+            promedio_variacion = ultimos_3['VariacionStock'].mean()
+            
+            val_stock_actual = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+            
+            # Promedio de costo para calcular la meta
+            costo_promedio_3m = ultimos_3['CostoTotalMes'].mean()
+            stock_objetivo_valor = costo_promedio_3m * 3.0 # El objetivo corporativo son 3 meses de stock
+            
+            c_proy1, c_proy2, c_proy3 = st.columns(3)
+            c_proy1.metric("Stock Físico Actual", f"${val_stock_actual:,.0f}")
+            c_proy2.metric("Stock Ideal Objetivo (3 Meses)", f"${stock_objetivo_valor:,.0f}")
+            
+            if promedio_variacion < 0:
+                meses_para_objetivo = (val_stock_actual - stock_objetivo_valor) / abs(promedio_variacion)
+                if meses_para_objetivo <= 0:
+                    c_proy3.metric("Tiempo Estimado al Objetivo", "¡Meta Alcanzada!", "Stock Sano")
+                    st.success("✅ El stock actual ya se encuentra en niveles óptimos (<= 3 meses de costo).")
+                else:
+                    c_proy3.metric("Ritmo de Reducción (Prom 3M)", f"-${abs(promedio_variacion):,.0f} / mes")
+                    st.info(f"📉 Manteniendo este ritmo sostenido de reducción, alcanzarán el stock ideal de 3 meses en aproximadamente **{meses_para_objetivo:.1f} meses**.")
+                    
+                # Gráfico de proyección a futuro
+                meses_futuros = ["Mes actual", "+1 Mes", "+2 Meses", "+3 Meses", "+4 Meses", "+5 Meses"]
+                vals_proy = [val_stock_actual + (promedio_variacion * i) for i in range(0, 6)]
+                df_proy = pd.DataFrame({"Mes Proyectado": meses_futuros, "Valor Estimado": vals_proy})
+                
+                fig_proy = go.Figure()
+                fig_proy.add_trace(go.Bar(x=df_proy['Mes Proyectado'], y=df_proy['Valor Estimado'], name="Stock Proyectado", marker_color="#17a2b8", text=[f"${v/1000000:.1f}M" for v in vals_proy], textposition="auto"))
+                fig_proy.add_hline(y=stock_objetivo_valor, line_dash="dash", line_color="#28a745", annotation_text="Meta: Stock Ideal", annotation_position="top right")
+                st.plotly_chart(fig_proy.update_layout(title="Simulación a 5 Meses (Manteniendo Ritmo de Reducción Actual)", height=350, yaxis_title="Valor Stock ($)"), use_container_width=True)
+
+            else:
+                c_proy3.metric("Ritmo de Variación (Prom 3M)", f"+${promedio_variacion:,.0f} / mes", "Stock en Aumento", delta_color="inverse")
+                st.error("❌ El promedio de los últimos 3 meses indica que el stock está **AUMENTANDO**. Compran más de lo que rinde el costo de venta. No se puede proyectar una fecha de éxito si no se invierte la tendencia de compra.")
+            # --- FIN PROYECCIÓN ---
 
             col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
             fig_stk = go.Figure()
