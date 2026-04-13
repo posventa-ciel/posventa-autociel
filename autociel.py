@@ -412,9 +412,16 @@ try:
             cols = st.columns(4)
             real_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]), 0) for c in canales_repuestos])
             def get_cyp_total(row, df_nom):
-                mo = row.get(find_col(data[df_nom], ["MO", "PUR"]), 0) + row.get(find_col(data[df_nom], ["MO", "TER"]), 0)
-                rep = row.get(find_col(data[df_nom], ["FACT", "REP"]), 0) 
-                return mo + rep
+                # Usamos exactamente la misma búsqueda que en la pestaña de detalle
+                c_mo = find_col(data[df_nom], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+                c_mo_t = find_col(data[df_nom], ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(data[df_nom], ['MO', 'TER'], exclude_keywords=['OBJ'])
+                c_rep = find_col(data[df_nom], ['FACT', 'REP'], exclude_keywords=['OBJ', 'COSTO']) or find_col(data[df_nom], ['REP'], exclude_keywords=['OBJ', 'COSTO'])
+                
+                mo_p = float(row.get(c_mo, 0)) if c_mo else 0
+                mo_t = float(row.get(c_mo_t, 0)) if c_mo_t else 0
+                rep = float(row.get(c_rep, 0)) if c_rep else 0
+                
+                return mo_p + mo_t + rep
             metas = [
                 ("M.O. Servicios", real_mo_total, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
                 ("Repuestos", real_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
