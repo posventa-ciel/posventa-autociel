@@ -1017,13 +1017,12 @@ try:
             with c_f_j:
                 st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
             with c_f_s:
-                if s_obj_mo > 0 or s_obj_rep > 0:
-                    sc1, sc2 = st.columns(2)
-                    with sc1: st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo), unsafe_allow_html=True)
-                    with sc2: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
-                    st.markdown(f'<div style="text-align: right; font-size: 0.75rem; color: #888; margin-top: -5px; margin-bottom: 5px;">Facturación Total CyP: <b>${s_total_fact:,.0f}</b> (Obj Total: ${s_obj_fact:,.0f})</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown(render_kpi_card("Fact. Total Salta", s_total_fact, s_obj_fact), unsafe_allow_html=True)
+                # --- FORZAMOS A QUE SIEMPRE ESTÉ SEPARADO EN SALTA ---
+                sc1, sc2 = st.columns(2)
+                # Le ponemos un "1" de objetivo temporal si está vacío para que la barra no de error matemático
+                with sc1: st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo if s_obj_mo > 0 else 1), unsafe_allow_html=True)
+                with sc2: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep if s_obj_rep > 0 else 1), unsafe_allow_html=True)
+                st.markdown(f'<div style="text-align: right; font-size: 0.75rem; color: #888; margin-top: -5px; margin-bottom: 5px;">Facturación Total CyP: <b>${s_total_fact:,.0f}</b> (Obj Total: ${s_obj_fact:,.0f})</div>', unsafe_allow_html=True)
 
             # Fila 3: Paños Propios
             c_p_j, c_p_s = st.columns(2)
