@@ -185,6 +185,13 @@ def procesar_irpv(file_v, file_t):
 def preparar_wip_desde_sheet(df):
     if df is None or df.empty: return None
     
+    # --- FIX ANTICHOQUES: Si el Excel tiene columnas duplicadas (ej: dos columnas MATRICULA) ---
+    def col_segura(nombre):
+        if not nombre: return pd.Series([np.nan] * len(df))
+        data = df[nombre]
+        # Si hay más de una columna con el mismo nombre, nos quedamos solo con la primera
+        return data.iloc[:, 0] if isinstance(data, pd.DataFrame) else data
+
     col_saldo = find_col(df, ['TOTAL', 'IMPTO']) or find_col(df, ['SALDO'])
     if not col_saldo: return None
     
@@ -194,15 +201,20 @@ def preparar_wip_desde_sheet(df):
     col_tipo = find_col(df, ['TIPO'])
     col_fecha = find_col(df, ['FEC', 'AP'])
     col_modelo = find_col(df, ['MODELO'])
+    col_ref = find_col(df, ['REF', 'OR'])
 
-    df['Saldo'] = df[col_saldo] 
+    df['Saldo'] = col_segura(col_saldo) 
     
+    s_mat = col_segura(col_matricula)
+    s_idv = col_segura(col_idv)
+
     if col_matricula and col_idv:
-        df['Identificador'] = df[col_matricula].replace('0', np.nan).fillna(df[col_idv].astype(str))
+        df['Identificador'] = s_mat.replace('0', np.nan).fillna(s_idv.astype(str))
     elif col_matricula:
-        df['Identificador'] = df[col_matricula]
+        df['Identificador'] = s_mat
     else:
         df['Identificador'] = "S/D"
+        
     df['Identificador'] = df['Identificador'].astype(str).str.strip().str.upper()
 
     def obtener_nombre_asesor(val):
@@ -213,7 +225,7 @@ def preparar_wip_desde_sheet(df):
             return "Sin Asesor"
             
     if col_rec:
-        df['Nombre_Asesor'] = df[col_rec].apply(obtener_nombre_asesor)
+        df['Nombre_Asesor'] = col_segura(col_rec).apply(obtener_nombre_asesor)
     else:
         df['Nombre_Asesor'] = "Desconocido"
 
@@ -223,23 +235,23 @@ def preparar_wip_desde_sheet(df):
         if codigo in CODIGOS_CYP: return 'Chapa y Pintura'
         return 'Mecánica'
 
+    s_tipo = col_segura(col_tipo)
     if col_tipo:
-        df['Tipo_Taller'] = df[col_tipo].apply(clasificar_taller)
-        df['Tipo'] = df[col_tipo] 
+        df['Tipo_Taller'] = s_tipo.apply(clasificar_taller)
+        df['Tipo'] = s_tipo 
     else:
         df['Tipo_Taller'] = 'Mecánica'
         df['Tipo'] = 'S/D'
 
     if col_fecha:
-        df['Fecha_Alta'] = pd.to_datetime(df[col_fecha], dayfirst=True, errors='coerce')
+        df['Fecha_Alta'] = pd.to_datetime(col_segura(col_fecha), dayfirst=True, errors='coerce')
     else:
         df['Fecha_Alta'] = pd.NaT
 
-    if col_modelo: df['Modelo'] = df[col_modelo]
+    if col_modelo: df['Modelo'] = col_segura(col_modelo)
     else: df['Modelo'] = ""
     
-    col_ref = find_col(df, ['REF', 'OR'])
-    if col_ref: df['Ref.OR'] = df[col_ref]
+    if col_ref: df['Ref.OR'] = col_segura(col_ref)
     else: df['Ref.OR'] = ""
 
     return df
