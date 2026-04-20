@@ -632,10 +632,12 @@ try:
             st.markdown("### 📦 Repuestos")
             
             # --- SECCIÓN 1: DETALLE OPERATIVO Y STOCK ---
-            col_primas, col_vacia = st.columns([1, 3])
-            with col_primas:
-                primas_input = st.number_input("💰 Ingresar Primas/Rappels Estimados ($)", min_value=0.0, step=10000.0, format="%.0f", help="Este valor se sumará a la utilidad para calcular el margen real final.")
-
+            # Buscamos la columna en el Excel (el título debe contener PRIMA o RAPPEL)
+            c_primas = find_col(data['REPUESTOS'], ['PRIMA']) or find_col(data['REPUESTOS'], ['RAPPEL'])
+            primas_input = float(r_r.get(c_primas, 0.0)) if c_primas else 0.0
+            
+            # Mostramos un cartelito lindo para confirmar que leyó el dato correctamente
+            st.markdown(f'<div style="background-color: #eef2f7; padding: 10px; border-radius: 5px; border-left: 4px solid #6f42c1; margin-bottom: 15px;"><span style="color:#00235d; font-weight:bold;">💰 Primas/Rappels del Mes:</span> <span style="color:#28a745; font-weight:bold; font-size:1.1rem;">${primas_input:,.0f}</span> <span style="color:#666; font-size:0.8rem;">(Dato leído automáticamente de la planilla)</span></div>', unsafe_allow_html=True)
             detalles = []
             for c in canales_repuestos:
                 v_col = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
