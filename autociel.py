@@ -185,23 +185,22 @@ def procesar_irpv(file_v, file_t):
 def preparar_wip_desde_sheet(df):
     if df is None or df.empty: return None
     
-    # --- FIX ANTICHOQUES: Si el Excel tiene columnas duplicadas (ej: dos columnas MATRICULA) ---
     def col_segura(nombre):
         if not nombre: return pd.Series([np.nan] * len(df))
         data = df[nombre]
-        # Si hay más de una columna con el mismo nombre, nos quedamos solo con la primera
         return data.iloc[:, 0] if isinstance(data, pd.DataFrame) else data
 
-    col_saldo = find_col(df, ['TOTAL', 'IMPTO']) or find_col(df, ['SALDO'])
+    # ACÁ ESTÁ LA MAGIA NUEVA: Flexibilizamos la búsqueda para que entienda las abreviaturas
+    col_saldo = find_col(df, ['TOTAL', 'IM']) or find_col(df, ['SALDO'])
     if not col_saldo: return None
     
     col_matricula = find_col(df, ['MATRICUL'])
     col_idv = find_col(df, ['IDV'])
     col_rec = find_col(df, ['REC'])
     col_tipo = find_col(df, ['TIPO'])
-    col_fecha = find_col(df, ['FEC', 'AP'])
+    col_fecha = find_col(df, ['APER']) # Ahora busca "F. aper."
     col_modelo = find_col(df, ['MODELO'])
-    col_ref = find_col(df, ['REF', 'OR'])
+    col_ref = find_col(df, ['REF'])    # Ahora busca "Ref. O."
 
     df['Saldo'] = col_segura(col_saldo) 
     
