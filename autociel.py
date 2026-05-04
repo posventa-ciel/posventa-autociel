@@ -1074,8 +1074,8 @@ try:
             # Fila 2: Totales alineados
             st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
             
-            # El secreto: 2 columnas para Jujuy, 2 para Salta, 1 vacía para rellenar el espacio derecho
-            tot_jujuy, tot_salta, tot_vacia = st.columns([2, 2, 1])
+            # Volvemos a darle a Salta todo su ancho [2, 3]
+            tot_jujuy, tot_salta = st.columns([2, 3])
             with tot_jujuy: st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
             with tot_salta: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
                 
