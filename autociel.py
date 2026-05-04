@@ -1020,23 +1020,33 @@ try:
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
             # --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
-            # Fila 1: Títulos
-            c_tit1, c_tit2 = st.columns(2)
-            with c_tit1: st.subheader("Sede Jujuy")
-            with c_tit2: st.subheader("Sede Salta")
+            # Fila 1 y 2: Títulos y Facturación Desglosada en Mini-Cuadrícula
+            col_izq_jujuy, col_der_salta = st.columns(2)
             
-            # Fila 2: Facturación
-            c_f_j, c_f_s = st.columns(2)
-            with c_f_j:
-                st.markdown(render_kpi_card("Fact. Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
-            with c_f_s:
-                # --- FORZAMOS A QUE SIEMPRE ESTÉ SEPARADO EN SALTA ---
-                sc1, sc2 = st.columns(2)
-                # Le ponemos un "1" de objetivo temporal si está vacío para que la barra no de error matemático
-                with sc1: st.markdown(render_kpi_card("Fact. Mano de Obra", (s_f_p + s_f_t), s_obj_mo if s_obj_mo > 0 else 1), unsafe_allow_html=True)
-                with sc2: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep if s_obj_rep > 0 else 1), unsafe_allow_html=True)
-                st.markdown(f'<div style="text-align: right; font-size: 0.75rem; color: #888; margin-top: -5px; margin-bottom: 5px;">Facturación Total CyP: <b>${s_total_fact:,.0f}</b> (Obj Total: ${s_obj_fact:,.0f})</div>', unsafe_allow_html=True)
+            with col_izq_jujuy:
+                st.subheader("Sede Jujuy")
+                # Piso 1: Desglose MO
+                cj_a1, cj_a2 = st.columns(2)
+                with cj_a1: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. MO Propia</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">${j_f_p:,.0f}</h3></div></div>', unsafe_allow_html=True)
+                with cj_a2: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. Terceros</p><h3 style="color:#17a2b8; margin:0; font-size:1.3rem;">${j_f_t:,.0f}</h3></div></div>', unsafe_allow_html=True)
+                
+                # Piso 2: Total (Ocupa todo el ancho de Jujuy)
+                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
 
+            with col_der_salta:
+                st.subheader("Sede Salta")
+                # Piso 1: Desglose MO
+                cs_a1, cs_a2 = st.columns(2)
+                with cs_a1: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. MO Propia</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">${s_f_p:,.0f}</h3></div></div>', unsafe_allow_html=True)
+                with cs_a2: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. Terceros</p><h3 style="color:#17a2b8; margin:0; font-size:1.3rem;">${s_f_t:,.0f}</h3></div></div>', unsafe_allow_html=True)
+                
+                # Piso 2: Repuestos y Total
+                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+                cs_b1, cs_b2 = st.columns(2)
+                with cs_b1: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep if s_obj_rep > 0 else 1), unsafe_allow_html=True)
+                with cs_b2: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
+                
             # Fila 3: Paños Propios
             c_p_j, c_p_s = st.columns(2)
             with c_p_j: st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
