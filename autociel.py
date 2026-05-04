@@ -1020,32 +1020,46 @@ try:
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
             # --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
+            # Buscamos el objetivo de MO para Jujuy (por si lo tienen cargado)
+            j_obj_mo = float(cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'MO']), 0))
+
             # Fila 1 y 2: Títulos y Facturación Desglosada en Mini-Cuadrícula
-            col_izq_jujuy, col_der_salta = st.columns(2)
+            # Usamos proporción [2, 3] (40% / 60%) para que todas las tarjetas midan exactamente igual
+            col_izq_jujuy, col_der_salta = st.columns([2, 3])
             
             with col_izq_jujuy:
                 st.subheader("Sede Jujuy")
-                # Piso 1: Desglose MO
+                # Piso 1: Desglose MO (2 tarjetas)
                 cj_a1, cj_a2 = st.columns(2)
-                with cj_a1: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. MO Propia</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">${j_f_p:,.0f}</h3></div></div>', unsafe_allow_html=True)
-                with cj_a2: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. Terceros</p><h3 style="color:#17a2b8; margin:0; font-size:1.3rem;">${j_f_t:,.0f}</h3></div></div>', unsafe_allow_html=True)
+                with cj_a1: 
+                    if j_obj_mo > 0:
+                        st.markdown(render_kpi_card("Fact. MO Propia", j_f_p, j_obj_mo), unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div class="kpi-card" style="justify-content: center;"><div><p style="font-size: 0.85rem; margin: 0; color: #666; font-weight: 600;">Fact. MO Propia</p><h2 style="font-size: 1.8rem; margin: 4px 0; color: #00235d;">${j_f_p:,.0f}</h2></div></div>', unsafe_allow_html=True)
                 
-                # Piso 2: Total (Ocupa todo el ancho de Jujuy)
+                with cj_a2: 
+                    # Tarjeta de Terceros (Sin objetivo, pero con la misma altura que las demás)
+                    st.markdown(f'<div class="kpi-card" style="justify-content: center;"><div><p style="font-size: 0.85rem; margin: 0; color: #666; font-weight: 600;">Fact. Terceros</p><h2 style="font-size: 1.8rem; margin: 4px 0; color: #17a2b8;">${j_f_t:,.0f}</h2></div></div>', unsafe_allow_html=True)
+                
+                # Piso 2: Total Jujuy (Ocupa todo el ancho)
                 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-                st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
 
             with col_der_salta:
                 st.subheader("Sede Salta")
-                # Piso 1: Desglose MO
-                cs_a1, cs_a2 = st.columns(2)
-                with cs_a1: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. MO Propia</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">${s_f_p:,.0f}</h3></div></div>', unsafe_allow_html=True)
-                with cs_a2: st.markdown(f'<div class="metric-card" style="min-height: 80px; padding: 10px;"><div><p style="color:#666; font-size:0.75rem; margin-bottom:2px; font-weight:bold;">Fact. Terceros</p><h3 style="color:#17a2b8; margin:0; font-size:1.3rem;">${s_f_t:,.0f}</h3></div></div>', unsafe_allow_html=True)
+                # Piso 1: Desglose MO y Repuestos (3 tarjetas)
+                cs_a1, cs_a2, cs_a3 = st.columns(3)
+                with cs_a1: 
+                    st.markdown(render_kpi_card("Fact. MO Propia", s_f_p, s_obj_mo if s_obj_mo > 0 else 1), unsafe_allow_html=True)
+                with cs_a2: 
+                    # Tarjeta de Terceros 
+                    st.markdown(f'<div class="kpi-card" style="justify-content: center;"><div><p style="font-size: 0.85rem; margin: 0; color: #666; font-weight: 600;">Fact. Terceros</p><h2 style="font-size: 1.8rem; margin: 4px 0; color: #17a2b8;">${s_f_t:,.0f}</h2></div></div>', unsafe_allow_html=True)
+                with cs_a3: 
+                    st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep if s_obj_rep > 0 else 1), unsafe_allow_html=True)
                 
-                # Piso 2: Repuestos y Total
+                # Piso 2: Total Salta (Ocupa todo el ancho)
                 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-                cs_b1, cs_b2 = st.columns(2)
-                with cs_b1: st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep if s_obj_rep > 0 else 1), unsafe_allow_html=True)
-                with cs_b2: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
+                st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
                 
             # Fila 3: Paños Propios
             c_p_j, c_p_s = st.columns(2)
