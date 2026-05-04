@@ -1020,11 +1020,12 @@ try:
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
             # --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
-            # Buscamos el objetivo de MO para Jujuy (por si lo tienen cargado)
-            j_obj_mo = float(cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'MO']), 0))
+            # Buscamos el objetivo de MO para Jujuy
+            j_obj_mo_raw = float(cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'MO']), 0))
+            # FIX: Si Jujuy no tiene columna específica de OBJ MO, usamos el OBJ FACT Total para que muestre la barra
+            j_obj_mo = j_obj_mo_raw if j_obj_mo_raw > 0 else j_obj_fact
 
             # --- FUNCION ESPECIAL PARA TARJETAS SUPERIORES ---
-            # Achica un poco la fuente y empareja las alturas con texto invisible
             def render_mini_kpi(title, real, obj_mes, color_title="#00235d"):
                 fmt = "${:,.0f}"
                 if obj_mes and obj_mes > 0:
@@ -1045,7 +1046,6 @@ try:
                     html += f'<div style="margin-top:2px;"><div style="width:100%; background:#e0e0e0; height:4px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:4px; border-radius:10px;"></div></div></div>'
                     html += '</div></div>'
                 else:
-                    # Tarjeta sin objetivos (misma altura gracias al texto transparente)
                     html = '<div class="kpi-card" style="min-height: 145px;">'
                     html += f'<div><p style="font-size: 0.8rem; margin-bottom: 2px;">{title}</p><h2 style="font-size: 1.45rem; margin: 0; color: {color_title};">{fmt.format(real)}</h2></div>'
                     html += '<div style="margin-top: auto;">'
@@ -1063,7 +1063,7 @@ try:
             with t_jujuy: st.subheader("Sede Jujuy")
             with t_salta: st.subheader("Sede Salta")
 
-            # Fila 1: Desglose (5 columnas para que midan exacto lo mismo y entren en pantalla)
+            # Fila 1: Desglose (5 columnas idénticas)
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1: st.markdown(render_mini_kpi("Fact. MO Propia", j_f_p, j_obj_mo), unsafe_allow_html=True)
             with c2: st.markdown(render_mini_kpi("Fact. Terceros", j_f_t, 0, color_title="#17a2b8"), unsafe_allow_html=True)
@@ -1071,11 +1071,13 @@ try:
             with c4: st.markdown(render_mini_kpi("Fact. Terceros", s_f_t, 0, color_title="#17a2b8"), unsafe_allow_html=True)
             with c5: st.markdown(render_mini_kpi("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
 
-            # Fila 2: Totales (Abajo de todo, perfectamente alineados 40% Jujuy y 60% Salta)
+            # Fila 2: Totales alineados
             st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
-            tot1, tot2 = st.columns([2, 3])
-            with tot1: st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
-            with tot2: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
+            
+            # El secreto: 2 columnas para Jujuy, 2 para Salta, 1 vacía para rellenar el espacio derecho
+            tot_jujuy, tot_salta, tot_vacia = st.columns([2, 2, 1])
+            with tot_jujuy: st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
+            with tot_salta: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
                 
             # Fila 3: Paños Propios
             c_p_j, c_p_s = st.columns(2)
