@@ -1023,43 +1023,59 @@ try:
             # Buscamos el objetivo de MO para Jujuy (por si lo tienen cargado)
             j_obj_mo = float(cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'MO']), 0))
 
-            # Fila 1 y 2: Títulos y Facturación Desglosada en Mini-Cuadrícula
-            # Usamos proporción [2, 3] (40% / 60%) para que todas las tarjetas midan exactamente igual
-            col_izq_jujuy, col_der_salta = st.columns([2, 3])
-            
-            with col_izq_jujuy:
-                st.subheader("Sede Jujuy")
-                # Piso 1: Desglose MO (2 tarjetas)
-                cj_a1, cj_a2 = st.columns(2)
-                with cj_a1: 
-                    if j_obj_mo > 0:
-                        st.markdown(render_kpi_card("Fact. MO Propia", j_f_p, j_obj_mo), unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="kpi-card" style="justify-content: center;"><div><p style="font-size: 0.85rem; margin: 0; color: #666; font-weight: 600;">Fact. MO Propia</p><h2 style="font-size: 1.8rem; margin: 4px 0; color: #00235d;">${j_f_p:,.0f}</h2></div></div>', unsafe_allow_html=True)
-                
-                with cj_a2: 
-                    # Tarjeta de Terceros (Sin objetivo, pero con la misma altura que las demás)
-                    st.markdown(f'<div class="kpi-card" style="justify-content: center;"><div><p style="font-size: 0.85rem; margin: 0; color: #666; font-weight: 600;">Fact. Terceros</p><h2 style="font-size: 1.8rem; margin: 4px 0; color: #17a2b8;">${j_f_t:,.0f}</h2></div></div>', unsafe_allow_html=True)
-                
-                # Piso 2: Total Jujuy (Ocupa todo el ancho)
-                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-                st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
+            # --- FUNCION ESPECIAL PARA TARJETAS SUPERIORES ---
+            # Achica un poco la fuente y empareja las alturas con texto invisible
+            def render_mini_kpi(title, real, obj_mes, color_title="#00235d"):
+                fmt = "${:,.0f}"
+                if obj_mes and obj_mes > 0:
+                    obj_parcial = obj_mes * prog_t
+                    proy = (real / d_t) * d_h if d_t > 0 else 0
+                    cumpl_proy = proy / obj_mes if obj_mes > 0 else 0
+                    color = "#dc3545" if cumpl_proy < 0.90 else ("#ffc107" if cumpl_proy < 0.98 else "#28a745")
+                    icon = "✅" if real >= obj_parcial else "🔻"
+                    cumpl_parcial_pct = real / obj_parcial if obj_parcial > 0 else 0
+                    
+                    html = '<div class="kpi-card" style="min-height: 145px;">'
+                    html += f'<div><p style="font-size: 0.8rem; margin-bottom: 2px;">{title}</p><h2 style="font-size: 1.45rem; margin: 0; color: {color_title};">{fmt.format(real)}</h2></div>'
+                    html += '<div style="margin-top: auto;">'
+                    html += f'<div class="kpi-subtext" style="font-size:0.7rem;">vs Obj: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
+                    html += '<hr style="margin:4px 0; border:0; border-top:1px solid #eee;">'
+                    html += f'<div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:2px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
+                    html += f'<div style="display:flex; justify-content:space-between; font-size:0.7rem; color:{color}; font-weight:bold;"><span>Proy:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div>'
+                    html += f'<div style="margin-top:2px;"><div style="width:100%; background:#e0e0e0; height:4px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:4px; border-radius:10px;"></div></div></div>'
+                    html += '</div></div>'
+                else:
+                    # Tarjeta sin objetivos (misma altura gracias al texto transparente)
+                    html = '<div class="kpi-card" style="min-height: 145px;">'
+                    html += f'<div><p style="font-size: 0.8rem; margin-bottom: 2px;">{title}</p><h2 style="font-size: 1.45rem; margin: 0; color: {color_title};">{fmt.format(real)}</h2></div>'
+                    html += '<div style="margin-top: auto;">'
+                    html += '<div class="kpi-subtext" style="color:transparent; user-select:none; font-size:0.7rem;">vs Obj: $0 (0%) ✅</div>'
+                    html += '<hr style="margin:4px 0; border:0; border-top:1px solid transparent;">'
+                    html += '<div style="display:flex; justify-content:space-between; font-size:0.7rem; margin-bottom:2px; color:transparent; user-select:none;"><span>Obj. Mes:</span><b>$0</b></div>'
+                    html += '<div style="display:flex; justify-content:space-between; font-size:0.7rem; color:transparent; user-select:none;"><span>Proy:</span><span>$0 (0%)</span></div>'
+                    html += '<div style="margin-top:2px;"><div style="width:100%; background:transparent; height:4px;"></div></div>'
+                    html += '</div></div>'
+                return html
 
-            with col_der_salta:
-                st.subheader("Sede Salta")
-                # Piso 1: Desglose MO y Repuestos (3 tarjetas)
-                cs_a1, cs_a2, cs_a3 = st.columns(3)
-                with cs_a1: 
-                    st.markdown(render_kpi_card("Fact. MO Propia", s_f_p, s_obj_mo if s_obj_mo > 0 else 1), unsafe_allow_html=True)
-                with cs_a2: 
-                    # Tarjeta de Terceros 
-                    st.markdown(f'<div class="kpi-card" style="justify-content: center;"><div><p style="font-size: 0.85rem; margin: 0; color: #666; font-weight: 600;">Fact. Terceros</p><h2 style="font-size: 1.8rem; margin: 4px 0; color: #17a2b8;">${s_f_t:,.0f}</h2></div></div>', unsafe_allow_html=True)
-                with cs_a3: 
-                    st.markdown(render_kpi_card("Fact. Repuestos", s_f_r, s_obj_rep if s_obj_rep > 0 else 1), unsafe_allow_html=True)
-                
-                # Piso 2: Total Salta (Ocupa todo el ancho)
-                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-                st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
+            # --- MAQUETADO HORIZONTAL ---
+            # Fila 0: Títulos
+            t_jujuy, t_salta = st.columns([2, 3])
+            with t_jujuy: st.subheader("Sede Jujuy")
+            with t_salta: st.subheader("Sede Salta")
+
+            # Fila 1: Desglose (5 columnas para que midan exacto lo mismo y entren en pantalla)
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1: st.markdown(render_mini_kpi("Fact. MO Propia", j_f_p, j_obj_mo), unsafe_allow_html=True)
+            with c2: st.markdown(render_mini_kpi("Fact. Terceros", j_f_t, 0, color_title="#17a2b8"), unsafe_allow_html=True)
+            with c3: st.markdown(render_mini_kpi("Fact. MO Propia", s_f_p, s_obj_mo), unsafe_allow_html=True)
+            with c4: st.markdown(render_mini_kpi("Fact. Terceros", s_f_t, 0, color_title="#17a2b8"), unsafe_allow_html=True)
+            with c5: st.markdown(render_mini_kpi("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
+
+            # Fila 2: Totales (Abajo de todo, perfectamente alineados 40% Jujuy y 60% Salta)
+            st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+            tot1, tot2 = st.columns([2, 3])
+            with tot1: st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
+            with tot2: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
                 
             # Fila 3: Paños Propios
             c_p_j, c_p_s = st.columns(2)
