@@ -58,7 +58,8 @@ def find_col(df, include_keywords, exclude_keywords=[]):
 # --- CARGA DE DATOS ROBUSTA ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
-    hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP']
+    # NOTA: Agregamos las nuevas hojas de Costos aquí
+    hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP', 'Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
     data_dict = {}
     
     for h in hojas:
@@ -75,7 +76,8 @@ def cargar_datos(sheet_id):
             ]
             
             for col in df.columns:
-                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
+                # NOTA: Agregamos RUBRO y CONCEPTO a las exclusiones para que no se conviertan a numéricos y se rompan
+                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "RUBRO", "CONCEPTO"]):
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
                     serie = serie.str.replace('.', '', regex=False)
                     serie = serie.str.replace(',', '.', regex=False)
@@ -190,7 +192,6 @@ def preparar_wip_desde_sheet(df):
         data = df[nombre]
         return data.iloc[:, 0] if isinstance(data, pd.DataFrame) else data
 
-    # ACÁ ESTÁ LA MAGIA NUEVA: Flexibilizamos la búsqueda para que entienda las abreviaturas
     col_saldo = find_col(df, ['TOTAL', 'IM']) or find_col(df, ['SALDO'])
     if not col_saldo: return None
     
@@ -198,9 +199,9 @@ def preparar_wip_desde_sheet(df):
     col_idv = find_col(df, ['IDV'])
     col_rec = find_col(df, ['REC'])
     col_tipo = find_col(df, ['TIPO'])
-    col_fecha = find_col(df, ['APER']) # Ahora busca "F. aper."
+    col_fecha = find_col(df, ['APER']) 
     col_modelo = find_col(df, ['MODELO'])
-    col_ref = find_col(df, ['REF'])    # Ahora busca "Ref. O."
+    col_ref = find_col(df, ['REF'])    
 
     df['Saldo'] = col_segura(col_saldo) 
     
@@ -422,7 +423,6 @@ try:
             cols = st.columns(4)
             real_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]), 0) for c in canales_repuestos])
             def get_cyp_total(row, df_nom):
-                # Usamos exactamente la misma búsqueda que en la pestaña de detalle
                 c_mo = find_col(data[df_nom], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
                 c_mo_t = find_col(data[df_nom], ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(data[df_nom], ['MO', 'TER'], exclude_keywords=['OBJ'])
                 c_rep = find_col(data[df_nom], ['FACT', 'REP'], exclude_keywords=['OBJ', 'COSTO']) or find_col(data[df_nom], ['REP'], exclude_keywords=['OBJ', 'COSTO'])
@@ -570,7 +570,7 @@ try:
             with g1: st.plotly_chart(px.pie(values=[ht_cc, ht_cg, ht_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Trabajadas"), use_container_width=True)
             with g2: st.plotly_chart(px.pie(values=[hf_cc, hf_cg, hf_ci], names=["CC", "CG", "CI"], hole=0.4, title="Hs Facturadas"), use_container_width=True)
 
-            # --- MÓDULO WIP (ÓRDENES ABIERTAS) - AHORA DESDE GOOGLE SHEETS ---
+            # --- MÓDULO WIP ---
             st.markdown("---")
             st.markdown("### 📂 Gestión de Órdenes Abiertas (WIP)")
             
@@ -630,12 +630,9 @@ try:
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
             
-            # --- SECCIÓN 1: DETALLE OPERATIVO Y STOCK ---
-            # Buscamos la columna en el Excel (el título debe contener PRIMA o RAPPEL)
             c_primas = find_col(data['REPUESTOS'], ['PRIMA']) or find_col(data['REPUESTOS'], ['RAPPEL'])
             primas_input = float(r_r.get(c_primas, 0.0)) if c_primas else 0.0
             
-            # Mostramos un cartelito lindo para confirmar que leyó el dato correctamente
             st.markdown(f'<div style="background-color: #eef2f7; padding: 10px; border-radius: 5px; border-left: 4px solid #6f42c1; margin-bottom: 15px;"><span style="color:#00235d; font-weight:bold;">💰 Primas/Rappels del Mes:</span> <span style="color:#28a745; font-weight:bold; font-size:1.1rem;">${primas_input:,.0f}</span> <span style="color:#666; font-size:0.8rem;">(Dato leído automáticamente de la planilla)</span></div>', unsafe_allow_html=True)
             detalles = []
             for c in canales_repuestos:
@@ -649,11 +646,9 @@ try:
                     detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
             df_r = pd.DataFrame(detalles)
             
-            # --- CÁLCULO DE TOTALES ---
             vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
             vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
             
-            # Calculamos % de Participación (Mix) para la tabla
             if vta_total_neta > 0:
                 df_r['% Part.'] = df_r['Venta Neta'] / vta_total_neta
             else:
@@ -664,12 +659,10 @@ try:
             mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
             obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
             
-            # Costo Real Acumulado del Mes en Curso
             costo_total_mes_actual_real = df_r['Costo'].sum() if not df_r.empty else 0
             
             val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
-            # --- NUEVOS CÁLCULOS DE MÁRGENES ---
             desc_total = df_r['Desc.'].sum() if not df_r.empty else 0
             ganancia_primaria = vta_total_neta - costo_total_mes_actual_real
             pct_margen_primario = (ganancia_primaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
@@ -677,10 +670,8 @@ try:
             ganancia_secundaria = ganancia_primaria + primas_input
             pct_margen_secundario = (ganancia_secundaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
 
-            # --- RENDERIZADO DE TARJETAS FINANCIERAS ---
             st.markdown("#### 📊 Análisis Financiero y Márgenes")
             
-            # FILA 1: Negocio Puro (Primario)
             c_r1, c_r2, c_r3, c_r4 = st.columns(4)
             def formato_p(val): return "${:,.0f}".format(val).replace(",", ".")
             
@@ -691,7 +682,6 @@ try:
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # FILA 2: Flujo y Negocio Final (Secundario)
             c_s1, c_s2, c_s3, c_s4 = st.columns(4)
             c_s1.markdown(f'<div class="metric-card"><div class="metric-title">Descuentos Otorgados</div><div class="metric-value-money" style="color:#fd7e14;">{formato_p(desc_total)}</div></div>', unsafe_allow_html=True)
             c_s2.markdown(f'<div class="metric-card"><div class="metric-title">Incentivos / Primas</div><div class="metric-value-money" style="color:#6f42c1;">{formato_p(primas_input)}</div></div>', unsafe_allow_html=True)
@@ -700,14 +690,12 @@ try:
             
             st.markdown("---")
             
-            # FILA 3: Stock y Objetivos (Separado para que respire)
             st.markdown("#### 📦 Gestión de Stock y Objetivos")
             c_obj, c_stk = st.columns(2)
             with c_obj:
                 st.markdown(render_kpi_card("Cumplimiento Objetivo Ventas", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
             
             with c_stk:
-                # --- LÓGICA DE MESES DE STOCK (CORREGIDA) ---
                 def obtener_costo_mes_historico(d_target):
                     df_h = data['REPUESTOS']
                     rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
@@ -741,17 +729,16 @@ try:
                 else:
                     meses_stock = 0
                 
-                # LÓGICA DE COLORES DE STOCK
-                color_stk = "#dc3545" # Rojo por defecto
+                color_stk = "#dc3545" 
                 icon_stk = "🛑"
                 estado_txt = "Crítico"
                 
                 if meses_stock <= 3.0:
-                    color_stk = "#28a745" # Verde
+                    color_stk = "#28a745"
                     icon_stk = "✅"
                     estado_txt = "Óptimo"
                 elif meses_stock <= 5.0:
-                    color_stk = "#ffc107" # Amarillo
+                    color_stk = "#ffc107"
                     icon_stk = "⚠️"
                     estado_txt = "Medio"
                 
@@ -771,10 +758,8 @@ try:
                 st.markdown(html_stock, unsafe_allow_html=True)
 
             if not df_r.empty:
-                # --- TABLA MEJORADA CON TOTALES ---
                 st.markdown("##### 📊 Rentabilidad y Costos por Canal")
                 
-                # 1. Calculamos los Totales Verticales
                 t_vb = df_r['Venta Bruta'].sum()
                 t_desc = df_r['Desc.'].sum()
                 t_vn = df_r['Venta Neta'].sum()
@@ -782,7 +767,6 @@ try:
                 t_ut = df_r['Utilidad $'].sum()
                 t_mg = t_ut / t_vn if t_vn != 0 else 0
                 
-                # 2. Creamos la fila de Total
                 row_total = pd.DataFrame([{
                     "Canal": "TOTAL OPERATIVO", 
                     "Venta Bruta": t_vb, 
@@ -791,20 +775,17 @@ try:
                     "Costo": t_cost, 
                     "Utilidad $": t_ut, 
                     "Margen %": t_mg,
-                    "% Part.": 1.0  # El total es el 100%
+                    "% Part.": 1.0
                 }])
                 
-                # 3. Unimos los datos con el total
                 df_show = pd.concat([df_r, row_total], ignore_index=True)
                 
-                # Definición de Colores para el Margen (Texto)
                 def color_margen(val):
                     color = '#dc3545' if val < 0.15 else ('#ffc107' if val < 0.25 else '#28a745')
                     return f'color: {color}; font-weight: bold;'
                 
                 cols_finales = ["Canal", "Venta Bruta", "Desc.", "Venta Neta", "Costo", "Utilidad $", "Margen %", "% Part."]
                 
-                # 4. Mostramos la tabla final
                 st.dataframe(
                     df_show[cols_finales].style
                     .format({
@@ -833,7 +814,6 @@ try:
                 st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
                 st.markdown(f'<div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;"><p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p></div>', unsafe_allow_html=True)
             
-            # --- SECCIÓN 2: CONTROL DE FLUJO: COMPRAS VS COSTO ---
             st.markdown("---")
             st.markdown("#### 📉 Control de Flujo: Compras vs Costo de Venta")
             
@@ -845,17 +825,15 @@ try:
 
             compra_real_sheet = float(r_r.get(col_compra_sheet, 0)) if col_compra_sheet else 0.0
 
-            # Objetivo Terminal (Manual)
             col_obj_term_in, _ = st.columns([1, 2])
             with col_obj_term_in:
                 obj_compra_terminal = st.number_input("🎯 Objetivo Compra Stellantis ($)", min_value=0.0, step=1000000.0, value=0.0)
 
-            # Cálculos de Comparación
             costo_venta_total = df_r['Costo'].sum() if not df_r.empty else 0
             diferencia_flujo = compra_real_sheet - costo_venta_total
             
             ratio_reduccion = costo_venta_total / compra_real_sheet if compra_real_sheet > 0 else 0
-            objetivo_ratio = 1.20 # 20% más
+            objetivo_ratio = 1.20 
 
             k_f1, k_f2, k_f3 = st.columns(3)
             k_f1.metric("Compra Real (Sheet)", f"${compra_real_sheet:,.0f}", help="Dato tomado de Columna AB del Excel")
@@ -866,7 +844,6 @@ try:
             else:
                 k_f3.metric("Flujo de Stock", f"-${abs(diferencia_flujo):,.0f}", "📉 Stock Bajando", delta_color="normal")
 
-            # Alertas
             st.markdown("##### 🚦 Semáforo de Reducción")
             if compra_real_sheet == 0:
                 st.warning("⚠️ No se detectaron compras en la columna del Excel (Busco columnas llamadas 'COMPRA' o 'ENTRADA').")
@@ -878,14 +855,12 @@ try:
                 else:
                     st.error(f"❌ **ALERTA CRÍTICA:** Estás comprando más de lo que vendes. El stock está subiendo.")
 
-            # Scoring check
             piso_scoring = obj_compra_terminal * 0.60
             if obj_compra_terminal > 0:
                 st.caption(f"Referencia Scoring: Debes comprar al menos ${piso_scoring:,.0f} (60% del obj). Compra actual: ${compra_real_sheet:,.0f}")
                 if compra_real_sheet < piso_scoring:
                     st.error("⚠️ Cuidado: Estás por debajo del piso de compra para el Scoring.")
 
-            # --- SECCIÓN 3: SIMULADORES Y ESTRATEGIA (AL FINAL) ---
             st.markdown("---")
             st.subheader("🏁 Asistente de Equilibrio y Simulador")
             canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
@@ -958,7 +933,6 @@ try:
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
             
-            # --- LECTURA DE DATOS JUJUY ---
             c_mo_j = find_col(data['CyP JUJUY'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TERCERO'], exclude_keywords=['OBJ'])
             if not c_mo_t_j: c_mo_t_j = find_col(data['CyP JUJUY'], ['MO', 'TER'], exclude_keywords=['OBJ'])
@@ -982,7 +956,6 @@ try:
             j_m_ter = j_f_t - j_c_ter
             j_mg_ter_pct = j_m_ter/j_f_t if j_f_t > 0 else 0
             
-            # --- LECTURA DE DATOS SALTA ---
             c_mo_s = find_col(data['CyP SALTA'], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
             c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TER'], exclude_keywords=['OBJ', 'PRE'])
             if not c_mo_t_s: c_mo_t_s = find_col(data['CyP SALTA'], ['MO', 'TERCERO'], exclude_keywords=['OBJ', 'PRE'])
@@ -1018,13 +991,9 @@ try:
             s_m_rep = s_f_r - s_c_rep
             s_mg_rep_pct = s_m_rep/s_f_r if s_f_r > 0 else 0
 
-            # --- RENDERIZADO VISUAL ALINEADO POR FILAS ---
-            # Buscamos el objetivo de MO para Jujuy
             j_obj_mo_raw = float(cj_r.get(find_col(data['CyP JUJUY'], ['OBJ', 'MO']), 0))
-            # FIX: Si Jujuy no tiene columna específica de OBJ MO, usamos el OBJ FACT Total para que muestre la barra
             j_obj_mo = j_obj_mo_raw if j_obj_mo_raw > 0 else j_obj_fact
 
-            # --- FUNCION ESPECIAL PARA TARJETAS SUPERIORES ---
             def render_mini_kpi(title, real, obj_mes, color_title="#00235d"):
                 fmt = "${:,.0f}"
                 if obj_mes and obj_mes > 0:
@@ -1056,13 +1025,10 @@ try:
                     html += '</div></div>'
                 return html
 
-            # --- MAQUETADO HORIZONTAL ---
-            # Fila 0: Títulos
             t_jujuy, t_salta = st.columns([2, 3])
             with t_jujuy: st.subheader("Sede Jujuy")
             with t_salta: st.subheader("Sede Salta")
 
-            # Fila 1: Desglose (5 columnas idénticas)
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1: st.markdown(render_mini_kpi("Fact. MO Propia", j_f_p, j_obj_mo), unsafe_allow_html=True)
             with c2: st.markdown(render_mini_kpi("Fact. Terceros", j_f_t, 0, color_title="#17a2b8"), unsafe_allow_html=True)
@@ -1070,25 +1036,20 @@ try:
             with c4: st.markdown(render_mini_kpi("Fact. Terceros", s_f_t, 0, color_title="#17a2b8"), unsafe_allow_html=True)
             with c5: st.markdown(render_mini_kpi("Fact. Repuestos", s_f_r, s_obj_rep), unsafe_allow_html=True)
 
-            # Fila 2: Totales alineados
             st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
             
-            # Volvemos a darle a Salta todo su ancho [2, 3]
             tot_jujuy, tot_salta = st.columns([2, 3])
             with tot_jujuy: st.markdown(render_kpi_card("Facturación Total Jujuy", j_total_fact, j_obj_fact if j_obj_fact > 0 else 1), unsafe_allow_html=True)
             with tot_salta: st.markdown(render_kpi_card("Facturación Total Salta", s_total_fact, s_obj_fact if s_obj_fact > 0 else 1), unsafe_allow_html=True)
                 
-            # Fila 3: Paños Propios
             c_p_j, c_p_s = st.columns(2)
             with c_p_j: st.markdown(render_kpi_card("Paños Propios", j_panos_prop, j_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
             with c_p_s: st.markdown(render_kpi_card("Paños Propios", s_panos_prop, s_obj_panos, is_currency=False, unit="u"), unsafe_allow_html=True)
 
-            # Fila 4: Paños/Técnico
             c_pt_j, c_pt_s = st.columns(2)
             with c_pt_j: st.markdown(render_kpi_small("Paños/Técnico", j_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
             with c_pt_s: st.markdown(render_kpi_small("Paños/Técnico", s_ratio, None, None, None, "{:.1f}"), unsafe_allow_html=True)
 
-            # Fila 5: Detalles Secundarios
             c_det_j, c_det_s = st.columns(2)
             with c_det_j:
                 html_ter_j = f'<div class="cyp-detail"><span class="cyp-header">👨‍🔧 Gestión Terceros</span>Cant: <b>{j_panos_ter:,.0f}</b> | Fact: ${j_f_t:,.0f}<br>Mg: <b>${j_m_ter:,.0f}</b> ({j_mg_ter_pct:.1%})</div>'
@@ -1101,18 +1062,99 @@ try:
                     html_rep_s = f'<div class="cyp-detail" style="border-left-color: #28a745; margin-top:5px;"><span class="cyp-header" style="color:#28a745">📦 Repuestos</span>Fact: ${s_f_r:,.0f} | Costo: <span style="color:#666;">${s_c_rep:,.0f}</span><br>Mg: <b style="color:#28a745;">${margen_rep_pesos:,.0f}</b> ({s_mg_rep_pct:.1%})</div>'
                     st.markdown(html_rep_s, unsafe_allow_html=True)
 
-            # Fila 6: Gráficos de Torta
             g_jujuy, g_salta = st.columns(2)
             with g_jujuy: st.plotly_chart(px.pie(values=[j_f_p, j_f_t], names=["MO Pura", "Terceros"], hole=0.4, title="Facturación Jujuy", color_discrete_sequence=["#00235d", "#00A8E8"]), use_container_width=True)
             with g_salta: 
                 vals_s, nams_s = [s_f_p, s_f_t], ["MO Pura", "Terceros"]
                 if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
                 st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
+                
+        # --- NUEVA PESTAÑA: COSTOS ---
+        elif selected_tab == "💸 Costos":
+            st.header("💸 Análisis de Costos")
+            
+            mapping_rubros = {
+                '8-1': 'Sueldos', '9-1': 'Sueldos', '7-2': 'Sueldos',
+                '7-1': 'Controlables', '7-4': 'Controlables', '7-6': 'Controlables', '8-2': 'Controlables',
+                '8-3': 'Controlables', '8-6': 'Controlables', '8-8': 'Controlables', '8-9': 'Controlables',
+                '8-10': 'Controlables', '8-11': 'Controlables', '8-12': 'Controlables', '8-13': 'Controlables',
+                '8-14': 'Controlables', '8-17': 'Controlables', '7-3': 'Controlables', '8-19': 'Controlables',
+                '7-5': 'No Controlables', '8-5': 'No Controlables', '8-7': 'No Controlables', '8-15': 'No Controlables',
+                '8-16': 'No Controlables', '8-18': 'No Controlables',
+                '9-5': 'Otros', '11-3': 'Otros', '11-4': 'Otros'
+            }
+            
+            nombres_unidades = ["Cta Res Taller", "Cta Res Repuestos", "Cta Res Chapa Jujuy", "Cta Res Chapa Salta"]
+            tabs_costos = st.tabs(["Taller", "Repuestos", "Chapa Jujuy", "Chapa Salta"])
+
+            for i, unidad in enumerate(nombres_unidades):
+                with tabs_costos[i]:
+                    if unidad in data and not data[unidad].empty:
+                        df_c = data[unidad].copy()
+                        
+                        col_rubro = find_col(df_c, ["RUBRO"]) or df_c.columns[0]
+                        col_concepto = find_col(df_c, ["CONCEPTO"]) or df_c.columns[1]
+                        
+                        df_c['RUBRO_STR'] = df_c[col_rubro].astype(str).str.strip()
+                        df_c = df_c[df_c['RUBRO_STR'].isin(mapping_rubros.keys())].copy()
+                        df_c['Grupo'] = df_c['RUBRO_STR'].map(mapping_rubros)
+                        
+                        val_cols = []
+                        for c in df_c.columns:
+                            if c not in [col_rubro, col_concepto, 'Grupo', 'RUBRO_STR']:
+                                try:
+                                    if pd.to_numeric(df_c[c], errors='coerce').sum() > 1000:
+                                        val_cols.append(c)
+                                except: pass
+                                
+                        ultimos_6 = val_cols[-6:] if len(val_cols) >= 6 else val_cols
+                        
+                        if not ultimos_6:
+                            st.warning("No se encontraron columnas numéricas de valores financieros en esta hoja.")
+                            continue
+
+                        for grupo in ['Sueldos', 'Controlables', 'No Controlables', 'Otros']:
+                            st.markdown(f"#### {grupo}")
+                            df_grupo = df_c[df_c['Grupo'] == grupo]
+                            if not df_grupo.empty:
+                                cols_mostrar = [col_concepto] + ultimos_6
+                                st.dataframe(
+                                    df_grupo[cols_mostrar].style.format({c: "${:,.0f}" for c in ultimos_6}), 
+                                    use_container_width=True, hide_index=True
+                                )
+                            else:
+                                st.info(f"No hay datos registrados para {grupo}")
+
+                        st.markdown("### ⚠️ Alertas de Variación (Último mes cerrado)")
+                        alertas = []
+                        for _, row in df_c.iterrows():
+                            vals = pd.to_numeric(row[ultimos_6], errors='coerce').fillna(0).values
+                            if len(vals) >= 4:
+                                val_actual = vals[-1]
+                                prom_3m = vals[-4:-1].mean()
+                                val_ant = vals[-2]
+                                nombre_concepto = row[col_concepto]
+                                
+                                if prom_3m == 0 and val_actual > 0:
+                                    alertas.append(f"🔵 **{nombre_concepto}**: Nuevo gasto detectado (${val_actual:,.0f})")
+                                elif prom_3m > 0 and val_actual > prom_3m * 1.3:
+                                    pct_var = ((val_actual / prom_3m) - 1) * 100
+                                    alertas.append(f"🔴 **{nombre_concepto}**: Aumentó {pct_var:.1f}% vs promedio 3M (Actual: ${val_actual:,.0f} | Prom: ${prom_3m:,.0f})")
+                                elif val_ant > 0 and val_actual > val_ant * 1.5:
+                                    pct_var_mes = ((val_actual / val_ant) - 1) * 100
+                                    alertas.append(f"🟠 **{nombre_concepto}**: Aumentó {pct_var_mes:.1f}% vs mes anterior (Actual: ${val_actual:,.0f} | Ant: ${val_ant:,.0f})")
+
+                        if alertas:
+                            for a in alertas: st.markdown(a)
+                        else:
+                            st.success("✅ No se detectaron variaciones inusuales ni alertas para esta unidad de negocio.")
+                    else:
+                        st.warning(f"La hoja '{unidad}' no está cargada en el Google Sheet o no tiene datos.")
+
         elif selected_tab == "📈 Histórico":
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
             st.markdown("#### 🛠️ Servicios")
             
-            # --- MÓDULO IRPV CON MEMORIA (SESSION STATE) ---
             st.markdown("---")
             st.subheader("🔄 Fidelización (IRPV)")
             
@@ -1136,15 +1178,12 @@ try:
             st.markdown("---")
             st.markdown("#### 📊 Análisis Histórico Mensual")
 
-            # --- NUEVO: EVOLUCIÓN DE FACTURACIÓN CONSOLIDADA ---
             st.markdown("##### 💰 Evolución de Facturación Total")
             
-            # Recopilamos la facturación de cada unidad de negocio por mes
             fact_mensual = []
             for mes in h_cal['Mes'].unique():
                 nom_mes = h_cal[h_cal['Mes'] == mes]['NombreMes'].iloc[0]
                 
-                # Servicios
                 f_ser = 0
                 row_ser = h_ser[h_ser['Mes'] == mes]
                 if not row_ser.empty:
@@ -1152,7 +1191,6 @@ try:
                         c = find_col(h_ser, ["MO", kw], exclude_keywords=["OBJ"])
                         if c: f_ser += float(row_ser[c].iloc[0] or 0)
                 
-                # Repuestos
                 f_rep = 0
                 row_rep = h_rep[h_rep['Mes'] == mes]
                 if not row_rep.empty:
@@ -1160,7 +1198,6 @@ try:
                         c = find_col(h_rep, ["VENTA", can], exclude_keywords=["OBJ"])
                         if c: f_rep += float(row_rep[c].iloc[0] or 0)
                         
-                # CyP Jujuy
                 f_cj = 0
                 row_cj = h_cyp_j[h_cyp_j['Mes'] == mes]
                 if not row_cj.empty:
@@ -1169,7 +1206,6 @@ try:
                     if c1: f_cj += float(row_cj[c1].iloc[0] or 0)
                     if c2: f_cj += float(row_cj[c2].iloc[0] or 0)
                     
-                # CyP Salta
                 f_cs = 0
                 row_cs = h_cyp_s[h_cyp_s['Mes'] == mes]
                 if not row_cs.empty:
@@ -1184,11 +1220,9 @@ try:
 
             df_fact_hist = pd.DataFrame(fact_mensual)
             if not df_fact_hist.empty:
-                # Transformamos para Plotly
                 df_fact_melt = df_fact_hist.melt(id_vars="Mes", var_name="Unidad", value_name="Facturación")
                 fig_fact = px.bar(df_fact_melt, x="Mes", y="Facturación", color="Unidad", title="", text_auto='$.3s', color_discrete_sequence=['#00235d', '#00A8E8', '#28a745', '#ffc107'])
                 st.plotly_chart(fig_fact.update_layout(barmode='stack', height=400, yaxis_title="Monto Facturado ($)"), use_container_width=True)
-            # --- FIN EVOLUCIÓN FACTURACIÓN ---
 
             col_hab_hist = find_col(h_cal, ["HAB"])
             col_tecs_hist = find_col(h_tal, ["TECNICOS"], exclude_keywords=["PROD", "EFIC"])
@@ -1233,13 +1267,11 @@ try:
                 c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
 
             st.markdown("#### 📦 Repuestos")
-            # --- NUEVO GRÁFICO HISTÓRICO DE FLUJO DE STOCK (COMPRA VS COSTO) ---
             h_rep['CostoTotalMes'] = 0
             for c in canales_repuestos:
                  col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
                  if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
             
-            # Buscar columna de COMPRA en el histórico (Misma lógica que en la pestaña Repuestos)
             col_compra_hist = find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
             if not col_compra_hist: col_compra_hist = find_col(h_rep, ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
             if not col_compra_hist: col_compra_hist = find_col(h_rep, ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
@@ -1247,33 +1279,26 @@ try:
             h_rep['CompraTotalMes'] = h_rep[col_compra_hist] if col_compra_hist else 0
             h_rep['VariacionStock'] = h_rep['CompraTotalMes'] - h_rep['CostoTotalMes']
             
-            # Métricas Acumuladas
             total_var_anual = h_rep['VariacionStock'].sum()
             txt_var_anual = "Bajando Stock" if total_var_anual < 0 else "Subiendo Stock"
             delta_color_anual = "normal" if total_var_anual < 0 else "inverse"
             st.metric("Variación Acumulada Anual", f"${total_var_anual:,.0f}", txt_var_anual, delta_color=delta_color_anual)
 
-            # Gráfico de Barras Comparativo
             fig_flow = go.Figure()
             fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CompraTotalMes'], name='Compras (Entradas)', marker_color='#00235d'))
             fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CostoTotalMes'], name='Costo Venta (Salidas)', marker_color='#fd7e14'))
-            # Línea de Saldo
             fig_flow.add_trace(go.Scatter(x=h_rep['NombreMes'], y=h_rep['VariacionStock'], name='Saldo (Variación Stock)', mode='lines+markers', line=dict(color='gray', width=2, dash='dot')))
             
             st.plotly_chart(fig_flow.update_layout(title="📉 Flujo de Stock: Compras vs Costo de Venta", barmode='group', height=400), use_container_width=True)
-            # --- FIN NUEVO GRÁFICO ---
-            # --- NUEVO: PROYECCIÓN DE DISMINUCIÓN DE STOCK ---
             st.markdown("##### 🔭 Proyección y Meta de Disminución de Stock")
             
-            # Calculamos el promedio de reducción de los últimos 3 meses
             ultimos_3 = h_rep.tail(3)
             promedio_variacion = ultimos_3['VariacionStock'].mean()
             
             val_stock_actual = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
             
-            # Promedio de costo para calcular la meta
             costo_promedio_3m = ultimos_3['CostoTotalMes'].mean()
-            stock_objetivo_valor = costo_promedio_3m * 3.0 # El objetivo corporativo son 3 meses de stock
+            stock_objetivo_valor = costo_promedio_3m * 3.0 
             
             c_proy1, c_proy2, c_proy3 = st.columns(3)
             c_proy1.metric("Stock Físico Actual", f"${val_stock_actual:,.0f}")
@@ -1288,7 +1313,6 @@ try:
                     c_proy3.metric("Ritmo de Reducción (Prom 3M)", f"-${abs(promedio_variacion):,.0f} / mes")
                     st.info(f"📉 Manteniendo este ritmo sostenido de reducción, alcanzarán el stock ideal de 3 meses en aproximadamente **{meses_para_objetivo:.1f} meses**.")
                     
-                # Gráfico de proyección a futuro
                 meses_futuros = ["Mes actual", "+1 Mes", "+2 Meses", "+3 Meses", "+4 Meses", "+5 Meses"]
                 vals_proy = [val_stock_actual + (promedio_variacion * i) for i in range(0, 6)]
                 df_proy = pd.DataFrame({"Mes Proyectado": meses_futuros, "Valor Estimado": vals_proy})
@@ -1301,7 +1325,6 @@ try:
             else:
                 c_proy3.metric("Ritmo de Variación (Prom 3M)", f"+${promedio_variacion:,.0f} / mes", "Stock en Aumento", delta_color="inverse")
                 st.error("❌ El promedio de los últimos 3 meses indica que el stock está **AUMENTANDO**. Compran más de lo que rinde el costo de venta. No se puede proyectar una fecha de éxito si no se invierte la tendencia de compra.")
-            # --- FIN PROYECCIÓN ---
 
             col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
             fig_stk = go.Figure()
@@ -1310,7 +1333,6 @@ try:
             if col_muerto: fig_stk.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
             st.plotly_chart(fig_stk.update_layout(barmode='stack', title="Salud de Stock", height=300), use_container_width=True)
 
-            # --- EVOLUCIÓN Y TENDENCIA POR CANALES ---
             c_mix1, c_mix2 = st.columns(2)
             
             fig_mix = go.Figure()
@@ -1319,9 +1341,7 @@ try:
             for c in canales_repuestos:
                 col_vta = find_col(h_rep, ["VENTA", c], exclude_keywords=["OBJ"])
                 if col_vta: 
-                    # Agregamos la barra al gráfico apilado
                     fig_mix.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c))
-                    # Agregamos la línea al nuevo gráfico de tendencia
                     fig_tendencia.add_trace(go.Scatter(x=h_rep['NombreMes'], y=h_rep[col_vta], name=c, mode='lines+markers'))
             
             with c_mix1:
