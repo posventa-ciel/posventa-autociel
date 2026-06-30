@@ -358,9 +358,8 @@ try:
         </div>
         ''', unsafe_allow_html=True)
 
-        menu_opts = ["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "📈 Histórico"]
+        menu_opts = ["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "💸 Costos", "📈 Histórico"]
         selected_tab = st.radio("", menu_opts, horizontal=True, label_visibility="collapsed")
-        st.markdown("---")
 
         # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
