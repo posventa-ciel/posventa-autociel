@@ -65,33 +65,34 @@ def cargar_datos(sheet_id):
     for h in hojas_normales:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            df = pd.read_csv(url, header=0, dtype=str).fillna("0")
+            df = pd.read_csv(url, header=0, dtype=str)
+            # Solo conservamos filas que tengan contenido real
+            df = df.dropna(how='all')
             df.columns = [str(c).strip().upper() for c in df.columns]
-            # Limpieza forzada a numérico para evitar el error int/str
-            for col in df.columns:
-                if col not in ["MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "CANAL"]:
-                    df[col] = pd.to_numeric(df[col].str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
             data_dict[h] = df
         except Exception as e:
-            st.warning(f"Error en hoja {h}: {e}")
+            st.warning(f"Error cargando {h}: {e}")
 
-    # 2. Cargar Hojas de Costos
+    # 2. Cargar Hojas de Costos (con limpieza estricta)
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            df = pd.read_csv(url, header=1, dtype=str).fillna("0")
-            # Eliminar columnas con %
+            df = pd.read_csv(url, header=1, dtype=str)
+            # Eliminamos columnas porcentuales y vacías
             cols_a_eliminar = [c for c in df.columns if '%' in c or 'Unnamed' in c]
-            df = df.drop(columns=cols_a_eliminar)
-            df.columns = [str(c).strip().upper() for c in df.columns]
+            df = df.drop(columns=cols_a_eliminar, errors='ignore')
             
-            # Limpieza numérica forzada
+            # Limpieza: Convertimos a numérico solo lo que parezca moneda
+            df.columns = [str(c).strip().upper() for c in df.columns]
             for col in df.columns:
                 if col not in ["RUBROS", "CONCEPTOS"]:
-                    df[col] = pd.to_numeric(df[col].str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
+                    # Quitamos todo lo que no sea número, punto o guion
+                    df[col] = df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            
             data_dict[h] = df
         except Exception as e:
-            st.warning(f"Error en hoja {h}: {e}")
+            st.warning(f"Error cargando hoja de costos {h}: {e}")
                 
     return data_dict
 
