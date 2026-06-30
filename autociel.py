@@ -361,6 +361,175 @@ try:
         menu_opts = ["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "💸 Costos", "📈 Histórico"]
         selected_tab = st.radio("", menu_opts, horizontal=True, label_visibility="collapsed")
 
+        elif selected_tab == "💸 Costos":
+            st.markdown("### 💸 Auditor de Costos y Anomalías (Histórico 6 Meses)")
+            
+            # --- DICCIONARIOS DE CLASIFICACIÓN DE GASTOS ---
+            # Basado en tu definición exacta de controlabilidad
+            CAT_RUBROS = {
+                'Sueldos y Comisiones': ['7-2', '8-1', '8-4'], # Sumé 8-4 de sueldos admin por las dudas
+                'Controlables': ['7-1', '7-4', '7-6', '8-2', '8-3', '8-6', '8-8', '8-9', '8-10', '8-11', '8-12', '8-13', '8-14', '8-17', '7-3', '8-19', '8-20'],
+                'No Controlables': ['7-5', '8-5', '8-7', '8-15', '8-16', '8-18'],
+                'Reclamables / Monitoreo': ['9-1', '9-5', '11-3']
+            }
+            
+            def obtener_categoria(rubro):
+                for cat, rubros in CAT_RUBROS.items():
+                    if rubro in rubros:
+                        return cat
+                return 'Otro / Sin Clasificar'
+
+            with st.sidebar:
+                st.markdown("---")
+                st.markdown("### 📁 Carga de Resumen")
+                up_resumen = st.file_uploader("Resumen Cta. Resultados (Excel)", type=["xlsx"])
+                st.markdown("---")
+
+            if up_resumen:
+                # Diccionario para mapear nombres bonitos en el select
+                hojas_map = {
+                    "Cta Res Taller": "Taller de Mecánica",
+                    "Cta Res Repuestos": "Mostrador Repuestos",
+                    "Cta Res Chapa Juy": "Chapa y Pintura (Jujuy)",
+                    "Cta Res Chapa Salta": "Chapa y Pintura (Salta)"
+                }
+                
+                # Leemos las hojas del Excel
+                xls = pd.ExcelFile(up_resumen)
+                hojas_disponibles = [h for h in xls.sheet_names if h in hojas_map.keys()]
+                
+                if not hojas_disponibles:
+                    st.error("El archivo cargado no contiene las solapas esperadas (Cta Res Taller, etc).")
+                else:
+                    col_filt1, col_filt2, col_filt3 = st.columns([1, 2, 1])
+                    with col_filt1:
+                        hoja_sel = st.selectbox("🏢 Unidad de Negocio", hojas_disponibles, format_func=lambda x: hojas_map[x])
+                    with col_filt2:
+                        cat_sel = st.multiselect("🏷️ Filtrar Tipo de Gasto", list(CAT_RUBROS.keys()), default=['Sueldos y Comisiones', 'Controlables', 'No Controlables'])
+                    with col_filt3:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        radar_activo = st.toggle("🚨 Activar Radar de Anomalías", value=False)
+                    
+                    # --- PROCESAMIENTO DEL EXCEL ELEGIDO ---
+                    # Leemos la hoja completa. Fila 0 tiene los meses, Fila 1 tiene "RUBROS", "CONCEPTOS", "$", "%"
+                    df_raw = pd.read_excel(up_resumen, sheet_name=hoja_sel, header=None)
+                    
+                    # Extraer meses (están en la fila 0, saltando cada 2 columnas)
+                    # Ejemplo: Enero está en col 2, Febrero en col 4, Marzo en 6...
+                    meses_cols = {}
+                    for col_idx in range(2, len(df_raw.columns), 2):
+                        mes_val = str(df_raw.iloc[0, col_idx]).strip().upper()
+                        if mes_val != 'NAN' and mes_val != 'NAT' and type(df_raw.iloc[0, col_idx]) == str:
+                            meses_cols[mes_val] = col_idx
+
+                    # Recortar el df a partir de la fila 2 (donde empiezan los datos)
+                    df_datos = df_raw.iloc[2:].copy()
+                    df_datos.rename(columns={0: 'Rubro', 1: 'Concepto'}, inplace=True)
+                    df_datos = df_datos.dropna(subset=['Rubro']) # Eliminar filas vacías o subtotales sin rubro
+                    df_datos['Rubro'] = df_datos['Rubro'].astype(str).str.strip()
+                    
+                    # Asignar categoría
+                    df_datos['Categoría'] = df_datos['Rubro'].apply(obtener_categoria)
+                    
+                    # Filtramos por las categorías que elegiste en el multiselect
+                    df_filtrado = df_datos[df_datos['Categoría'].isin(cat_sel)].copy()
+                    
+                    # --- REESTRUCTURACIÓN DE COLUMNAS (UNPIVOT) ---
+                    # Queremos pasar de formato ancho (Enero, Febrero...) a formato largo para graficar
+                    datos_grafico = []
+                    for mes_nombre, col_idx in meses_cols.items():
+                        # Evitar leer meses futuros sin datos o columnas raras
+                        if mes_nombre in ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO']: 
+                            temp_df = df_filtrado[['Rubro', 'Concepto', 'Categoría']].copy()
+                            temp_df['Mes'] = mes_nombre
+                            # La columna $ es col_idx
+                            temp_df['Importe'] = pd.to_numeric(df_filtrado[col_idx], errors='coerce').fillna(0)
+                            datos_grafico.append(temp_df)
+                    
+                    df_largo = pd.concat(datos_grafico, ignore_index=True) if datos_grafico else pd.DataFrame()
+                    
+                    if not df_largo.empty:
+                        # Orden cronológico para los gráficos
+                        orden_meses = {'ENERO': 1, 'FEBRERO': 2, 'MARZO': 3, 'ABRIL': 4, 'MAYO': 5, 'JUNIO': 6, 'JULIO': 7}
+                        df_largo['Mes_Num'] = df_largo['Mes'].map(orden_meses)
+                        df_largo = df_largo.sort_values('Mes_Num')
+                        
+                        # --- ANÁLISIS DEL ÚLTIMO MES CARGADO ---
+                        # Asumimos que queremos analizar Junio (el último) contra el promedio de los anteriores
+                        meses_disp = sorted(df_largo['Mes_Num'].dropna().unique())
+                        mes_actual_num = meses_disp[-1] if meses_disp else 1
+                        mes_actual_nombre = [k for k, v in orden_meses.items() if v == mes_actual_num][0]
+                        
+                        st.markdown(f"#### 🔎 Análisis Enfocado en: **{mes_actual_nombre}**")
+                        
+                        df_mes_actual = df_largo[df_largo['Mes_Num'] == mes_actual_num].groupby(['Categoría', 'Rubro', 'Concepto'])['Importe'].sum().reset_index()
+                        gasto_total_mes = df_mes_actual['Importe'].sum()
+                        
+                        df_historico = df_largo[df_largo['Mes_Num'] < mes_actual_num]
+                        if not df_historico.empty:
+                            hist_mensual = df_historico.groupby(['Mes', 'Rubro'])['Importe'].sum().reset_index()
+                            promedios = hist_mensual.groupby('Rubro')['Importe'].mean().reset_index().rename(columns={'Importe': 'Promedio_Histórico'})
+                        else:
+                            promedios = pd.DataFrame(columns=['Rubro', 'Promedio_Histórico'])
+
+                        analisis = pd.merge(df_mes_actual, promedios, on='Rubro', how='left').fillna(0)
+                        analisis['Desvío_$'] = analisis['Importe'] - analisis['Promedio_Histórico']
+                        analisis['Variación_%'] = np.where(analisis['Promedio_Histórico'] > 0, (analisis['Desvío_$'] / analisis['Promedio_Histórico']), 0)
+                        
+                        # --- RADAR DE ANOMALÍAS ---
+                        if radar_activo:
+                            cond_1 = (analisis['Promedio_Histórico'] <= 5000) & (analisis['Importe'] > 50000)
+                            cond_2 = (analisis['Variación_%'] >= 0.35) & (analisis['Desvío_$'] > 20000)
+                            df_mostrar = analisis[cond_1 | cond_2].sort_values('Desvío_$', ascending=False)
+                            st.error(f"⚠️ **Radar Activado:** Se filtraron {len(df_mostrar)} cuentas con saltos críticos frente al semestre.")
+                        else:
+                            df_mostrar = analisis.sort_values('Importe', ascending=False)
+
+                        # --- TARJETAS KPI ---
+                        st.markdown("---")
+                        k1, k2, k3 = st.columns(3)
+                        k1.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Gasto {mes_actual_nombre} (Filtrado)</div><div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">${gasto_total_mes:,.0f}</div></div>', unsafe_allow_html=True)
+                        
+                        if not analisis.empty and analisis['Desvío_$'].max() > 0:
+                            peor_r = analisis.loc[analisis['Desvío_$'].idxmax()]
+                            k2.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Peor Desvío del Mes</div><div style="font-size:1.2rem; color:#dc3545; font-weight:bold; margin-top:5px;">{peor_r["Concepto"]}</div><div style="font-size:0.85rem; color:#dc3545; font-weight:bold; margin-top:2px;">+${peor_r["Desvío_$"]:,.0f} ({peor_r["Variación_%"]:.1%})</div></div>', unsafe_allow_html=True)
+                        else:
+                            k2.markdown('<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Peor Desvío del Mes</div><div style="font-size:1.2rem; color:#28a745; font-weight:bold; margin-top:5px;">Estable</div></div>', unsafe_allow_html=True)
+                        
+                        cant_anomalias = len(analisis[(analisis['Variación_%'] >= 0.35) & (analisis['Desvío_$'] > 20000)])
+                        color_anom = "#dc3545" if cant_anomalias > 3 else "#ffc107" if cant_anomalias > 0 else "#28a745"
+                        k3.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Rubros con picos > 35%</div><div style="font-size:1.8rem; color:{color_anom}; font-weight:bold; margin-top:5px;">{cant_anomalias}</div><div style="font-size:0.75rem; color:#888;">Para auditar o reclamar</div></div>', unsafe_allow_html=True)
+
+                        st.markdown("<br>", unsafe_allow_html=True)
+
+                        # --- GRÁFICOS Y TABLAS ---
+                        tab_g, tab_t = st.tabs(["📈 Evolución del Semestre", "🧾 Tabla Analítica de Desvíos"])
+                        
+                        with tab_g:
+                            df_trend = df_largo.groupby(['Mes', 'Mes_Num', 'Categoría'])['Importe'].sum().reset_index().sort_values('Mes_Num')
+                            fig_trend = px.line(df_trend, x='Mes', y='Importe', color='Categoría', markers=True, title=f"Tendencia Acumulada - {hojas_map[hoja_sel]}")
+                            fig_trend.update_layout(xaxis_title="", yaxis_title="Monto ($)", height=400)
+                            st.plotly_chart(fig_trend, use_container_width=True)
+
+                        with tab_t:
+                            st.markdown("##### Sábana de Control de Desvíos vs Promedio Histórico")
+                            def color_anomalia(val):
+                                if val > 0.35: return 'background-color: #ffeeba; color: #856404; font-weight: bold;'
+                                if val < -0.10: return 'background-color: #d4edda; color: #155724;'
+                                return ''
+
+                            cols_ver = ['Categoría', 'Rubro', 'Concepto', 'Promedio_Histórico', 'Importe', 'Desvío_$', 'Variación_%']
+                            st.dataframe(
+                                df_mostrar[cols_ver].style
+                                .format({'Promedio_Histórico': '${:,.0f}', 'Importe': '${:,.0f}', 'Desvío_$': '${:,.0f}', 'Variación_%': '{:.1%}'})
+                                .map(color_anomalia, subset=['Variación_%'])
+                                .background_gradient(subset=['Desvío_$'], cmap='Reds', vmin=0),
+                                use_container_width=True, hide_index=True, height=450
+                            )
+
+            else:
+                st.info("👈 Por favor, arrastrá tu archivo 'Resumen Cta Rdos para aplicación.xlsx' a la barra lateral para comenzar.")
+
         # --- HELPERS VISUALES ---
         def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
             obj_parcial = obj_mes * prog_t
