@@ -57,34 +57,39 @@ def find_col(df, include_keywords, exclude_keywords=[]):
 
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
-    # Lista de pestañas
-    hojas = ['Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
+    # Lista completa de todas tus hojas
+    hojas_normales = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP']
+    hojas_costos = ['Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
     data_dict = {}
     
-    for h in hojas:
+    # 1. Cargar Hojas Normales
+    for h in hojas_normales:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            # Leemos forzando que la fila 2 sea el encabezado (índice 1 en Python)
+            df = pd.read_csv(url, header=0, dtype=str).fillna("0")
+            df.columns = [str(c).strip().upper() for c in df.columns]
+            data_dict[h] = df
+        except: pass
+
+    # 2. Cargar Hojas de Costos (con el tratamiento especial)
+    for h in hojas_costos:
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
+        try:
+            # Forzamos encabezado en la fila 2 (índice 1)
             df = pd.read_csv(url, header=1, dtype=str)
-            
-            # 1. ELIMINAR COLUMNAS DE PORCENTAJE
-            # Buscamos todas las columnas que tengan '%' o que sean 'Unnamed' (columnas vacías de separación)
+            # Eliminamos columnas que tengan '%' o sean vacías
             cols_a_eliminar = [c for c in df.columns if '%' in c or 'Unnamed' in c]
             df = df.drop(columns=cols_a_eliminar)
-            
-            # 2. LIMPIEZA DE NOMBRES
             df.columns = [str(c).strip().upper() for c in df.columns]
             
-            # 3. CONVERSIÓN DE DATOS
-            # Convertimos a numérico solo columnas que tengan datos monetarios
+            # Limpieza numérica
             for col in df.columns:
                 if col not in ["RUBROS", "CONCEPTOS"]:
                     df[col] = df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True)
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-            
             data_dict[h] = df
         except Exception as e:
-            st.error(f"Error cargando {h}: {e}")
+            st.warning(f"No se pudo cargar la hoja especial {h}: {e}")
                 
     return data_dict
 
