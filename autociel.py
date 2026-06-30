@@ -57,51 +57,41 @@ def find_col(df, include_keywords, exclude_keywords=[]):
 
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
-    # Lista de todas tus hojas
     hojas_normales = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP']
     hojas_costos = ['Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
     data_dict = {}
-
-    # Función auxiliar para forzar que todo sea texto al inicio y luego limpiar números
-    def limpiar_df(df):
-        df.columns = [str(c).strip().upper() for c in df.columns]
-        # Convertimos todo a string primero para evitar errores de tipo
-        df = df.astype(str)
-        # Limpiamos los textos (quitamos espacios extra)
-        df = df.apply(lambda x: x.str.strip())
-        return df
 
     # 1. Cargar Hojas Normales
     for h in hojas_normales:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df = pd.read_csv(url, header=0, dtype=str).fillna("0")
-            data_dict[h] = limpiar_df(df)
+            df.columns = [str(c).strip().upper() for c in df.columns]
+            # Limpieza forzada a numérico para evitar el error int/str
+            for col in df.columns:
+                if col not in ["MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "CANAL"]:
+                    df[col] = pd.to_numeric(df[col].str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
+            data_dict[h] = df
         except Exception as e:
-            st.error(f"Error en hoja {h}: {e}")
+            st.warning(f"Error en hoja {h}: {e}")
 
     # 2. Cargar Hojas de Costos
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            # Leemos desde la fila 2 (índice 1)
             df = pd.read_csv(url, header=1, dtype=str).fillna("0")
-            
-            # Eliminamos columnas de porcentaje y vacías
+            # Eliminar columnas con %
             cols_a_eliminar = [c for c in df.columns if '%' in c or 'Unnamed' in c]
             df = df.drop(columns=cols_a_eliminar)
+            df.columns = [str(c).strip().upper() for c in df.columns]
             
-            # Convertimos columnas numéricas (excepto Rubros/Conceptos)
-            df = limpiar_df(df)
+            # Limpieza numérica forzada
             for col in df.columns:
                 if col not in ["RUBROS", "CONCEPTOS"]:
-                    # Quitamos símbolos de moneda, comas y convertimos a número
-                    df[col] = df[col].str.replace(r'[^\d.-]', '', regex=True)
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-            
+                    df[col] = pd.to_numeric(df[col].str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
             data_dict[h] = df
         except Exception as e:
-            st.error(f"Error en hoja de costos {h}: {e}")
+            st.warning(f"Error en hoja {h}: {e}")
                 
     return data_dict
 
