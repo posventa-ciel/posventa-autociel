@@ -358,48 +358,17 @@ try:
         </div>
         ''', unsafe_allow_html=True)
 
+        # --- MENÚ Y NAVEGACIÓN ---
         menu_opts = ["🏠 Objetivos", "🛠️ Servicios y Taller", "📦 Repuestos", "🎨 Chapa y Pintura", "💸 Costos", "📈 Histórico"]
         selected_tab = st.radio("", menu_opts, horizontal=True, label_visibility="collapsed")
 
-        # --- HELPERS VISUALES ---
-        def render_kpi_card(title, real, obj_mes, is_currency=True, unit="", show_daily=False):
-            obj_parcial = obj_mes * prog_t
-            proy = (real / d_t) * d_h if d_t > 0 else 0
-            cumpl_proy = proy / obj_mes if obj_mes > 0 else 0
-            fmt = "${:,.0f}" if is_currency else "{:,.0f}"
-            if unit: fmt += f" {unit}"
-            color = "#dc3545" if cumpl_proy < 0.90 else ("#ffc107" if cumpl_proy < 0.98 else "#28a745")
-            icon = "✅" if real >= obj_parcial else "🔻"
-            cumpl_parcial_pct = real / obj_parcial if obj_parcial > 0 else 0
-            daily_html = ""
-            if show_daily:
-                daily_val = real / d_t if d_t > 0 else 0
-                fmt_daily = "${:,.0f}" if is_currency else "{:,.1f}"
-                daily_html = f'<div style="font-size:0.75rem; color:#00235d; background-color:#eef2f7; padding: 1px 6px; border-radius:4px; display:inline-block; margin-bottom:4px;">Prom: <b>{fmt_daily.format(daily_val)}</b> /día</div>'
+        # --- ESTRUCTURA DE PESTAÑAS ---
+        if selected_tab == "🏠 Objetivos":
+            st.info("Pestaña en construcción: Objetivos")
 
-            html = '<div class="kpi-card">'
-            html += f'<div><p>{title}</p><h2>{fmt.format(real)}</h2>{daily_html}</div>'
-            html += f'<div><div class="kpi-subtext">vs Obj. Parcial: <b>{fmt.format(obj_parcial)}</b> <span style="color:{"#28a745" if real >= obj_parcial else "#dc3545"}">({cumpl_parcial_pct:.1%})</span> {icon}</div>'
-            html += '<hr style="margin:5px 0; border:0; border-top:1px solid #eee;">'
-            html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:2px;"><span>Obj. Mes:</span><b>{fmt.format(obj_mes)}</b></div>'
-            html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:{color}; font-weight:bold;"><span>Proyección:</span><span>{fmt.format(proy)} ({cumpl_proy:.1%})</span></div>'
-            html += f'<div style="margin-top:5px;"><div style="width:100%; background:#e0e0e0; height:5px; border-radius:10px;"><div style="width:{min(cumpl_proy*100, 100)}%; background:{color}; height:5px; border-radius:10px;"></div></div></div></div></div>'
-            return html
-
-        def render_kpi_small(title, val, target=None, target_mensual=None, projection=None, format_str="{:.1%}", label_target="Obj. Parcial"):
-            subtext_html = "<div style='height:15px;'></div>"
-            footer_html = ""
-            if target is not None:
-                delta = val - target
-                color = "#28a745" if delta >= 0 else "#dc3545"
-                icon = "▲" if delta >= 0 else "▼"
-                subtext_html = f"<div style='margin-top:4px; display:flex; justify-content:center; align-items:center; gap:5px; font-size:0.7rem;'><span style='color:#888;'>{label_target}: {format_str.format(target)}</span><span style='color:{color}; font-weight:bold; background-color:{color}15; padding:1px 4px; border-radius:3px;'>{icon} {format_str.format(abs(delta))}</span></div>"
-            if target_mensual is not None and projection is not None:
-                proy_delta = projection - target_mensual
-                color_proy = "#28a745" if proy_delta >= 0 else "#dc3545"
-                footer_html = f'<div class="metric-footer"><div>Obj. Mes: <b>{format_str.format(target_mensual)}</b></div><div style="color:{color_proy}">Proy: <b>{format_str.format(projection)}</b></div></div>'
-            html = f'<div class="metric-card"><div><p style="color:#666; font-size:0.8rem; margin-bottom:2px;">{title}</p><h3 style="color:#00235d; margin:0; font-size:1.3rem;">{format_str.format(val)}</h3>{subtext_html}</div>{footer_html}</div>'
-            return html
+        elif selected_tab == "🛠️ Servicios y Taller":
+            # Aquí es donde empieza TU LÓGICA ORIGINAL de Servicios
+            # (No borres nada de lo que sigue abajo, esto es solo para que el código quede ordenado)
 
         # --- LÓGICA DE COLUMNAS (SERVICIOS) ---
         c_cli = find_col(data['SERVICIOS'], ["MO", "CLI"], exclude_keywords=["OBJ"])
@@ -416,7 +385,21 @@ try:
         val_int = s_r.get(c_int, 0) if c_int else 0
         val_ter = s_r.get(c_ter, 0) if c_ter else 0
         real_mo_total = val_cli + val_gar + val_int + val_ter
-        
+
+        elif selected_tab == "💸 Costos":
+            st.markdown("### 💸 Auditor de Costos y Anomalías (Histórico 6 Meses)")
+            # Aquí pegas TODO el bloque gigante de código que me pasaste antes (desde CAT_RUBROS hasta st.dataframe)
+            # Asegúrate de que TODAS esas líneas estén tabuladas con 4 espacios a la derecha.
+
+        elif selected_tab == "📦 Repuestos":
+            st.info("Pestaña en construcción: Repuestos")
+            
+        elif selected_tab == "🎨 Chapa y Pintura":
+            st.info("Pestaña en construcción: Chapa y Pintura")
+
+        elif selected_tab == "📈 Histórico":
+            st.info("Pestaña en construcción: Histórico")
+
         # --- TAB 1: OBJETIVOS ---
         if selected_tab == "🏠 Objetivos":
             cols = st.columns(4)
