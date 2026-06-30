@@ -55,49 +55,36 @@ def find_col(df, include_keywords, exclude_keywords=[]):
                 return col
     return ""
 
-# --- CARGA DE DATOS ROBUSTA E INTELIGENTE ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
-    hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP', 'Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
+    # Lista de pestañas
+    hojas = ['Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
     data_dict = {}
     
     for h in hojas:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            # 1. Leer el CSV sin asignar cabeceras todavía para inspeccionar
-            temp_df = pd.read_csv(url, header=None, dtype=str)
+            # Leemos forzando que la fila 2 sea el encabezado (índice 1 en Python)
+            df = pd.read_csv(url, header=1, dtype=str)
             
-            # 2. Buscar la fila que contiene las cabeceras reales ("RUBRO", "CONCEPTO", "FECHA", etc.)
-            header_idx = 0
-            for i, row in temp_df.head(5).iterrows():
-                row_str = " ".join([str(x).upper() for x in row.values])
-                if any(kw in row_str for kw in ["RUBRO", "CONCEPTO", "FECHA", "CANAL", "MATRICUL", "BASTIDOR", "SALDO"]):
-                    header_idx = i
-                    break
-                    
-            # 3. Volver a leer usando la fila correcta como cabecera
-            df = pd.read_csv(url, header=header_idx, dtype=str).fillna("0")
+            # 1. ELIMINAR COLUMNAS DE PORCENTAJE
+            # Buscamos todas las columnas que tengan '%' o que sean 'Unnamed' (columnas vacías de separación)
+            cols_a_eliminar = [c for c in df.columns if '%' in c or 'Unnamed' in c]
+            df = df.drop(columns=cols_a_eliminar)
             
-            # 4. Limpiar nombres de columnas
-            df.columns = [
-                str(c).strip().upper()
-                .replace(".", "")
-                .replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
-                .replace("Ñ", "N") 
-                for c in df.columns
-            ]
+            # 2. LIMPIEZA DE NOMBRES
+            df.columns = [str(c).strip().upper() for c in df.columns]
             
-            # 5. Convertir a numérico solo las columnas que correspondan
+            # 3. CONVERSIÓN DE DATOS
+            # Convertimos a numérico solo columnas que tengan datos monetarios
             for col in df.columns:
-                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "RUBRO", "CONCEPTO"]):
-                    serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
-                    serie = serie.str.replace('.', '', regex=False)
-                    serie = serie.str.replace(',', '.', regex=False)
-                    df[col] = pd.to_numeric(serie, errors='coerce').fillna(0.0)
+                if col not in ["RUBROS", "CONCEPTOS"]:
+                    df[col] = df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
             
             data_dict[h] = df
         except Exception as e:
-            if h != 'WIP': st.error(f"Error cargando hoja '{h}': {e}")
+            st.error(f"Error cargando {h}: {e}")
                 
     return data_dict
 
