@@ -55,28 +55,40 @@ def find_col(df, include_keywords, exclude_keywords=[]):
                 return col
     return ""
 
-# --- CARGA DE DATOS ROBUSTA ---
+# --- CARGA DE DATOS ROBUSTA E INTELIGENTE ---
 @st.cache_data(ttl=60)
 def cargar_datos(sheet_id):
-    # NOTA: Agregamos las nuevas hojas de Costos aquí
     hojas = ['CALENDARIO', 'SERVICIOS', 'REPUESTOS', 'TALLER', 'CyP JUJUY', 'CyP SALTA', 'WIP', 'Cta Res Taller', 'Cta Res Repuestos', 'Cta Res Chapa Jujuy', 'Cta Res Chapa Salta']
     data_dict = {}
     
     for h in hojas:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            df = pd.read_csv(url, dtype=str).fillna("0")
+            # 1. Leer el CSV sin asignar cabeceras todavía para inspeccionar
+            temp_df = pd.read_csv(url, header=None, dtype=str)
             
+            # 2. Buscar la fila que contiene las cabeceras reales ("RUBRO", "CONCEPTO", "FECHA", etc.)
+            header_idx = 0
+            for i, row in temp_df.head(5).iterrows():
+                row_str = " ".join([str(x).upper() for x in row.values])
+                if any(kw in row_str for kw in ["RUBRO", "CONCEPTO", "FECHA", "CANAL", "MATRICUL", "BASTIDOR", "SALDO"]):
+                    header_idx = i
+                    break
+                    
+            # 3. Volver a leer usando la fila correcta como cabecera
+            df = pd.read_csv(url, header=header_idx, dtype=str).fillna("0")
+            
+            # 4. Limpiar nombres de columnas
             df.columns = [
-                c.strip().upper()
+                str(c).strip().upper()
                 .replace(".", "")
                 .replace("Á", "A").replace("É", "E").replace("Í", "I").replace("Ó", "O").replace("Ú", "U")
                 .replace("Ñ", "N") 
                 for c in df.columns
             ]
             
+            # 5. Convertir a numérico solo las columnas que correspondan
             for col in df.columns:
-                # NOTA: Agregamos RUBRO y CONCEPTO a las exclusiones para que no se conviertan a numéricos y se rompan
                 if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "RUBRO", "CONCEPTO"]):
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
                     serie = serie.str.replace('.', '', regex=False)
@@ -85,8 +97,7 @@ def cargar_datos(sheet_id):
             
             data_dict[h] = df
         except Exception as e:
-            if h != 'WIP': st.error(f"Error cargando hoja {h}: {e}")
-            else: pass 
+            if h != 'WIP': st.error(f"Error cargando hoja '{h}': {e}")
                 
     return data_dict
 
