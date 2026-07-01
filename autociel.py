@@ -69,24 +69,21 @@ def cargar_datos(sheet_id):
             df = pd.read_csv(url, header=0, dtype=str).fillna("0")
             df = df.dropna(how='all')
             df.columns = [str(c).strip().upper() for c in df.columns]
-            
-            # Limpieza: Recuperada la lógica de exclusión de FECHAS y limpieza de comas
+            # Limpieza estándar para hojas normales
             for col in df.columns:
-                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
-                    serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
-                    serie = serie.str.replace('.', '', regex=False)
-                    serie = serie.str.replace(',', '.', regex=False)
-                    df[col] = pd.to_numeric(serie, errors='coerce').fillna(0.0)
+                if col not in ["MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "CANAL"]:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
             data_dict[h] = df
         except Exception as e:
             st.warning(f"Error cargando {h}: {e}")
 
-    # 2. Cargar Hojas de Costos (Lógica para doble cabecera con meses)
+    # 2. Cargar Hojas de Costos (Lógica blindada para formato "$ 1.234.567,89")
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
             df_raw = pd.read_csv(url, header=None, dtype=str).fillna("")
             
+            # Buscamos la fila que contiene "CONCEPTO"
             idx_header = 1
             for i in range(min(5, len(df_raw))):
                 if "CONCEPTO" in "".join(df_raw.iloc[i].values).upper():
@@ -117,7 +114,7 @@ def cargar_datos(sheet_id):
                     cols_to_keep.append(i)
                     raw_col_names.append(last_date.upper())
 
-            # SOLUCIÓN AL ERROR DATAFRAME: Renombramos columnas duplicadas
+            # Renombramos columnas duplicadas para evitar errores de DataFrame
             seen = {}
             dedup_col_names = []
             for name in raw_col_names:
@@ -130,12 +127,19 @@ def cargar_datos(sheet_id):
 
             df_clean = df_raw.iloc[idx_header+1:, cols_to_keep].copy()
             df_clean.columns = dedup_col_names
-            
             df_clean = df_clean[df_clean['CONCEPTO'] != ""]
             
+            # --- AQUÍ ESTÁ EL TRUCO PARA EL FORMATO LATINOAMERICANO ---
             for col in df_clean.columns:
                 if col not in ["RUBRO", "CONCEPTO"]:
-                    df_clean[col] = pd.to_numeric(df_clean[col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
+                    # 1. Nos quedamos solo con números, comas, puntos y signos menos
+                    s = df_clean[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
+                    # 2. Eliminamos los puntos que separan los miles
+                    s = s.str.replace('.', '', regex=False)
+                    # 3. Cambiamos la coma decimal por un punto decimal que entiende Python
+                    s = s.str.replace(',', '.', regex=False)
+                    # 4. Convertimos a número real
+                    df_clean[col] = pd.to_numeric(s, errors='coerce').fillna(0.0)
                     
             data_dict[h] = df_clean
         except Exception as e:
