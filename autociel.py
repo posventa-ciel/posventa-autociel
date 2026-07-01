@@ -1116,7 +1116,7 @@ try:
                 if s_f_r > 0: vals_s.append(s_f_r); nams_s.append("Repuestos")
                 st.plotly_chart(px.pie(values=vals_s, names=nams_s, hole=0.4, title="Facturación Salta", color_discrete_sequence=["#00235d", "#00A8E8", "#28a745"]), use_container_width=True)
                 
-        # --- NUEVA PESTAÑA: COSTOS ---
+       # --- PESTAÑA: COSTOS ---
         elif selected_tab == "💸 Costos":
             st.header("💸 Análisis de Costos")
             
@@ -1139,32 +1139,27 @@ try:
                     if unidad in data and not data[unidad].empty:
                         df_c = data[unidad].copy()
                         
-                        col_rubro = find_col(df_c, ["RUBRO"]) or df_c.columns[0]
-                        col_concepto = find_col(df_c, ["CONCEPTO"]) or df_c.columns[1]
-                        
-                        df_c['RUBRO_STR'] = df_c[col_rubro].astype(str).str.strip()
+                        # Filtramos por los rubros indicados
+                        df_c['RUBRO_STR'] = df_c['RUBRO'].astype(str).str.strip()
                         df_c = df_c[df_c['RUBRO_STR'].isin(mapping_rubros.keys())].copy()
                         df_c['Grupo'] = df_c['RUBRO_STR'].map(mapping_rubros)
                         
-                        val_cols = []
-                        for c in df_c.columns:
-                            if c not in [col_rubro, col_concepto, 'Grupo', 'RUBRO_STR']:
-                                try:
-                                    if pd.to_numeric(df_c[c], errors='coerce').sum() > 1000:
-                                        val_cols.append(c)
-                                except: pass
-                                
+                        # Las columnas de valores son todas las que no son descripciones
+                        val_cols = [c for c in df_c.columns if c not in ['RUBRO', 'CONCEPTO', 'RUBRO_STR', 'Grupo']]
+                        
+                        # Tomamos los últimos 6 meses cargados
                         ultimos_6 = val_cols[-6:] if len(val_cols) >= 6 else val_cols
                         
                         if not ultimos_6:
-                            st.warning("No se encontraron columnas numéricas de valores financieros en esta hoja.")
+                            st.warning("No se encontraron columnas de meses. Verifique el formato.")
                             continue
 
+                        # Dibujamos las tablas por grupo
                         for grupo in ['Sueldos', 'Controlables', 'No Controlables', 'Otros']:
                             st.markdown(f"#### {grupo}")
                             df_grupo = df_c[df_c['Grupo'] == grupo]
                             if not df_grupo.empty:
-                                cols_mostrar = [col_concepto] + ultimos_6
+                                cols_mostrar = ['CONCEPTO'] + ultimos_6
                                 st.dataframe(
                                     df_grupo[cols_mostrar].style.format({c: "${:,.0f}" for c in ultimos_6}), 
                                     use_container_width=True, hide_index=True
@@ -1172,21 +1167,27 @@ try:
                             else:
                                 st.info(f"No hay datos registrados para {grupo}")
 
-                        st.markdown("### ⚠️ Alertas de Variación (Último mes cerrado)")
+                        # --- LÓGICA DE ALERTAS ---
+                        st.markdown("### ⚠️ Alertas de Variación (Último mes vs Histórico)")
                         alertas = []
                         for _, row in df_c.iterrows():
+                            # Tomamos los valores de los últimos meses disponibles para esta fila
                             vals = pd.to_numeric(row[ultimos_6], errors='coerce').fillna(0).values
                             if len(vals) >= 4:
                                 val_actual = vals[-1]
                                 prom_3m = vals[-4:-1].mean()
                                 val_ant = vals[-2]
-                                nombre_concepto = row[col_concepto]
+                                nombre_concepto = row['CONCEPTO']
+                                mes_actual_nombre = ultimos_6[-1]
                                 
+                                # Si no había gastos y ahora sí
                                 if prom_3m == 0 and val_actual > 0:
-                                    alertas.append(f"🔵 **{nombre_concepto}**: Nuevo gasto detectado (${val_actual:,.0f})")
+                                    alertas.append(f"🔵 **{nombre_concepto}**: Gasto nuevo detectado en {mes_actual_nombre} (${val_actual:,.0f})")
+                                # Si subió más del 30% vs el promedio de los 3 meses anteriores
                                 elif prom_3m > 0 and val_actual > prom_3m * 1.3:
                                     pct_var = ((val_actual / prom_3m) - 1) * 100
                                     alertas.append(f"🔴 **{nombre_concepto}**: Aumentó {pct_var:.1f}% vs promedio 3M (Actual: ${val_actual:,.0f} | Prom: ${prom_3m:,.0f})")
+                                # Si subió más del 50% de un mes para el otro
                                 elif val_ant > 0 and val_actual > val_ant * 1.5:
                                     pct_var_mes = ((val_actual / val_ant) - 1) * 100
                                     alertas.append(f"🟠 **{nombre_concepto}**: Aumentó {pct_var_mes:.1f}% vs mes anterior (Actual: ${val_actual:,.0f} | Ant: ${val_ant:,.0f})")
@@ -1194,9 +1195,9 @@ try:
                         if alertas:
                             for a in alertas: st.markdown(a)
                         else:
-                            st.success("✅ No se detectaron variaciones inusuales ni alertas para esta unidad de negocio.")
+                            st.success("✅ No se detectaron variaciones inusuales mayores al 30% en esta unidad de negocio.")
                     else:
-                        st.warning(f"La hoja '{unidad}' no está cargada en el Google Sheet o no tiene datos.")
+                        st.warning(f"La hoja '{unidad}' no está cargada o no tiene datos.")
 
         elif selected_tab == "📈 Histórico":
             st.markdown(f"### 📈 Evolución Anual {año_sel}")
