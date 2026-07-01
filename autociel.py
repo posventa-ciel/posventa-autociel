@@ -69,10 +69,14 @@ def cargar_datos(sheet_id):
             df = pd.read_csv(url, header=0, dtype=str).fillna("0")
             df = df.dropna(how='all')
             df.columns = [str(c).strip().upper() for c in df.columns]
-            # Limpieza para que nada rompa los cálculos numéricos posteriores
+            
+            # Limpieza: Recuperada la lógica de exclusión de FECHAS y limpieza de comas
             for col in df.columns:
-                if col not in ["MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "CANAL"]:
-                    df[col] = pd.to_numeric(df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
+                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
+                    serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
+                    serie = serie.str.replace('.', '', regex=False)
+                    serie = serie.str.replace(',', '.', regex=False)
+                    df[col] = pd.to_numeric(serie, errors='coerce').fillna(0.0)
             data_dict[h] = df
         except Exception as e:
             st.warning(f"Error cargando {h}: {e}")
@@ -81,10 +85,8 @@ def cargar_datos(sheet_id):
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            # Leemos todo como texto sin cabecera para mapear manualmente
             df_raw = pd.read_csv(url, header=None, dtype=str).fillna("")
             
-            # Buscamos la fila que contiene "CONCEPTO"
             idx_header = 1
             for i in range(min(5, len(df_raw))):
                 if "CONCEPTO" in "".join(df_raw.iloc[i].values).upper():
@@ -95,13 +97,11 @@ def cargar_datos(sheet_id):
             row_types = df_raw.iloc[idx_header].values
             
             cols_to_keep = []
-            new_col_names = []
+            raw_col_names = []
             last_date = "VALOR"
             
-            # Armamos las columnas correctamente
             for i in range(df_raw.shape[1]):
                 val_date = str(row_dates[i]).strip()
-                # Si encontramos un mes válido, lo guardamos en memoria (ej: NOV-25)
                 if val_date and "UNNAMED" not in val_date.upper() and val_date != "":
                     last_date = val_date
                     
@@ -109,27 +109,33 @@ def cargar_datos(sheet_id):
                 
                 if "RUBRO" in val_type:
                     cols_to_keep.append(i)
-                    new_col_names.append("RUBRO")
+                    raw_col_names.append("RUBRO")
                 elif "CONCEPTO" in val_type:
                     cols_to_keep.append(i)
-                    new_col_names.append("CONCEPTO")
+                    raw_col_names.append("CONCEPTO")
                 elif "$" in val_type or (val_type == "" and i > 1):
-                    # Si es la columna de plata ($), guardamos el mes correspondiente
                     cols_to_keep.append(i)
-                    new_col_names.append(last_date.upper())
-                # Si la columna es "%", simplemente no la agregamos (se elimina)
-                
-            # Creamos el dataframe definitivo
+                    raw_col_names.append(last_date.upper())
+
+            # SOLUCIÓN AL ERROR DATAFRAME: Renombramos columnas duplicadas
+            seen = {}
+            dedup_col_names = []
+            for name in raw_col_names:
+                if name in seen:
+                    seen[name] += 1
+                    dedup_col_names.append(f"{name}_{seen[name]}")
+                else:
+                    seen[name] = 0
+                    dedup_col_names.append(name)
+
             df_clean = df_raw.iloc[idx_header+1:, cols_to_keep].copy()
-            df_clean.columns = new_col_names
+            df_clean.columns = dedup_col_names
             
-            # Filtramos filas vacías
             df_clean = df_clean[df_clean['CONCEPTO'] != ""]
             
-            # Limpiamos los números (sacamos signos $, espacios, comas)
             for col in df_clean.columns:
                 if col not in ["RUBRO", "CONCEPTO"]:
-                    df_clean[col] = pd.to_numeric(df_clean[col].str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
+                    df_clean[col] = pd.to_numeric(df_clean[col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0.0)
                     
             data_dict[h] = df_clean
         except Exception as e:
