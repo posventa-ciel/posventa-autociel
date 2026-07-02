@@ -77,7 +77,6 @@ def cargar_datos(sheet_id):
             ]
             
             for col in df.columns:
-                # AQUÍ ESTÁ LA CLAVE QUE FALTABA: Protegemos FECHA y otras columnas de texto
                 if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
                     serie = serie.str.replace('.', '', regex=False)
@@ -87,33 +86,47 @@ def cargar_datos(sheet_id):
         except Exception as e:
             st.warning(f"Error cargando {h}: {e}")
 
-    # 2. Cargar Hojas de Costos (Formato Simple Actualizado)
+    # 2. Cargar Hojas de Costos (Lógica Blindada para buscar la cabecera)
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            # Ahora leemos directamente desde la primera fila (header=0)
-            df = pd.read_csv(url, header=0, dtype=str).fillna("0")
+            # Leemos sin asumir donde esta el header
+            df_raw = pd.read_csv(url, header=None, dtype=str).fillna("")
             
-            # Limpiamos los nombres de las columnas para asegurarnos
-            df.columns = [str(c).strip().upper() for c in df.columns]
+            # 1. Encontrar la fila real de cabecera buscando 'RUBRO', 'RUBROS' o 'UBRO'
+            idx_header = 0
+            for i in range(min(5, len(df_raw))):
+                fila_texto = "".join(df_raw.iloc[i].astype(str).values).upper()
+                if "RUBRO" in fila_texto or "UBRO" in fila_texto:
+                    idx_header = i
+                    break
             
-            # Si se llama RUBROS, la renombramos a RUBRO para que el resto del código funcione
-            if 'RUBROS' in df.columns:
-                df = df.rename(columns={'RUBROS': 'RUBRO'})
-            # Si quedó como UBRO por algún motivo, también lo arreglamos
-            elif 'UBRO' in df.columns:
-                df = df.rename(columns={'UBRO': 'RUBRO'})
-                
-            # Eliminamos las columnas de porcentajes y las vacías
-            cols_to_drop = [c for c in df.columns if '%' in c or 'UNNAMED' in c]
-            df_clean = df.drop(columns=cols_to_drop)
+            # 2. Tomar los títulos de esa fila
+            titulos_crudos = df_raw.iloc[idx_header].astype(str).str.strip().str.upper().values
             
-            # Filtramos filas vacías basándonos en CONCEPTO
+            # 3. Limpiar y estandarizar los títulos (y arreglar la primera columna a 'RUBRO')
+            titulos_limpios = []
+            for t in titulos_crudos:
+                t = t.replace(" ", "")
+                if "UBRO" in t or "RUBRO" in t:
+                    titulos_limpios.append("RUBRO")
+                else:
+                    titulos_limpios.append(t)
+            
+            # 4. Crear el DataFrame limpio a partir de la fila siguiente al header
+            df_clean = df_raw.iloc[idx_header+1:].copy()
+            df_clean.columns = titulos_limpios
+            
+            # 5. Eliminar columnas vacías (UNNAMED) o de porcentaje (%)
+            cols_to_drop = [c for c in df_clean.columns if '%' in c or 'UNNAMED' in c or c == ""]
+            df_clean = df_clean.drop(columns=cols_to_drop)
+            
+            # 6. Filtrar filas donde la columna CONCEPTO esté vacía
             if 'CONCEPTO' in df_clean.columns:
                 df_clean = df_clean[df_clean['CONCEPTO'] != "0"]
                 df_clean = df_clean[df_clean['CONCEPTO'] != ""]
             
-            # Convertimos a números
+            # 7. Convertir a números
             for col in df_clean.columns:
                 if col not in ["RUBRO", "CONCEPTO"]:
                     s = df_clean[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
@@ -126,7 +139,6 @@ def cargar_datos(sheet_id):
             st.warning(f"Error cargando hoja de costos {h}: {e}")
                 
     return data_dict
-
 # --- PROCESAMIENTO IRPV ---
 def leer_csv_inteligente(uploaded_file):
     try:
