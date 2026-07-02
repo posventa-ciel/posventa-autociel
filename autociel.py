@@ -1225,7 +1225,8 @@ try:
                             
                             if not df_grupo.empty:
                                 cols_mostrar = ['CONCEPTO'] + ultimos_6
-                                df_grupo_mostrar = df_grupo[cols_mostrar].copy()
+                                # CLAVE: Convertimos a object para permitir texto y símbolos sin errores de Pandas
+                                df_grupo_mostrar = df_grupo[cols_mostrar].copy().astype(object)
                                 
                                 # Matriz de estilos CSS para aplicar los colores condicionales
                                 style_df = pd.DataFrame('', index=df_grupo_mostrar.index, columns=df_grupo_mostrar.columns)
@@ -1246,26 +1247,26 @@ try:
                                                     
                                                     if val_act > val_prev:
                                                         # Subió el costo (Malo -> Rojo)
-                                                        df_grupo_mostrar.loc[idx, col] = f"{fmt_val} ▲"
-                                                        style_df.loc[idx, col] = 'color: #dc3545; font-weight: bold;'
+                                                        df_grupo_mostrar.at[idx, col] = f"{fmt_val} ▲"
+                                                        style_df.at[idx, col] = 'color: #dc3545; font-weight: bold;'
                                                     elif val_act < val_prev:
                                                         # Bajó el costo (Bueno -> Verde)
-                                                        df_grupo_mostrar.loc[idx, col] = f"{fmt_val} ▼"
-                                                        style_df.loc[idx, col] = 'color: #28a745; font-weight: bold;'
+                                                        df_grupo_mostrar.at[idx, col] = f"{fmt_val} ▼"
+                                                        style_df.at[idx, col] = 'color: #28a745; font-weight: bold;'
                                                     else:
                                                         # Sin cambios (Neutro -> Gris)
-                                                        df_grupo_mostrar.loc[idx, col] = f"{fmt_val} ▬"
-                                                        style_df.loc[idx, col] = 'color: #6c757d;'
+                                                        df_grupo_mostrar.at[idx, col] = f"{fmt_val} ▬"
+                                                        style_df.at[idx, col] = 'color: #6c757d;'
                                             else:
                                                 # Si es el primer mes de la lista total, va normal
                                                 for idx in df_grupo_mostrar.index:
                                                     val_act = float(df_grupo.loc[idx, col])
-                                                    df_grupo_mostrar.loc[idx, col] = f"${val_act:,.0f}".replace(",", ".")
+                                                    df_grupo_mostrar.at[idx, col] = f"${val_act:,.0f}".replace(",", ".")
                                         except:
                                             for idx in df_grupo_mostrar.index:
                                                 try:
                                                     val_act = float(df_grupo.loc[idx, col])
-                                                    df_grupo_mostrar.loc[idx, col] = f"${val_act:,.0f}".replace(",", ".")
+                                                    df_grupo_mostrar.at[idx, col] = f"${val_act:,.0f}".replace(",", ".")
                                                 except:
                                                     pass
                                     else:
@@ -1273,7 +1274,7 @@ try:
                                         for idx in df_grupo_mostrar.index:
                                             try:
                                                 val_act = float(df_grupo.loc[idx, col])
-                                                df_grupo_mostrar.loc[idx, col] = f"${val_act:,.0f}".replace(",", ".")
+                                                df_grupo_mostrar.at[idx, col] = f"${val_act:,.0f}".replace(",", ".")
                                             except:
                                                 pass
                                 
