@@ -1176,6 +1176,46 @@ try:
                             st.warning("No se encontraron columnas de meses. Verifique el formato.")
                             continue
 
+                        # --- NUEVA SECCIÓN: GRÁFICOS DE ANÁLISIS ---
+                        df_grup_tot = df_c.groupby('Grupo')[val_cols].sum().reset_index()
+                        df_melt_costos = df_grup_tot.melt(id_vars='Grupo', var_name='Mes', value_name='Monto')
+                        df_melt_costos_6 = df_melt_costos[df_melt_costos['Mes'].isin(ultimos_6)]
+                        
+                        col_g1, col_g2 = st.columns(2)
+                        
+                        with col_g1:
+                            # 1. Evolución mensual acumulada (Barras apiladas)
+                            fig_evol_costos = px.bar(
+                                df_melt_costos_6, 
+                                x='Mes', 
+                                y='Monto', 
+                                color='Grupo', 
+                                title="Evolución Mensual de Costos (Últimos 6 meses)",
+                                text_auto='$.2s',
+                                color_discrete_sequence=['#00235d', '#00A8E8', '#28a745', '#ffc107']
+                            )
+                            fig_evol_costos.update_layout(barmode='stack', height=380, yaxis_title="Monto ($)", xaxis_title="")
+                            st.plotly_chart(fig_evol_costos, use_container_width=True)
+                            
+                        with col_g2:
+                            # 2. Participación del total de costos del último mes
+                            ultimo_mes = ultimos_6[-1] if ultimos_6 else None
+                            if ultimo_mes:
+                                df_ultimo_mes = df_melt_costos_6[df_melt_costos_6['Mes'] == ultimo_mes]
+                                fig_part_costos = px.pie(
+                                    df_ultimo_mes, 
+                                    values='Monto', 
+                                    names='Grupo', 
+                                    hole=0.4,
+                                    title=f"Participación del Total del Costo ({ultimo_mes})",
+                                    color_discrete_sequence=['#00235d', '#00A8E8', '#28a745', '#ffc107']
+                                )
+                                fig_part_costos.update_layout(height=380)
+                                fig_part_costos.update_traces(textinfo='percent+label')
+                                st.plotly_chart(fig_part_costos, use_container_width=True)
+                                
+                        st.markdown("---")
+
                         # Dibujamos las tablas por grupo
                         for grupo in ['Sueldos', 'Controlables', 'No Controlables', 'Otros']:
                             st.markdown(f"#### {grupo}")
@@ -1193,7 +1233,6 @@ try:
                         st.markdown("### ⚠️ Alertas de Variación (Último mes vs Histórico)")
                         alertas = []
                         for _, row in df_c.iterrows():
-                            # Tomamos los valores de los últimos meses disponibles para esta fila
                             vals = pd.to_numeric(row[ultimos_6], errors='coerce').fillna(0).values
                             if len(vals) >= 4:
                                 val_actual = vals[-1]
@@ -1202,14 +1241,11 @@ try:
                                 nombre_concepto = row['CONCEPTO']
                                 mes_actual_nombre = ultimos_6[-1]
                                 
-                                # Si no había gastos y ahora sí
                                 if prom_3m == 0 and val_actual > 0:
                                     alertas.append(f"🔵 **{nombre_concepto}**: Gasto nuevo detectado en {mes_actual_nombre} (${val_actual:,.0f})")
-                                # Si subió más del 30% vs el promedio de los 3 meses anteriores
                                 elif prom_3m > 0 and val_actual > prom_3m * 1.3:
                                     pct_var = ((val_actual / prom_3m) - 1) * 100
                                     alertas.append(f"🔴 **{nombre_concepto}**: Aumentó {pct_var:.1f}% vs promedio 3M (Actual: ${val_actual:,.0f} | Prom: ${prom_3m:,.0f})")
-                                # Si subió más del 50% de un mes para el otro
                                 elif val_ant > 0 and val_actual > val_ant * 1.5:
                                     pct_var_mes = ((val_actual / val_ant) - 1) * 100
                                     alertas.append(f"🟠 **{nombre_concepto}**: Aumentó {pct_var_mes:.1f}% vs mes anterior (Actual: ${val_actual:,.0f} | Ant: ${val_ant:,.0f})")
