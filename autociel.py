@@ -1216,15 +1216,72 @@ try:
                                 
                         st.markdown("---")
 
-                        # Dibujamos las tablas por grupo
+                        # --- DIBUJO DE TABLAS POR GRUPO CON FLECHAS DE VARIACIÓN ---
+                        ultimos_3 = ultimos_6[-3:] if len(ultimos_6) >= 3 else ultimos_6
+                        
                         for grupo in ['Sueldos', 'Controlables', 'No Controlables', 'Otros']:
                             st.markdown(f"#### {grupo}")
                             df_grupo = df_c[df_c['Grupo'] == grupo]
+                            
                             if not df_grupo.empty:
                                 cols_mostrar = ['CONCEPTO'] + ultimos_6
+                                df_grupo_mostrar = df_grupo[cols_mostrar].copy()
+                                
+                                # Matriz de estilos CSS para aplicar los colores condicionales
+                                style_df = pd.DataFrame('', index=df_grupo_mostrar.index, columns=df_grupo_mostrar.columns)
+                                
+                                # Recorremos los meses para formatear texto y calcular variaciones
+                                for col in ultimos_6:
+                                    if col in ultimos_3:
+                                        try:
+                                            idx_col = val_cols.index(col)
+                                            if idx_col > 0:
+                                                col_ant = val_cols[idx_col - 1]
+                                                
+                                                for idx in df_grupo_mostrar.index:
+                                                    val_act = float(df_grupo.loc[idx, col])
+                                                    val_prev = float(df_grupo.loc[idx, col_ant])
+                                                    
+                                                    fmt_val = f"${val_act:,.0f}".replace(",", ".")
+                                                    
+                                                    if val_act > val_prev:
+                                                        # Subió el costo (Malo -> Rojo)
+                                                        df_grupo_mostrar.loc[idx, col] = f"{fmt_val} ▲"
+                                                        style_df.loc[idx, col] = 'color: #dc3545; font-weight: bold;'
+                                                    elif val_act < val_prev:
+                                                        # Bajó el costo (Bueno -> Verde)
+                                                        df_grupo_mostrar.loc[idx, col] = f"{fmt_val} ▼"
+                                                        style_df.loc[idx, col] = 'color: #28a745; font-weight: bold;'
+                                                    else:
+                                                        # Sin cambios (Neutro -> Gris)
+                                                        df_grupo_mostrar.loc[idx, col] = f"{fmt_val} ▬"
+                                                        style_df.loc[idx, col] = 'color: #6c757d;'
+                                            else:
+                                                # Si es el primer mes de la lista total, va normal
+                                                for idx in df_grupo_mostrar.index:
+                                                    val_act = float(df_grupo.loc[idx, col])
+                                                    df_grupo_mostrar.loc[idx, col] = f"${val_act:,.0f}".replace(",", ".")
+                                        except:
+                                            for idx in df_grupo_mostrar.index:
+                                                try:
+                                                    val_act = float(df_grupo.loc[idx, col])
+                                                    df_grupo_mostrar.loc[idx, col] = f"${val_act:,.0f}".replace(",", ".")
+                                                except:
+                                                    pass
+                                    else:
+                                        # Meses históricos antiguos van con formato normal sin flecha
+                                        for idx in df_grupo_mostrar.index:
+                                            try:
+                                                val_act = float(df_grupo.loc[idx, col])
+                                                df_grupo_mostrar.loc[idx, col] = f"${val_act:,.0f}".replace(",", ".")
+                                            except:
+                                                pass
+                                
+                                # Renderizamos la tabla inyectando la matriz de estilos de color
                                 st.dataframe(
-                                    df_grupo[cols_mostrar].style.format({c: "${:,.0f}" for c in ultimos_6}), 
-                                    use_container_width=True, hide_index=True
+                                    df_grupo_mostrar.style.apply(lambda df: style_df, axis=None),
+                                    use_container_width=True, 
+                                    hide_index=True
                                 )
                             else:
                                 st.info(f"No hay datos registrados para {grupo}")
