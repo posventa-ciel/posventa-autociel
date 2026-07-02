@@ -113,7 +113,8 @@ def cargar_datos(sheet_id):
                     
                 val_type = str(row_types[i]).strip().upper()
                 
-                if "RUBRO" in val_type:
+                # --- CORRECCIÓN: Hacemos la búsqueda más flexible ---
+                if "UBRO" in val_type or "RUBRO" in val_type:
                     cols_to_keep.append(i)
                     raw_col_names.append("RUBRO")
                 elif "CONCEPTO" in val_type:
