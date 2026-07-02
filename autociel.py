@@ -86,14 +86,13 @@ def cargar_datos(sheet_id):
         except Exception as e:
             st.warning(f"Error cargando {h}: {e}")
 
-    # 2. Cargar Hojas de Costos (Lógica Blindada para buscar la cabecera)
+    # 2. Cargar Hojas de Costos (Lógica Blindada + TRADUCTOR DE FECHAS)
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            # Leemos sin asumir donde esta el header
             df_raw = pd.read_csv(url, header=None, dtype=str).fillna("")
             
-            # 1. Encontrar la fila real de cabecera buscando 'RUBRO', 'RUBROS' o 'UBRO'
+            # 1. Encontrar la fila real de cabecera
             idx_header = 0
             for i in range(min(5, len(df_raw))):
                 fila_texto = "".join(df_raw.iloc[i].astype(str).values).upper()
@@ -102,31 +101,51 @@ def cargar_datos(sheet_id):
                     break
             
             # 2. Tomar los títulos de esa fila
-            titulos_crudos = df_raw.iloc[idx_header].astype(str).str.strip().str.upper().values
+            titulos_crudos = df_raw.iloc[idx_header].astype(str).str.strip().values
             
-            # 3. Limpiar y estandarizar los títulos (y arreglar la primera columna a 'RUBRO')
+            # 3. Limpiar y estandarizar (AQUÍ TRADUCIMOS LAS FECHAS)
             titulos_limpios = []
-            for t in titulos_crudos:
-                t = t.replace(" ", "")
-                if "UBRO" in t or "RUBRO" in t:
-                    titulos_limpios.append("RUBRO")
-                else:
-                    titulos_limpios.append(t)
+            meses_es = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
             
-            # 4. Crear el DataFrame limpio a partir de la fila siguiente al header
+            for t in titulos_crudos:
+                t_upper = t.upper().replace(" ", "")
+                if "UBRO" in t_upper or "RUBRO" in t_upper:
+                    titulos_limpios.append("RUBRO")
+                elif "CONCEPTO" in t_upper:
+                    titulos_limpios.append("CONCEPTO")
+                elif t == "" or "UNNAMED" in t_upper or "%" in t_upper:
+                    titulos_limpios.append(t) # Lo descartamos luego
+                else:
+                    # Intentamos detectar si es una fecha y la formateamos
+                    try:
+                        # Si es un código numérico interno de Google Sheets (ej: 45689)
+                        if str(t).replace('.', '', 1).isdigit() and float(t) > 40000:
+                            fecha = pd.to_datetime(float(t), unit='D', origin='1899-12-30')
+                        else:
+                            # Si es un texto de fecha largo (ej: "2025-01-01 00:00:00")
+                            fecha = pd.to_datetime(t)
+                            
+                        mes_nombre = meses_es[fecha.month]
+                        anio_corto = str(fecha.year)[-2:] # Toma los ultimos 2 digitos (2025 -> 25)
+                        titulos_limpios.append(f"{mes_nombre} {anio_corto}")
+                    except:
+                        # Si por algún motivo no es una fecha, deja el texto que estaba
+                        titulos_limpios.append(t_upper)
+            
+            # 4. Crear el DataFrame limpio
             df_clean = df_raw.iloc[idx_header+1:].copy()
             df_clean.columns = titulos_limpios
             
-            # 5. Eliminar columnas vacías (UNNAMED) o de porcentaje (%)
+            # 5. Eliminar columnas vacías o de porcentajes
             cols_to_drop = [c for c in df_clean.columns if '%' in c or 'UNNAMED' in c or c == ""]
             df_clean = df_clean.drop(columns=cols_to_drop)
             
-            # 6. Filtrar filas donde la columna CONCEPTO esté vacía
+            # 6. Filtrar filas donde CONCEPTO esté vacío
             if 'CONCEPTO' in df_clean.columns:
                 df_clean = df_clean[df_clean['CONCEPTO'] != "0"]
                 df_clean = df_clean[df_clean['CONCEPTO'] != ""]
             
-            # 7. Convertir a números
+            # 7. Convertir el dinero a números
             for col in df_clean.columns:
                 if col not in ["RUBRO", "CONCEPTO"]:
                     s = df_clean[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
@@ -139,6 +158,7 @@ def cargar_datos(sheet_id):
             st.warning(f"Error cargando hoja de costos {h}: {e}")
                 
     return data_dict
+    
 # --- PROCESAMIENTO IRPV ---
 def leer_csv_inteligente(uploaded_file):
     try:
