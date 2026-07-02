@@ -87,57 +87,33 @@ def cargar_datos(sheet_id):
         except Exception as e:
             st.warning(f"Error cargando {h}: {e}")
 
-    # 2. Cargar Hojas de Costos (Lógica para doble cabecera y formato $ 1.234,00)
+    # 2. Cargar Hojas de Costos (Formato Simple Actualizado)
     for h in hojas_costos:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={h.replace(' ', '%20')}"
         try:
-            df_raw = pd.read_csv(url, header=None, dtype=str).fillna("")
+            # Ahora leemos directamente desde la primera fila (header=0)
+            df = pd.read_csv(url, header=0, dtype=str).fillna("0")
             
-            idx_header = 1
-            for i in range(min(5, len(df_raw))):
-                if "CONCEPTO" in "".join(df_raw.iloc[i].values).upper():
-                    idx_header = i
-                    break
-                    
-            row_dates = df_raw.iloc[idx_header - 1].values if idx_header > 0 else [""] * df_raw.shape[1]
-            row_types = df_raw.iloc[idx_header].values
+            # Limpiamos los nombres de las columnas para asegurarnos
+            df.columns = [str(c).strip().upper() for c in df.columns]
             
-            cols_to_keep = []
-            raw_col_names = []
-            last_date = "VALOR"
-            
-            for i in range(df_raw.shape[1]):
-                val_date = str(row_dates[i]).strip()
-                if val_date and "UNNAMED" not in val_date.upper() and val_date != "":
-                    last_date = val_date
-                    
-                val_type = str(row_types[i]).strip().upper()
+            # Si se llama RUBROS, la renombramos a RUBRO para que el resto del código funcione
+            if 'RUBROS' in df.columns:
+                df = df.rename(columns={'RUBROS': 'RUBRO'})
+            # Si quedó como UBRO por algún motivo, también lo arreglamos
+            elif 'UBRO' in df.columns:
+                df = df.rename(columns={'UBRO': 'RUBRO'})
                 
-                # --- CORRECCIÓN: Hacemos la búsqueda más flexible ---
-                if "UBRO" in val_type or "RUBRO" in val_type:
-                    cols_to_keep.append(i)
-                    raw_col_names.append("RUBRO")
-                elif "CONCEPTO" in val_type:
-                    cols_to_keep.append(i)
-                    raw_col_names.append("CONCEPTO")
-                elif "$" in val_type or (val_type == "" and i > 1):
-                    cols_to_keep.append(i)
-                    raw_col_names.append(last_date.upper())
-
-            seen = {}
-            dedup_col_names = []
-            for name in raw_col_names:
-                if name in seen:
-                    seen[name] += 1
-                    dedup_col_names.append(f"{name}_{seen[name]}")
-                else:
-                    seen[name] = 0
-                    dedup_col_names.append(name)
-
-            df_clean = df_raw.iloc[idx_header+1:, cols_to_keep].copy()
-            df_clean.columns = dedup_col_names
-            df_clean = df_clean[df_clean['CONCEPTO'] != ""]
+            # Eliminamos las columnas de porcentajes y las vacías
+            cols_to_drop = [c for c in df.columns if '%' in c or 'UNNAMED' in c]
+            df_clean = df.drop(columns=cols_to_drop)
             
+            # Filtramos filas vacías basándonos en CONCEPTO
+            if 'CONCEPTO' in df_clean.columns:
+                df_clean = df_clean[df_clean['CONCEPTO'] != "0"]
+                df_clean = df_clean[df_clean['CONCEPTO'] != ""]
+            
+            # Convertimos a números
             for col in df_clean.columns:
                 if col not in ["RUBRO", "CONCEPTO"]:
                     s = df_clean[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
