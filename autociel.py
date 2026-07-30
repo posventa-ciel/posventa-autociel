@@ -1461,13 +1461,140 @@ try:
             fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Productividad'], name='Productividad', mode='lines+markers', line=dict(color='#17a2b8', dash='dot')))
             st.plotly_chart(fig_efi.update_layout(title="Eficiencia y Productividad", yaxis_tickformat='.0%', height=300), use_container_width=True)
 
-            c_h1, c_h2 = st.columns(2)
-            col_cpus = find_col(h_ser, ["CPUS"], exclude_keywords=["OBJ"])
-            if col_cpus:
-                c_h1.plotly_chart(px.bar(h_ser, x="NombreMes", y=col_cpus, title="Entradas (CPUS)", color_discrete_sequence=['#00235d']), use_container_width=True)
-                h_ser_tal = pd.merge(h_ser, h_tal, on="Mes")
-                h_ser_tal['Ticket Hs'] = h_ser_tal.apply(lambda row: row['Hs Vendidas'] / row[col_cpus] if row[col_cpus] > 0 else 0, axis=1)
-                c_h2.plotly_chart(px.bar(h_ser_tal, x="NombreMes_x", y="Ticket Hs", title="Ticket Promedio (Hs)", color_discrete_sequence=['#6c757d']), use_container_width=True)
+            # --- NUEVA SECCIÓN: CPUS, TUS y TICKET PROMEDIO (Con YoY y MoM) ---
+            st.markdown("---")
+            st.markdown("#### 🚘 Evolución de Entradas y Eficiencia (MoM y YoY)")
+            
+            # Obtener columnas relevantes
+            col_cpus = find_col(data['SERVICIOS'], ["CPUS"], exclude_keywords=["OBJ"])
+            col_tus_others = find_col(data['SERVICIOS'], ["OTROS", "CARGOS"], exclude_keywords=["OBJ"])
+            cols_hs_fact = [c for c in [find_col(data['TALLER'], ["FACT", k]) for k in ["CC", "CG", "CI"]] if c]
+
+            # Preparar datos del año actual y anterior directamente desde 'data'
+            df_curr_ser = data['SERVICIOS'][data['SERVICIOS']['Año'] == año_sel].groupby('Mes').last().reset_index()
+            df_curr_tal = data['TALLER'][data['TALLER']['Año'] == año_sel].groupby('Mes').last().reset_index()
+            
+            df_prev_ser = data['SERVICIOS'][data['SERVICIOS']['Año'] == año_sel - 1].groupby('Mes').last().reset_index()
+            df_prev_tal = data['TALLER'][data['TALLER']['Año'] == año_sel - 1].groupby('Mes').last().reset_index()
+
+            # Función para extraer y cruzar métricas de CPUS, TUS y Ticket de los dataframes
+            def extract_metrics(df_s, df_t):
+                if df_s.empty or df_t.empty: return pd.DataFrame()
+                df_merged = pd.merge(df_s, df_t, on="Mes", how="outer")
+                
+                cpus = pd.to_numeric(df_merged[col_cpus], errors='coerce').fillna(0) if col_cpus in df_merged.columns else 0
+                otros = pd.to_numeric(df_merged[col_tus_others], errors='coerce').fillna(0) if col_tus_others in df_merged.columns else 0
+                
+                df_merged['CPUS'] = cpus
+                df_merged['TUS'] = cpus + otros
+                
+                df_merged['Hs Vendidas'] = 0
+                for c in cols_hs_fact:
+                    if c in df_merged.columns:
+                        df_merged['Hs Vendidas'] += pd.to_numeric(df_merged[c], errors='coerce').fillna(0)
+                        
+                df_merged['Ticket Hs'] = df_merged.apply(lambda row: row['Hs Vendidas'] / row['CPUS'] if row['CPUS'] > 0 else 0, axis=1)
+                
+                return df_merged[['Mes', 'CPUS', 'TUS', 'Ticket Hs']]
+
+            metrics_curr = extract_metrics(df_curr_ser, df_curr_tal)
+            metrics_prev = extract_metrics(df_prev_ser, df_prev_tal)
+
+            if not metrics_curr.empty:
+                metrics_curr['NombreMes'] = metrics_curr['Mes'].map(meses_nom)
+                
+                # Armar dataframe consolidado para gráficos
+                if not metrics_prev.empty:
+                    df_plot = pd.merge(metrics_curr, metrics_prev, on="Mes", suffixes=(f" {año_sel}", f" {año_sel-1}"), how="left")
+                else:
+                    df_plot = metrics_curr.copy()
+                    df_plot[f'CPUS {año_sel-1}'] = 0; df_plot[f'TUS {año_sel-1}'] = 0; df_plot[f'Ticket Hs {año_sel-1}'] = 0
+                    df_plot.rename(columns={'CPUS': f'CPUS {año_sel}', 'TUS': f'TUS {año_sel}', 'Ticket Hs': f'Ticket Hs {año_sel}'}, inplace=True)
+                
+                # Lógica de Mes Cerrado
+                idx_metric = -2 if prog_t < 1.0 else -1
+                
+                if len(metrics_curr) >= abs(idx_metric):
+                    mes_cerrado = int(metrics_curr['Mes'].iloc[idx_metric])
+                    nom_mes_cerrado = metrics_curr['NombreMes'].iloc[idx_metric]
+                    
+                    val_cpus_curr = metrics_curr['CPUS'].iloc[idx_metric]
+                    val_tus_curr = metrics_curr['TUS'].iloc[idx_metric]
+                    val_tkt_curr = metrics_curr['Ticket Hs'].iloc[idx_metric]
+                    
+                    val_cpus_mom, val_tus_mom, val_tkt_mom = 0, 0, 0
+                    if len(metrics_curr) >= abs(idx_metric) + 1:
+                        val_cpus_mom = metrics_curr['CPUS'].iloc[idx_metric - 1]
+                        val_tus_mom = metrics_curr['TUS'].iloc[idx_metric - 1]
+                        val_tkt_mom = metrics_curr['Ticket Hs'].iloc[idx_metric - 1]
+                        
+                    val_cpus_yoy, val_tus_yoy, val_tkt_yoy = 0, 0, 0
+                    if not metrics_prev.empty:
+                        row_prev = metrics_prev[metrics_prev['Mes'] == mes_cerrado]
+                        if not row_prev.empty:
+                            val_cpus_yoy = row_prev['CPUS'].iloc[0]
+                            val_tus_yoy = row_prev['TUS'].iloc[0]
+                            val_tkt_yoy = row_prev['Ticket Hs'].iloc[0]
+
+                    def calc_var(act, ant): return (act / ant - 1) * 100 if ant > 0 else 0
+                    
+                    var_cpus_mom = calc_var(val_cpus_curr, val_cpus_mom)
+                    var_cpus_yoy = calc_var(val_cpus_curr, val_cpus_yoy)
+                    var_tus_mom = calc_var(val_tus_curr, val_tus_mom)
+                    var_tus_yoy = calc_var(val_tus_curr, val_tus_yoy)
+                    var_tkt_mom = calc_var(val_tkt_curr, val_tkt_mom)
+                    var_tkt_yoy = calc_var(val_tkt_curr, val_tkt_yoy)
+
+                    def html_vars(val, mom, yoy, is_tkt=False):
+                        fmt = "{:.2f} hs" if is_tkt else "{:,.0f}"
+                        color_mom = "#28a745" if mom >= 0 else "#dc3545"
+                        color_yoy = "#28a745" if yoy >= 0 else "#dc3545"
+                        icon_mom = "▲" if mom >= 0 else "▼"
+                        icon_yoy = "▲" if yoy >= 0 else "▼"
+                        
+                        return f"""
+                        <div style="background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; text-align: center; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <div style="font-size: 1.8rem; font-weight: bold; color: #00235d; margin-bottom: 8px;">{fmt.format(val)}</div>
+                            <div style="font-size: 0.85rem; color: #666; margin-bottom: 4px; display:flex; justify-content:space-between; padding:0 10px;">
+                                <span>vs Mes Ant:</span> <span style="color: {color_mom}; font-weight: bold;">{icon_mom} {mom:+.1f}%</span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: #666; display:flex; justify-content:space-between; padding:0 10px;">
+                                <span>vs {año_sel-1}:</span> <span style="color: {color_yoy}; font-weight: bold;">{icon_yoy} {yoy:+.1f}%</span>
+                            </div>
+                        </div>
+                        """
+                        
+                    st.markdown(f"**Análisis de Variaciones a Mes Cerrado ({nom_mes_cerrado} {año_sel})**")
+                    col_met_1, col_met_2, col_met_3 = st.columns(3)
+                    with col_met_1: st.markdown(f"<div style='text-align: center; font-size:0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;'>CPUS (Entradas)</div>" + html_vars(val_cpus_curr, var_cpus_mom, var_cpus_yoy), unsafe_allow_html=True)
+                    with col_met_2: st.markdown(f"<div style='text-align: center; font-size:0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;'>TUS (Total Servicios)</div>" + html_vars(val_tus_curr, var_tus_mom, var_tus_yoy), unsafe_allow_html=True)
+                    with col_met_3: st.markdown(f"<div style='text-align: center; font-size:0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;'>Ticket Promedio (Hs)</div>" + html_vars(val_tkt_curr, var_tkt_mom, var_tkt_yoy, True), unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                # --- Gráficos Comparativos YoY ---
+                c_graf_1, c_graf_2, c_graf_3 = st.columns(3)
+                
+                with c_graf_1:
+                    fig_c = go.Figure()
+                    fig_c.add_trace(go.Bar(x=df_plot['NombreMes'], y=df_plot[f'CPUS {año_sel-1}'], name=f'{año_sel-1}', marker_color='#a5b1c2'))
+                    fig_c.add_trace(go.Bar(x=df_plot['NombreMes'], y=df_plot[f'CPUS {año_sel}'], name=f'{año_sel}', marker_color='#00235d'))
+                    fig_c.update_layout(barmode='group', title="Evolución CPUS", height=320, legend=dict(orientation="h", y=-0.2), margin=dict(t=40, b=0, l=0, r=0))
+                    st.plotly_chart(fig_c, use_container_width=True)
+
+                with c_graf_2:
+                    fig_t = go.Figure()
+                    fig_t.add_trace(go.Bar(x=df_plot['NombreMes'], y=df_plot[f'TUS {año_sel-1}'], name=f'{año_sel-1}', marker_color='#a5b1c2'))
+                    fig_t.add_trace(go.Bar(x=df_plot['NombreMes'], y=df_plot[f'TUS {año_sel}'], name=f'{año_sel}', marker_color='#00A8E8'))
+                    fig_t.update_layout(barmode='group', title="Evolución TUS", height=320, legend=dict(orientation="h", y=-0.2), margin=dict(t=40, b=0, l=0, r=0))
+                    st.plotly_chart(fig_t, use_container_width=True)
+                    
+                with c_graf_3:
+                    fig_tk = go.Figure()
+                    fig_tk.add_trace(go.Bar(x=df_plot['NombreMes'], y=df_plot[f'Ticket Hs {año_sel-1}'], name=f'{año_sel-1}', marker_color='#a5b1c2'))
+                    fig_tk.add_trace(go.Bar(x=df_plot['NombreMes'], y=df_plot[f'Ticket Hs {año_sel}'], name=f'{año_sel}', marker_color='#28a745'))
+                    fig_tk.update_layout(barmode='group', title="Evolución Ticket Promedio", height=320, legend=dict(orientation="h", y=-0.2), margin=dict(t=40, b=0, l=0, r=0))
+                    st.plotly_chart(fig_tk, use_container_width=True)
 
             st.markdown("#### 📦 Repuestos")
             h_rep['CostoTotalMes'] = 0
