@@ -1520,25 +1520,86 @@ try:
                 st.plotly_chart(go.Figure(go.Scatter(x=h_rep['NombreMes'], y=h_rep['MesesStock'], name='Meses Stock', mode='lines+markers', line=dict(color='#6610f2', width=3))).update_layout(title="Evolución Meses de Stock (Stock / Costo Prom. 3 meses)", height=300), use_container_width=True)
             
             c_hist_j, c_hist_s = st.columns(2)
+            
+            # --- Mapeo de columnas para Jujuy ---
             col_pp_j = find_col(h_cyp_j, ['PANOS'], exclude_keywords=['TER', 'OBJ', 'PRE']) or find_col(h_cyp_j, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
             col_pt_j = find_col(h_cyp_j, ['PANOS', 'TER']) or find_col(h_cyp_j, ['PAÑOS', 'TER'])
             h_cyp_j['Paños Propios'] = h_cyp_j[col_pp_j] if col_pp_j else 0
             h_cyp_j['Paños Terceros'] = h_cyp_j[col_pt_j] if col_pt_j else 0
+            
+            # --- Mapeo de columnas para Salta ---
             col_pp_s = find_col(h_cyp_s, ['PANOS'], exclude_keywords=['TER', 'OBJ']) or find_col(h_cyp_s, ['PAÑOS'], exclude_keywords=['TER', 'OBJ'])
             col_pt_s = find_col(h_cyp_s, ['PANOS', 'TER']) or find_col(h_cyp_s, ['PAÑOS', 'TER'])
             h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
             h_cyp_s['Paños Terceros'] = h_cyp_s[col_pt_s] if col_pt_s else 0
             
+            # --- NUEVO: Cálculo de Totales y Variación Porcentual ---
+            h_cyp_j['Total Paños'] = h_cyp_j['Paños Propios'] + h_cyp_j['Paños Terceros']
+            h_cyp_j['Var %'] = h_cyp_j['Total Paños'].pct_change()
+            h_cyp_j.replace([np.inf, -np.inf], 0, inplace=True) # Evitar errores de división por cero
+            
+            h_cyp_s['Total Paños'] = h_cyp_s['Paños Propios'] + h_cyp_s['Paños Terceros']
+            h_cyp_s['Var %'] = h_cyp_s['Total Paños'].pct_change()
+            h_cyp_s.replace([np.inf, -np.inf], 0, inplace=True)
+
+            # Función para obtener la variación del último mes
+            def get_last_var(df_h):
+                if len(df_h) >= 2:
+                    return df_h['Var %'].iloc[-1]
+                return 0.0
+
+            var_jujuy = get_last_var(h_cyp_j)
+            var_salta = get_last_var(h_cyp_s)
+            
+            # --- Renderizado JUJUY ---
             with c_hist_j:
+                st.metric(
+                    label="Variación Último Mes (Jujuy)", 
+                    value=f"{h_cyp_j['Total Paños'].iloc[-1]:.0f} Paños", 
+                    delta=f"{var_jujuy * 100:.1f}% vs Mes Anterior"
+                )
+                
                 fig_pj = go.Figure()
                 fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Propios'], name='Propios', marker_color='#00235d'))
                 fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
-                st.plotly_chart(fig_pj.update_layout(barmode='stack', title="Evolución Jujuy (Paños)", height=300), use_container_width=True)
+                
+                # Línea de tendencia
+                fig_pj.add_trace(go.Scatter(
+                    x=h_cyp_j['NombreMes'], 
+                    y=h_cyp_j['Total Paños'], 
+                    name='Tendencia Total', 
+                    mode='lines+markers+text',
+                    text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_j['Var %']],
+                    textposition="top center",
+                    line=dict(color='#ffc107', width=3)
+                ))
+                
+                st.plotly_chart(fig_pj.update_layout(barmode='stack', title="Evolución Jujuy (Paños)", height=350), use_container_width=True)
+            
+            # --- Renderizado SALTA ---
             with c_hist_s:
+                st.metric(
+                    label="Variación Último Mes (Salta)", 
+                    value=f"{h_cyp_s['Total Paños'].iloc[-1]:.0f} Paños", 
+                    delta=f"{var_salta * 100:.1f}% vs Mes Anterior"
+                )
+                
                 fig_ps = go.Figure()
                 fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Propios'], name='Propios', marker_color='#00235d'))
                 fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
-                st.plotly_chart(fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=300), use_container_width=True)
+                
+                # Línea de tendencia
+                fig_ps.add_trace(go.Scatter(
+                    x=h_cyp_s['NombreMes'], 
+                    y=h_cyp_s['Total Paños'], 
+                    name='Tendencia Total', 
+                    mode='lines+markers+text',
+                    text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var %']],
+                    textposition="top center",
+                    line=dict(color='#ffc107', width=3)
+                ))
+                
+                st.plotly_chart(fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=350), use_container_width=True)
 
     else:
         st.warning("No se pudieron cargar los datos.")
