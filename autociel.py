@@ -1533,37 +1533,44 @@ try:
             h_cyp_s['Paños Propios'] = h_cyp_s[col_pp_s] if col_pp_s else 0
             h_cyp_s['Paños Terceros'] = h_cyp_s[col_pt_s] if col_pt_s else 0
             
-            # --- NUEVO: Cálculo de Totales y Variación Porcentual ---
+            # --- Cálculo de Totales y Variación Porcentual ---
             h_cyp_j['Total Paños'] = h_cyp_j['Paños Propios'] + h_cyp_j['Paños Terceros']
             h_cyp_j['Var %'] = h_cyp_j['Total Paños'].pct_change()
-            h_cyp_j.replace([np.inf, -np.inf], 0, inplace=True) # Evitar errores de división por cero
+            h_cyp_j.replace([np.inf, -np.inf], 0, inplace=True)
             
             h_cyp_s['Total Paños'] = h_cyp_s['Paños Propios'] + h_cyp_s['Paños Terceros']
             h_cyp_s['Var %'] = h_cyp_s['Total Paños'].pct_change()
             h_cyp_s.replace([np.inf, -np.inf], 0, inplace=True)
 
-            # Función para obtener la variación del último mes
-            def get_last_var(df_h):
-                if len(df_h) >= 2:
-                    return df_h['Var %'].iloc[-1]
-                return 0.0
+            # --- Lógica de Mes Cerrado para la Métrica ---
+            # Si el mes no terminó (prog_t < 1.0), miramos el índice -2. Si ya cerró, miramos el -1.
+            idx_metric = -2 if prog_t < 1.0 else -1
 
-            var_jujuy = get_last_var(h_cyp_j)
-            var_salta = get_last_var(h_cyp_s)
+            def get_metric_data(df_h):
+                if len(df_h) >= abs(idx_metric):
+                    val = df_h['Total Paños'].iloc[idx_metric]
+                    var = df_h['Var %'].iloc[idx_metric]
+                    mes_nombre = df_h['NombreMes'].iloc[idx_metric]
+                    return val, var, mes_nombre
+                elif len(df_h) == 1:
+                    return df_h['Total Paños'].iloc[0], 0.0, df_h['NombreMes'].iloc[0]
+                return 0.0, 0.0, "N/A"
+
+            val_j, var_j, mes_j = get_metric_data(h_cyp_j)
+            val_s, var_s, mes_s = get_metric_data(h_cyp_s)
             
             # --- Renderizado JUJUY ---
             with c_hist_j:
                 st.metric(
-                    label="Variación Último Mes (Jujuy)", 
-                    value=f"{h_cyp_j['Total Paños'].iloc[-1]:.0f} Paños", 
-                    delta=f"{var_jujuy * 100:.1f}% vs Mes Anterior"
+                    label=f"Var. a Mes Cerrado ({mes_j})", 
+                    value=f"{val_j:.0f} Paños", 
+                    delta=f"{var_j * 100:.1f}% vs Anterior"
                 )
                 
                 fig_pj = go.Figure()
                 fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Propios'], name='Propios', marker_color='#00235d'))
                 fig_pj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
                 
-                # Línea de tendencia
                 fig_pj.add_trace(go.Scatter(
                     x=h_cyp_j['NombreMes'], 
                     y=h_cyp_j['Total Paños'], 
@@ -1571,24 +1578,33 @@ try:
                     mode='lines+markers+text',
                     text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_j['Var %']],
                     textposition="top center",
+                    textfont=dict(color="#444444", size=11), # Oscurecí apenas la fuente para que se lea mejor
                     line=dict(color='#ffc107', width=3)
                 ))
                 
-                st.plotly_chart(fig_pj.update_layout(barmode='stack', title="Evolución Jujuy (Paños)", height=350), use_container_width=True)
+                # Ajuste de altura dinámica (20% por encima del valor máximo)
+                max_y_j = h_cyp_j['Total Paños'].max() if not h_cyp_j.empty else 100
+                
+                fig_pj.update_layout(
+                    barmode='stack', 
+                    title="Evolución Jujuy (Paños)", 
+                    height=350,
+                    yaxis=dict(range=[0, max_y_j * 1.2])
+                )
+                st.plotly_chart(fig_pj, use_container_width=True)
             
             # --- Renderizado SALTA ---
             with c_hist_s:
                 st.metric(
-                    label="Variación Último Mes (Salta)", 
-                    value=f"{h_cyp_s['Total Paños'].iloc[-1]:.0f} Paños", 
-                    delta=f"{var_salta * 100:.1f}% vs Mes Anterior"
+                    label=f"Var. a Mes Cerrado ({mes_s})", 
+                    value=f"{val_s:.0f} Paños", 
+                    delta=f"{var_s * 100:.1f}% vs Anterior"
                 )
                 
                 fig_ps = go.Figure()
                 fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Propios'], name='Propios', marker_color='#00235d'))
                 fig_ps.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Paños Terceros'], name='Terceros', marker_color='#17a2b8'))
                 
-                # Línea de tendencia
                 fig_ps.add_trace(go.Scatter(
                     x=h_cyp_s['NombreMes'], 
                     y=h_cyp_s['Total Paños'], 
@@ -1596,10 +1612,20 @@ try:
                     mode='lines+markers+text',
                     text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var %']],
                     textposition="top center",
+                    textfont=dict(color="#444444", size=11),
                     line=dict(color='#ffc107', width=3)
                 ))
                 
-                st.plotly_chart(fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=350), use_container_width=True)
+                # Ajuste de altura dinámica (20% por encima del valor máximo)
+                max_y_s = h_cyp_s['Total Paños'].max() if not h_cyp_s.empty else 100
+                
+                fig_ps.update_layout(
+                    barmode='stack', 
+                    title="Evolución Salta (Paños)", 
+                    height=350,
+                    yaxis=dict(range=[0, max_y_s * 1.2])
+                )
+                st.plotly_chart(fig_ps, use_container_width=True)
 
     else:
         st.warning("No se pudieron cargar los datos.")
