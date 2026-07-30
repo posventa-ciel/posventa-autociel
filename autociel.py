@@ -491,6 +491,7 @@ try:
         if selected_tab == "🏠 Objetivos":
             cols = st.columns(4)
             real_rep = sum([r_r.get(find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]), 0) for c in canales_repuestos])
+            
             def get_cyp_total(row, df_nom):
                 c_mo = find_col(data[df_nom], ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
                 c_mo_t = find_col(data[df_nom], ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(data[df_nom], ['MO', 'TER'], exclude_keywords=['OBJ'])
@@ -501,14 +502,52 @@ try:
                 rep = float(row.get(c_rep, 0)) if c_rep else 0
                 
                 return mo_p + mo_t + rep
+
+            # 1. Extraemos y aseguramos que los objetivos sean números (float)
+            obj_mo = float(s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1))
+            obj_rep = float(r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1))
+            
+            real_cj = get_cyp_total(cj_r, 'CyP JUJUY')
+            obj_cj = float(cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1))
+            
+            real_cs = get_cyp_total(cs_r, 'CyP SALTA')
+            obj_cs = float(cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
+
+            # 2. Imprimimos las 4 tarjetas originales arriba
             metas = [
-                ("M.O. Servicios", real_mo_total, s_r.get(find_col(data['SERVICIOS'], ["OBJ", "MO"]), 1)),
-                ("Repuestos", real_rep, r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)),
-                ("CyP Jujuy", get_cyp_total(cj_r, 'CyP JUJUY'), cj_r.get(find_col(data['CyP JUJUY'], ["OBJ", "FACT"]), 1)),
-                ("CyP Salta", get_cyp_total(cs_r, 'CyP SALTA'), cs_r.get(find_col(data['CyP SALTA'], ["OBJ", "FACT"]), 1))
+                ("M.O. Servicios", real_mo_total, obj_mo),
+                ("Repuestos", real_rep, obj_rep),
+                ("CyP Jujuy", real_cj, obj_cj),
+                ("CyP Salta", real_cs, obj_cs)
             ]
             for i, (tit, real, obj) in enumerate(metas):
                 with cols[i]: st.markdown(render_kpi_card(tit, real, obj, True), unsafe_allow_html=True)
+
+            # --- NUEVA SECCIÓN: CONSOLIDADOS ---
+            st.markdown("---")
+            st.markdown("### 🎯 Resumen Consolidado")
+            
+            # 3. Calculamos los Totales Autociel y Globales sumando las variables de arriba
+            real_autociel = real_mo_total + real_rep + real_cj
+            obj_autociel = obj_mo + obj_rep + obj_cj
+            
+            real_total_general = real_autociel + real_cs
+            obj_total_general = obj_autociel + obj_cs
+            
+            # 4. Imprimimos las dos tarjetas grandes abajo
+            col_tot1, col_tot2 = st.columns(2)
+            
+            with col_tot1:
+                st.markdown(
+                    render_kpi_card("Total Autociel (MO + Repuestos + CyP Jujuy)", real_autociel, obj_autociel, True), 
+                    unsafe_allow_html=True
+                )
+                
+            with col_tot2:
+                st.markdown(
+                    render_kpi_card("Total General (Autociel + CyP Salta)", real_total_general, obj_total_general, True), 
+                    unsafe_allow_html=True
+                )
 
         elif selected_tab == "🛠️ Servicios y Taller":
             col_main, col_breakdown = st.columns([1, 2])
