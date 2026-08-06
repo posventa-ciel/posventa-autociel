@@ -1594,7 +1594,6 @@ try:
                 st.markdown("---")
                 st.markdown("#### 📊 Análisis de Ventas por Canal")
                 
-                # --- NUEVA VISUALIZACIÓN POR CANAL ---
                 cols_canales = [c for c in canales_repuestos if c in df_fact_hist.columns]
                 if cols_canales and len(df_fact_hist) > 0:
                     df_can_melt = df_fact_hist.melt(id_vars=['Mes', 'Mes_Num'], value_vars=cols_canales, var_name='Canal', value_name='Venta')
@@ -1624,7 +1623,7 @@ try:
                     col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
                     if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
                 
-                col_compra_hist = find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"]) or find_col(h_rep, ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"]) or find_col(h_rep, ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+                col_compra_hist = find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA", "PR"]) or find_col(h_rep, ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"]) or find_col(h_rep, ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
                 h_rep['CompraTotalMes'] = h_rep[col_compra_hist] if col_compra_hist else 0
                 h_rep['VariacionStock'] = h_rep['CompraTotalMes'] - h_rep['CostoTotalMes']
                 
@@ -1683,6 +1682,61 @@ try:
                     c_proy3.metric("Ritmo de Variación (Prom 3M)", f"+${promedio_variacion:,.0f} / mes", "Stock en Aumento", delta_color="inverse")
                     st.error("❌ El promedio de los últimos 3 meses indica que el stock está AUMENTANDO.")
 
+                # --- NUEVA SECCIÓN: CUMPLIMIENTO STELLANTIS ---
+                st.markdown("---")
+                st.markdown("#### 🎯 Cumplimiento de Compra Stellantis (Semestral)")
+                
+                c_obj_compra = find_col(h_rep, ["OBJETIVO", "COMPRA"])
+                c_compra_pr = find_col(h_rep, ["COMPRA", "PR"])
+                
+                if c_obj_compra and c_compra_pr:
+                    h_rep[c_obj_compra] = pd.to_numeric(h_rep[c_obj_compra], errors='coerce').fillna(0)
+                    h_rep[c_compra_pr] = pd.to_numeric(h_rep[c_compra_pr], errors='coerce').fillna(0)
+                    
+                    # Separar por semestres
+                    s1_df = h_rep[h_rep['Mes'] <= 6]
+                    s2_df = h_rep[h_rep['Mes'] >= 7]
+                    
+                    obj_s1 = s1_df[c_obj_compra].sum()
+                    compra_s1 = s1_df[c_compra_pr].sum()
+                    pct_s1 = (compra_s1 / obj_s1 * 100) if obj_s1 > 0 else 0
+                    
+                    obj_s2 = s2_df[c_obj_compra].sum()
+                    compra_s2 = s2_df[c_compra_pr].sum()
+                    pct_s2 = (compra_s2 / obj_s2 * 100) if obj_s2 > 0 else 0
+                    
+                    # Lógica de Cuartiles según imagen proporcionada
+                    def get_quartile(pct):
+                        if pct >= 98.14: return "🏆 Q1", "#28a745"
+                        elif pct >= 70.08: return "✅ Q2", "#17a2b8"
+                        elif pct >= 43.16: return "⚠️ Q3", "#ffc107"
+                        else: return "❌ Q4", "#dc3545"
+                        
+                    q_s1, color_s1 = get_quartile(pct_s1)
+                    q_s2, color_s2 = get_quartile(pct_s2)
+                    
+                    c_q1, c_q2 = st.columns(2)
+                    
+                    with c_q1:
+                        st.markdown("**Semestre 1 (Cerrado)**")
+                        st.metric("Compras vs Objetivo S1", f"${compra_s1:,.0f} / ${obj_s1:,.0f}", f"{pct_s1:.1f}% Cumplido")
+                        st.markdown(f"<div style='background-color:{color_s1}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-top:10px;'>Estimación Cuartil: {q_s1}</div>", unsafe_allow_html=True)
+                        
+                    with c_q2:
+                        st.markdown("**Semestre 2 (En curso)**")
+                        st.metric("Compras vs Objetivo S2", f"${compra_s2:,.0f} / ${obj_s2:,.0f}", f"{pct_s2:.1f}% Cumplido")
+                        st.markdown(f"<div style='background-color:{color_s2}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-top:10px;'>Estimación Cuartil (Parcial): {q_s2}</div>", unsafe_allow_html=True)
+                        
+                    with st.expander("Ver Referencia de Cuartiles (Trimestre 1)"):
+                        st.markdown("""
+                        * **Q1:** $\ge 98.14\%$
+                        * **Q2:** $70.08\%$ a $98.13\%$
+                        * **Q3:** $43.16\%$ a $70.07\%$
+                        * **Q4:** $< 43.16\%$
+                        """)
+                else:
+                    st.info("💡 Asegúrate de incluir las columnas 'Objetivo Compra' y 'Compra PR' en el archivo Excel de Repuestos para ver la proyección del cuartil.")
+                    
             # ==========================================
             # PESTAÑA 4: CHAPA
             # ==========================================
