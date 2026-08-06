@@ -1618,13 +1618,17 @@ try:
                 st.markdown("---")
                 st.markdown("#### 📉 Flujo y Salud del Stock")
                 
+                # [CORRECCIÓN CENTRAL] Definimos las columnas de forma estricta para evitar duplicaciones
+                c_obj_compra = find_col(h_rep, ["OBJ", "COMPRA"]) or find_col(h_rep, ["OBJETIVO", "COMPRA"])
+                c_compra_pr = find_col(h_rep, ["COMPRA", "PR"], exclude_keywords=["OBJ"]) or find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+                
                 h_rep['CostoTotalMes'] = 0
                 for c in canales_repuestos:
                     col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
                     if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
                 
-                col_compra_hist = find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA", "PR"]) or find_col(h_rep, ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"]) or find_col(h_rep, ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
-                h_rep['CompraTotalMes'] = h_rep[col_compra_hist] if col_compra_hist else 0
+                # Alimentamos el gráfico de flujo directamente con la columna real detectada arriba
+                h_rep['CompraTotalMes'] = h_rep[c_compra_pr] if c_compra_pr else 0
                 h_rep['VariacionStock'] = h_rep['CompraTotalMes'] - h_rep['CostoTotalMes']
                 
                 c_stk1, c_stk2 = st.columns(2)
@@ -1657,7 +1661,10 @@ try:
 
                 ultimos_3 = h_rep.tail(3)
                 promedio_variacion = ultimos_3['VariacionStock'].mean()
-                val_stock_actual = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+                
+                c_val_stock_actual = find_col(data['REPUESTOS'], ["VALOR", "STOCK"])
+                val_stock_actual = float(r_r.get(c_val_stock_actual, 0)) if c_val_stock_actual else 0
+                
                 costo_promedio_3m = ultimos_3['CostoTotalMes'].mean()
                 stock_objetivo_valor = costo_promedio_3m * 3.0 
                 
@@ -1666,7 +1673,7 @@ try:
                 c_proy2.metric("Stock Ideal Objetivo (3 Meses)", f"${stock_objetivo_valor:,.0f}")
                 
                 if promedio_variacion < 0:
-                    meses_para_objetivo = (val_stock_actual - stock_objetivo_valor) / abs(promedio_variacion)
+                    meses_para_objetivo = (val_stock_actual - stock_objetivo_valor) / abs(promedio_variacion) if promedio_variacion != 0 else 0
                     if meses_para_objetivo <= 0:
                         c_proy3.metric("Tiempo Estimado al Objetivo", "¡Meta Alcanzada!", "Stock Sano")
                     else:
@@ -1686,9 +1693,6 @@ try:
                 st.markdown("---")
                 st.markdown("#### 🎯 Cumplimiento de Compra Stellantis (Semestral)")
                 
-                c_obj_compra = find_col(h_rep, ["OBJETIVO", "COMPRA"])
-                c_compra_pr = find_col(h_rep, ["COMPRA", "PR"])
-                
                 if c_obj_compra and c_compra_pr:
                     h_rep[c_obj_compra] = pd.to_numeric(h_rep[c_obj_compra], errors='coerce').fillna(0)
                     h_rep[c_compra_pr] = pd.to_numeric(h_rep[c_compra_pr], errors='coerce').fillna(0)
@@ -1705,7 +1709,7 @@ try:
                     compra_s2 = s2_df[c_compra_pr].sum()
                     pct_s2 = (compra_s2 / obj_s2 * 100) if obj_s2 > 0 else 0
                     
-                    # Lógica de Cuartiles según imagen proporcionada
+                    # Lógica de Cuartiles
                     def get_quartile(pct):
                         if pct >= 98.14: return "🏆 Q1", "#28a745"
                         elif pct >= 70.08: return "✅ Q2", "#17a2b8"
@@ -1729,10 +1733,10 @@ try:
                         
                     with st.expander("Ver Referencia de Cuartiles (Trimestre 1)"):
                         st.markdown("""
-                        * **Q1:** $\ge 98.14\%$
-                        * **Q2:** $70.08\%$ a $98.13\%$
-                        * **Q3:** $43.16\%$ a $70.07\%$
-                        * **Q4:** $< 43.16\%$
+                        * **Q1:** Mayor o igual a **98.14%**
+                        * **Q2:** **70.08%** a **98.13%**
+                        * **Q3:** **43.16%** a **70.07%**
+                        * **Q4:** Menor a **43.16%**
                         """)
                 else:
                     st.info("💡 Asegúrate de incluir las columnas 'Objetivo Compra' y 'Compra PR' en el archivo Excel de Repuestos para ver la proyección del cuartil.")
