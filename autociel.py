@@ -1687,6 +1687,79 @@ try:
             # PESTAÑA 4: CHAPA
             # ==========================================
             with tab_cyp:
+                st.markdown("#### 💰 Evolución Facturación: Chapa y Pintura")
+                
+                # 1. Buscar columnas de facturación para Jujuy
+                c_mo_j = find_col(h_cyp_j, ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+                c_mo_t_j = find_col(h_cyp_j, ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(h_cyp_j, ['MO', 'TER'], exclude_keywords=['OBJ'])
+                
+                # 2. Buscar columnas de facturación para Salta
+                c_mo_s = find_col(h_cyp_s, ['MO'], exclude_keywords=['TER', 'OBJ', 'PRE'])
+                c_mo_t_s = find_col(h_cyp_s, ['MO', 'TERCERO'], exclude_keywords=['OBJ']) or find_col(h_cyp_s, ['MO', 'TER'], exclude_keywords=['OBJ'])
+                c_rep_s = find_col(h_cyp_s, ['FACT', 'REP'], exclude_keywords=['OBJ', 'COSTO']) or find_col(h_cyp_s, ['REP'], exclude_keywords=['OBJ', 'COSTO'])
+                
+                def safe_col_sum(df, cols):
+                    res = pd.Series(0, index=df.index)
+                    for c in cols:
+                        if c: res += pd.to_numeric(df[c], errors='coerce').fillna(0)
+                    return res
+
+                # 3. Calcular totales y variaciones Jujuy
+                h_cyp_j['MO Total'] = safe_col_sum(h_cyp_j, [c_mo_j, c_mo_t_j])
+                h_cyp_j['Fact Total'] = h_cyp_j['MO Total']
+                h_cyp_j['Var Fact'] = h_cyp_j['Fact Total'].pct_change().replace([np.inf, -np.inf], 0)
+
+                # 4. Calcular totales y variaciones Salta
+                h_cyp_s['MO Total'] = safe_col_sum(h_cyp_s, [c_mo_s, c_mo_t_s])
+                h_cyp_s['Repuestos'] = safe_col_sum(h_cyp_s, [c_rep_s])
+                h_cyp_s['Fact Total'] = h_cyp_s['MO Total'] + h_cyp_s['Repuestos']
+                h_cyp_s['Var Fact'] = h_cyp_s['Fact Total'].pct_change().replace([np.inf, -np.inf], 0)
+
+                c_fact_j, c_fact_s = st.columns(2)
+                
+                # 5. Gráfico Jujuy (Solo Mano de Obra)
+                with c_fact_j:
+                    fig_fj = go.Figure()
+                    fig_fj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['MO Total'], name='Mano de Obra', marker_color='#00235d'))
+                    
+                    # Línea invisible para colocar los porcentajes arriba de la barra
+                    fig_fj.add_trace(go.Scatter(
+                        x=h_cyp_j['NombreMes'], y=h_cyp_j['Fact Total'], mode='text',
+                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_j['Var Fact']],
+                        textposition='top center', textfont=dict(color="#444444", size=11), showlegend=False
+                    ))
+                    
+                    max_y_fj = h_cyp_j['Fact Total'].max() * 1.25 if not h_cyp_j.empty else 100
+                    fig_fj.update_layout(
+                        barmode='stack', title="Facturación Jujuy", height=320, 
+                        margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fj]), 
+                        legend=dict(orientation="h", y=-0.2)
+                    )
+                    st.plotly_chart(fig_fj, use_container_width=True)
+
+                # 6. Gráfico Salta (Mano de Obra + Repuestos apilados)
+                with c_fact_s:
+                    fig_fs = go.Figure()
+                    fig_fs.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['MO Total'], name='Mano de Obra', marker_color='#00235d'))
+                    fig_fs.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Repuestos'], name='Repuestos', marker_color='#28a745'))
+                    
+                    # Línea invisible para colocar los porcentajes arriba de la barra total
+                    fig_fs.add_trace(go.Scatter(
+                        x=h_cyp_s['NombreMes'], y=h_cyp_s['Fact Total'], mode='text',
+                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var Fact']],
+                        textposition='top center', textfont=dict(color="#444444", size=11), showlegend=False
+                    ))
+                    
+                    max_y_fs = h_cyp_s['Fact Total'].max() * 1.25 if not h_cyp_s.empty else 100
+                    fig_fs.update_layout(
+                        barmode='stack', title="Facturación Salta", height=320, 
+                        margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fs]), 
+                        legend=dict(orientation="h", y=-0.2)
+                    )
+                    st.plotly_chart(fig_fs, use_container_width=True)
+
+                # --- SECCIÓN ORIGINAL DE PAÑOS ---
+                st.markdown("---")
                 st.markdown("#### 🎨 Análisis de Paños (Jujuy y Salta)")
                 c_hist_j, c_hist_s = st.columns(2)
                 
