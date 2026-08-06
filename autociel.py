@@ -1709,18 +1709,18 @@ try:
                 h_cyp_j['Fact Total'] = h_cyp_j['MO Total']
                 h_cyp_j['Var Fact'] = h_cyp_j['Fact Total'].pct_change().replace([np.inf, -np.inf], 0)
 
-                # 4. Calcular totales y variaciones separadas para Salta
+                # 4. Calcular totales y variaciones Salta
                 h_cyp_s['MO Total'] = safe_col_sum(h_cyp_s, [c_mo_s, c_mo_t_s])
                 h_cyp_s['Repuestos'] = safe_col_sum(h_cyp_s, [c_rep_s])
                 h_cyp_s['Fact Total'] = h_cyp_s['MO Total'] + h_cyp_s['Repuestos']
                 
-                # Calculamos la variación independiente de cada rubro
                 h_cyp_s['Var MO'] = h_cyp_s['MO Total'].pct_change().replace([np.inf, -np.inf], 0)
                 h_cyp_s['Var Rep'] = h_cyp_s['Repuestos'].pct_change().replace([np.inf, -np.inf], 0)
+                h_cyp_s['Var Fact'] = h_cyp_s['Fact Total'].pct_change().replace([np.inf, -np.inf], 0)
 
-                c_fact_j, c_fact_s = st.columns(2)
+                # --- PRIMERA FILA: Jujuy y Salta Acumulado ---
+                c_fact_j, c_fact_s_acum = st.columns(2)
                 
-                # 5. Gráfico Jujuy (Solo Mano de Obra)
                 with c_fact_j:
                     fig_fj = go.Figure()
                     fig_fj.add_trace(go.Bar(
@@ -1738,37 +1738,53 @@ try:
                     )
                     st.plotly_chart(fig_fj, use_container_width=True)
 
-                # 6. Gráfico Salta (Mano de Obra y Repuestos Agrupados)
-                with c_fact_s:
-                    fig_fs = go.Figure()
+                with c_fact_s_acum:
+                    fig_fs_acum = go.Figure()
+                    fig_fs_acum.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['MO Total'], name='Mano de Obra', marker_color='#00235d'))
+                    fig_fs_acum.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Repuestos'], name='Repuestos', marker_color='#28a745'))
                     
-                    # Columna Mano de Obra
-                    fig_fs.add_trace(go.Bar(
+                    fig_fs_acum.add_trace(go.Scatter(
+                        x=h_cyp_s['NombreMes'], y=h_cyp_s['Fact Total'], mode='text',
+                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var Fact']],
+                        textposition='top center', textfont=dict(color="#444444", size=11), showlegend=False
+                    ))
+                    
+                    max_y_fs_acum = h_cyp_s['Fact Total'].max() * 1.25 if not h_cyp_s.empty else 100
+                    fig_fs_acum.update_layout(
+                        barmode='stack', title="Facturación Salta (Acumulada)", height=320, 
+                        margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fs_acum]), 
+                        legend=dict(orientation="h", y=-0.2)
+                    )
+                    st.plotly_chart(fig_fs_acum, use_container_width=True)
+
+                # --- SEGUNDA FILA: Vacío a la izq, Salta Desglosado a la der ---
+                c_vacio, c_fact_s_sep = st.columns(2)
+                
+                with c_fact_s_sep:
+                    fig_fs_sep = go.Figure()
+                    fig_fs_sep.add_trace(go.Bar(
                         x=h_cyp_s['NombreMes'], y=h_cyp_s['MO Total'], 
                         name='Mano de Obra', marker_color='#00235d',
                         text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var MO']],
                         textposition='outside', textfont=dict(color="#444444", size=11)
                     ))
                     
-                    # Columna Repuestos
-                    fig_fs.add_trace(go.Bar(
+                    fig_fs_sep.add_trace(go.Bar(
                         x=h_cyp_s['NombreMes'], y=h_cyp_s['Repuestos'], 
                         name='Repuestos', marker_color='#28a745',
                         text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var Rep']],
                         textposition='outside', textfont=dict(color="#444444", size=11)
                     ))
                     
-                    # El límite superior del gráfico será el valor máximo entre ambos rubros
-                    max_y_fs = max(h_cyp_s['MO Total'].max(), h_cyp_s['Repuestos'].max()) * 1.25 if not h_cyp_s.empty else 100
-                    
-                    fig_fs.update_layout(
-                        barmode='group', title="Facturación Salta", height=320, 
-                        margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fs]), 
+                    max_y_fs_sep = max(h_cyp_s['MO Total'].max(), h_cyp_s['Repuestos'].max()) * 1.25 if not h_cyp_s.empty else 100
+                    fig_fs_sep.update_layout(
+                        barmode='group', title="Facturación Salta (Desglosada)", height=320, 
+                        margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fs_sep]), 
                         legend=dict(orientation="h", y=-0.2)
                     )
-                    st.plotly_chart(fig_fs, use_container_width=True)
+                    st.plotly_chart(fig_fs_sep, use_container_width=True)
 
-                # --- SECCIÓN ORIGINAL DE PAÑOS ---
+                # --- TERCERA FILA: PAÑOS (Alineados) ---
                 st.markdown("---")
                 st.markdown("#### 🎨 Análisis de Paños (Jujuy y Salta)")
                 c_hist_j, c_hist_s = st.columns(2)
