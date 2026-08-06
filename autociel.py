@@ -1709,50 +1709,60 @@ try:
                 h_cyp_j['Fact Total'] = h_cyp_j['MO Total']
                 h_cyp_j['Var Fact'] = h_cyp_j['Fact Total'].pct_change().replace([np.inf, -np.inf], 0)
 
-                # 4. Calcular totales y variaciones Salta
+                # 4. Calcular totales y variaciones separadas para Salta
                 h_cyp_s['MO Total'] = safe_col_sum(h_cyp_s, [c_mo_s, c_mo_t_s])
                 h_cyp_s['Repuestos'] = safe_col_sum(h_cyp_s, [c_rep_s])
                 h_cyp_s['Fact Total'] = h_cyp_s['MO Total'] + h_cyp_s['Repuestos']
-                h_cyp_s['Var Fact'] = h_cyp_s['Fact Total'].pct_change().replace([np.inf, -np.inf], 0)
+                
+                # Calculamos la variación independiente de cada rubro
+                h_cyp_s['Var MO'] = h_cyp_s['MO Total'].pct_change().replace([np.inf, -np.inf], 0)
+                h_cyp_s['Var Rep'] = h_cyp_s['Repuestos'].pct_change().replace([np.inf, -np.inf], 0)
 
                 c_fact_j, c_fact_s = st.columns(2)
                 
                 # 5. Gráfico Jujuy (Solo Mano de Obra)
                 with c_fact_j:
                     fig_fj = go.Figure()
-                    fig_fj.add_trace(go.Bar(x=h_cyp_j['NombreMes'], y=h_cyp_j['MO Total'], name='Mano de Obra', marker_color='#00235d'))
-                    
-                    # Línea invisible para colocar los porcentajes arriba de la barra
-                    fig_fj.add_trace(go.Scatter(
-                        x=h_cyp_j['NombreMes'], y=h_cyp_j['Fact Total'], mode='text',
+                    fig_fj.add_trace(go.Bar(
+                        x=h_cyp_j['NombreMes'], y=h_cyp_j['MO Total'], 
+                        name='Mano de Obra', marker_color='#00235d',
                         text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_j['Var Fact']],
-                        textposition='top center', textfont=dict(color="#444444", size=11), showlegend=False
+                        textposition='outside', textfont=dict(color="#444444", size=11)
                     ))
                     
                     max_y_fj = h_cyp_j['Fact Total'].max() * 1.25 if not h_cyp_j.empty else 100
                     fig_fj.update_layout(
-                        barmode='stack', title="Facturación Jujuy", height=320, 
+                        barmode='group', title="Facturación Jujuy (Mano de Obra)", height=320, 
                         margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fj]), 
                         legend=dict(orientation="h", y=-0.2)
                     )
                     st.plotly_chart(fig_fj, use_container_width=True)
 
-                # 6. Gráfico Salta (Mano de Obra + Repuestos apilados)
+                # 6. Gráfico Salta (Mano de Obra y Repuestos Agrupados)
                 with c_fact_s:
                     fig_fs = go.Figure()
-                    fig_fs.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['MO Total'], name='Mano de Obra', marker_color='#00235d'))
-                    fig_fs.add_trace(go.Bar(x=h_cyp_s['NombreMes'], y=h_cyp_s['Repuestos'], name='Repuestos', marker_color='#28a745'))
                     
-                    # Línea invisible para colocar los porcentajes arriba de la barra total
-                    fig_fs.add_trace(go.Scatter(
-                        x=h_cyp_s['NombreMes'], y=h_cyp_s['Fact Total'], mode='text',
-                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var Fact']],
-                        textposition='top center', textfont=dict(color="#444444", size=11), showlegend=False
+                    # Columna Mano de Obra
+                    fig_fs.add_trace(go.Bar(
+                        x=h_cyp_s['NombreMes'], y=h_cyp_s['MO Total'], 
+                        name='Mano de Obra', marker_color='#00235d',
+                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var MO']],
+                        textposition='outside', textfont=dict(color="#444444", size=11)
                     ))
                     
-                    max_y_fs = h_cyp_s['Fact Total'].max() * 1.25 if not h_cyp_s.empty else 100
+                    # Columna Repuestos
+                    fig_fs.add_trace(go.Bar(
+                        x=h_cyp_s['NombreMes'], y=h_cyp_s['Repuestos'], 
+                        name='Repuestos', marker_color='#28a745',
+                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in h_cyp_s['Var Rep']],
+                        textposition='outside', textfont=dict(color="#444444", size=11)
+                    ))
+                    
+                    # El límite superior del gráfico será el valor máximo entre ambos rubros
+                    max_y_fs = max(h_cyp_s['MO Total'].max(), h_cyp_s['Repuestos'].max()) * 1.25 if not h_cyp_s.empty else 100
+                    
                     fig_fs.update_layout(
-                        barmode='stack', title="Facturación Salta", height=320, 
+                        barmode='group', title="Facturación Salta", height=320, 
                         margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_fs]), 
                         legend=dict(orientation="h", y=-0.2)
                     )
