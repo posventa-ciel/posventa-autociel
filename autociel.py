@@ -1609,11 +1609,12 @@ try:
                         df_margen[f'M_{can}'] = venta_val - costo_val
                         margen_cols.append(f'M_{can}')
                 
-                # 2. Calcular la participación (%) de cada canal sobre el Margen Total
+                # 2. Calcular la participación (%) SOLO para mostrar en la tarjeta
+                # Evitamos el apilado 100% porque se rompe con márgenes negativos
                 df_margen['Total_Margen'] = df_margen[margen_cols].sum(axis=1)
                 for can in cols_canales:
                     if f'M_{can}' in df_margen.columns:
-                        df_margen[f'Mix_Margen_{can}'] = (df_margen[f'M_{can}'] / df_margen['Total_Margen'] * 100).fillna(0)
+                        df_margen[f'Mix_Margen_{can}'] = (df_margen[f'M_{can}'] / df_margen['Total_Margen'] * 100).replace([np.inf, -np.inf], 0).fillna(0)
 
                 if cols_canales and len(df_fact_hist) > 0:
                     df_can_melt = df_fact_hist.melt(id_vars=['Mes', 'Mes_Num'], value_vars=cols_canales, var_name='Canal', value_name='Venta')
@@ -1627,8 +1628,8 @@ try:
                     
                     st.markdown(f"**Rendimiento a Mes Cerrado ({nom_mes_cerrado})**")
                     
-                    # Función para crear las tarjetas HTML con Doble Mix (Venta y Margen)
-                    def html_card_rep(title, val, var1_label, var1_val, var2_label, var2_val, mix_venta, mix_margen):
+                    # Función para crear las tarjetas HTML con Doble Mix (Venta y Margen) SIN PROMEDIO
+                    def html_card_rep(title, val, var1_label, var1_val, mix_venta, mix_margen):
                         def format_var(v):
                             color = "#28a745" if v >= 0 else "#dc3545"
                             icon = "▲" if v >= 0 else "▼"
@@ -1637,16 +1638,14 @@ try:
                         <div style="background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; text-align: center; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px;">
                             <div style="font-size: 0.85rem; font-weight: bold; color: #666; margin-bottom: 5px; text-transform: uppercase;">{title}</div>
                             <div style="font-size: 1.4rem; font-weight: bold; color: #00235d; margin-bottom: 8px;">${val:,.0f}</div>
-                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px; display:flex; justify-content:space-between; padding:0 5px;"><span>{var1_label}:</span> {format_var(var1_val)}</div>
-                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px; display:flex; justify-content:space-between; padding:0 5px;"><span>{var2_label}:</span> {format_var(var2_val)}</div>
+                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px; display:flex; justify-content:center; padding:0 5px;"><span>{var1_label}:</span>&nbsp;&nbsp;{format_var(var1_val)}</div>
                             <div style="font-size: 0.75rem; color: #00A8E8; font-weight: bold; margin-top: 8px; border-top: 1px dashed #eee; padding-top: 6px; display:flex; justify-content:space-between;">
                                 <span title="Porcentaje de la facturación total de repuestos aportada por este canal">🛒 Mix Venta: {mix_venta:.1f}%</span>
-                                <span title="Porcentaje de la ganancia (rentabilidad) total aportada por este canal">💰 Mix Margen: {mix_margen:.1f}%</span>
+                                <span title="Porcentaje de la rentabilidad (o pérdida) aportada por este canal al total general">💰 Mix Margen: {mix_margen:.1f}%</span>
                             </div>
                         </div>
                         '''
 
-                    df_rep_curr_ytd = data['REPUESTOS'][(data['REPUESTOS']['Año'] == año_sel) & (data['REPUESTOS']['Mes'] <= mes_cerrado)]
                     total_rep_mes_act = df_fact_hist.iloc[idx_rep]['Repuestos']
 
                     cols_grid = st.columns(4)
@@ -1656,14 +1655,6 @@ try:
                         val_ant = mes_ant_row[can] if mes_ant_row is not None else 0
                         var_mom = (val_act / val_ant - 1) * 100 if val_ant > 0 else 0
                         
-                        c_venta = find_col(data['REPUESTOS'], ["VENTA", can], exclude_keywords=["OBJ"])
-                        promedio_ytd = 0
-                        if c_venta:
-                            ytd_curr_sum = pd.to_numeric(df_rep_curr_ytd[c_venta], errors='coerce').sum()
-                            meses_unicos = len(df_rep_curr_ytd['Mes'].unique())
-                            promedio_ytd = ytd_curr_sum / meses_unicos if meses_unicos > 0 else 0
-                            
-                        var_vs_promedio = (val_act / promedio_ytd - 1) * 100 if promedio_ytd > 0 else 0
                         mix_pct_venta = (val_act / total_rep_mes_act) * 100 if total_rep_mes_act > 0 else 0
                         
                         mix_pct_margen = 0
@@ -1673,13 +1664,12 @@ try:
                         card_html = html_card_rep(
                             can, val_act, 
                             "vs Mes Ant", var_mom, 
-                            "vs Prom. Anual", var_vs_promedio,
                             mix_pct_venta, mix_pct_margen
                         )
                         with cols_grid[i % 4]:
                             st.markdown(card_html, unsafe_allow_html=True)
                     
-                    # --- GRÁFICOS: VENTA HISTÓRICA Y MIX DE MARGEN APILADO ---
+                    # --- GRÁFICOS: VENTA HISTÓRICA Y MARGEN BRUTO NOMINAL ---
                     c_graf_ven, c_graf_mar = st.columns(2)
                     
                     with c_graf_ven:
@@ -1688,22 +1678,25 @@ try:
                         st.plotly_chart(fig_can_line, use_container_width=True)
                         
                     with c_graf_mar:
-                        fig_margen_mix = go.Figure()
+                        # Gráfico de barras agrupadas para el margen nominal ($)
+                        fig_margen_nominal = go.Figure()
                         for can in cols_canales:
-                            if f'Mix_Margen_{can}' in df_margen.columns:
-                                fig_margen_mix.add_trace(go.Bar(
+                            if f'M_{can}' in df_margen.columns:
+                                fig_margen_nominal.add_trace(go.Bar(
                                     x=df_margen['Mes'], 
-                                    y=df_margen[f'Mix_Margen_{can}'], 
+                                    y=df_margen[f'M_{can}'], 
                                     name=can
                                 ))
-                        fig_margen_mix.update_layout(
-                            barmode='stack', 
-                            title="Evolución % Aporte al Margen Total", 
+                        fig_margen_nominal.update_layout(
+                            barmode='group', # Agrupadas, no apiladas
+                            title="Evolución del Margen Bruto Nominal ($)", 
                             height=350, 
-                            yaxis=dict(title="% del Margen", range=[0, 100]),
+                            yaxis_title="Margen Bruto ($)",
                             legend=dict(orientation="h", y=-0.2)
                         )
-                        st.plotly_chart(fig_margen_mix, use_container_width=True)
+                        # Agregar línea en cero para resaltar canales que van a pérdida
+                        fig_margen_nominal.add_hline(y=0, line_width=1, line_color="black")
+                        st.plotly_chart(fig_margen_nominal, use_container_width=True)
 
                 st.markdown("---")
                 st.markdown("#### 📉 Flujo y Salud del Stock")
