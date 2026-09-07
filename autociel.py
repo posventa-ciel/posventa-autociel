@@ -1794,9 +1794,9 @@ try:
                     
                     # Lógica de Cuartiles
                     def get_quartile(pct):
-                        if pct >= 98.14: return "🏆 Q1", "#28a745"
-                        elif pct >= 70.08: return "✅ Q2", "#17a2b8"
-                        elif pct >= 43.16: return "⚠️ Q3", "#ffc107"
+                        if pct >= 98.42: return "🏆 Q1", "#28a745"
+                        elif pct >= 78.46: return "✅ Q2", "#17a2b8"
+                        elif pct >= 51.81: return "⚠️ Q3", "#ffc107"
                         else: return "❌ Q4", "#dc3545"
                         
                     q_s1, color_s1 = get_quartile(pct_s1)
@@ -1814,12 +1814,12 @@ try:
                         st.metric("Compras vs Objetivo S2", f"${compra_s2:,.0f} / ${obj_s2:,.0f}", f"{pct_s2:.1f}% Cumplido")
                         st.markdown(f"<div style='background-color:{color_s2}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-top:10px;'>Estimación Cuartil (Parcial): {q_s2}</div>", unsafe_allow_html=True)
                         
-                    with st.expander("Ver Referencia de Cuartiles (Trimestre 1)"):
+                    with st.expander("Ver Referencia de Cuartiles (Actualizada)"):
                         st.markdown("""
-                        * **Q1:** Mayor o igual a **98.14%**
-                        * **Q2:** **70.08%** a **98.13%**
-                        * **Q3:** **43.16%** a **70.07%**
-                        * **Q4:** Menor a **43.16%**
+                        * **Q1:** $\ge 98.42\%$
+                        * **Q2:** $78.46\%$ a $98.41\%$
+                        * **Q3:** $51.81\%$ a $78.45\%$
+                        * **Q4:** $< 51.81\%$
                         """)
                 else:
                     st.info("💡 Asegúrate de incluir las columnas 'Objetivo Compra' y 'Compra PR' en el archivo Excel de Repuestos para ver la proyección del cuartil.")
