@@ -1774,7 +1774,7 @@ try:
 
                 # --- NUEVA SECCIÓN: CUMPLIMIENTO STELLANTIS ---
                 st.markdown("---")
-                st.markdown("#### 🎯 Cumplimiento de Compra Stellantis (Semestral)")
+                st.markdown("#### 🎯 Cumplimiento de Compra Stellantis")
                 
                 if c_obj_compra and c_compra_pr:
                     h_rep[c_obj_compra] = pd.to_numeric(h_rep[c_obj_compra], errors='coerce').fillna(0)
@@ -1816,11 +1816,56 @@ try:
                         
                     with st.expander("Ver Referencia de Cuartiles (Actualizada)"):
                         st.markdown("""
-                        * **Q1:** $\ge 98.42\%$
-                        * **Q2:** $78.46\%$ a $98.41\%$
-                        * **Q3:** $51.81\%$ a $78.45\%$
-                        * **Q4:** $< 51.81\%$
+                        * **Q1:** Mayor o igual a **98.42%**
+                        * **Q2:** **78.46%** a **98.41%**
+                        * **Q3:** **51.81%** a **78.45%**
+                        * **Q4:** Menor o igual a **51.80%**
                         """)
+
+                    # --- GRÁFICO DE CUMPLIMIENTO MENSUAL ---
+                    st.markdown("##### 📅 Evolución Mensual de Compras vs Objetivo")
+                    
+                    # Calcular el porcentaje de cumplimiento por mes
+                    h_rep['Pct_Cumplimiento_Mes'] = h_rep.apply(
+                        lambda row: (row[c_compra_pr] / row[c_obj_compra] * 100) if row[c_obj_compra] > 0 else 0, 
+                        axis=1
+                    )
+                    
+                    fig_compra_mes = go.Figure()
+                    
+                    # Barra Objetivo
+                    fig_compra_mes.add_trace(go.Bar(
+                        x=h_rep['NombreMes'], 
+                        y=h_rep[c_obj_compra], 
+                        name='Objetivo', 
+                        marker_color='#a5b1c2'
+                    ))
+                    
+                    # Barra Compra Real
+                    fig_compra_mes.add_trace(go.Bar(
+                        x=h_rep['NombreMes'], 
+                        y=h_rep[c_compra_pr], 
+                        name='Compra PR', 
+                        marker_color='#17a2b8',
+                        text=[f"{v:.1f}%" if v > 0 else "" for v in h_rep['Pct_Cumplimiento_Mes']],
+                        textposition='outside', 
+                        textfont=dict(color="#444444", size=11)
+                    ))
+                    
+                    max_y_compra = max(h_rep[c_obj_compra].max(), h_rep[c_compra_pr].max()) * 1.25 if not h_rep.empty else 100
+                    
+                    fig_compra_mes.update_layout(
+                        barmode='group', 
+                        title="Cumplimiento de Compra por Mes", 
+                        height=350, 
+                        yaxis_title="Monto ($)",
+                        legend=dict(orientation="h", y=-0.2),
+                        margin=dict(t=40, b=0, l=0, r=0),
+                        yaxis=dict(range=[0, max_y_compra])
+                    )
+                    
+                    st.plotly_chart(fig_compra_mes, use_container_width=True)
+
                 else:
                     st.info("💡 Asegúrate de incluir las columnas 'Objetivo Compra' y 'Compra PR' en el archivo Excel de Repuestos para ver la proyección del cuartil.")
                     
