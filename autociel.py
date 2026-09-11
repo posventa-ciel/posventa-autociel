@@ -2004,152 +2004,149 @@ try:
                     max_y_s = h_cyp_s['Total Paños'].max() if not h_cyp_s.empty else 100
                     st.plotly_chart(fig_ps.update_layout(barmode='stack', title="Evolución Salta (Paños)", height=350, yaxis=dict(range=[0, max_y_s * 1.2])), use_container_width=True)
 
-# --- NUEVA SECCIÓN: EFICIENCIA Y COSTOS (CHAPA Y PINTURA) ---
+# --- NUEVA SECCIÓN: EFICIENCIA Y COSTOS (CHAPA Y PINTURA POR SUCURSAL) ---
                 st.markdown("---")
-                st.markdown("#### ⏱️ Eficiencia y Rentabilidad Operativa (Global CyP)")
+                st.markdown("#### ⏱️ Eficiencia y Rentabilidad Operativa por Sucursal")
 
-                # 1. Preparar DataFrame de Eficiencia
-                df_efi_cyp = pd.DataFrame({
-                    'Mes_Num': h_cyp_j['Mes'], 
-                    'NombreMes': h_cyp_j['NombreMes'],
-                    'Paños_Totales': h_cyp_j['Total Paños'] + h_cyp_s['Total Paños'],
-                    'MO_Facturada': h_cyp_j['MO Total'] + h_cyp_s['MO Total']
-                })
-
-                # 2. Obtener Días Hábiles desde el calendario (h_cal)
+                # 1. Función para obtener Días Hábiles
                 c_hab = find_col(h_cal, ["HAB"])
                 def get_habiles(m):
                     if c_hab:
                         row = h_cal[h_cal['Mes'] == m]
                         if not row.empty: return float(row[c_hab].iloc[0] or 22)
                     return 22
-                
-                df_efi_cyp['Dias_Habiles'] = df_efi_cyp['Mes_Num'].apply(get_habiles)
-                
-                # 3. Cálculo de Capacidad (11 técnicos x 8 hs productivas x 90% disponibilidad)
-                df_efi_cyp['Hs_Ideales'] = df_efi_cyp['Dias_Habiles'] * 11 * 8
-                df_efi_cyp['Hs_Reales'] = df_efi_cyp['Hs_Ideales'] * 0.90
-                
-                # 4. Horas invertidas por Paño
-                df_efi_cyp['Hs_por_Paño'] = df_efi_cyp.apply(
-                    lambda r: r['Hs_Reales'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, 
-                    axis=1
-                )
 
-                # 5. Obtener Costos desde Cta Res (Búsqueda dinámica por palabra "Controlable" o Fila 27)
-                def get_costo_cyp(mes_num):
-                    costo_j, costo_s = 0, 0
-                    mes_str = meses_nom.get(mes_num, "").upper()
+                # 2. Función constructora de datos para cada sucursal
+                def build_efi_df(h_cyp, sucursal, techs):
+                    df = pd.DataFrame({
+                        'Mes_Num': h_cyp['Mes'], 
+                        'NombreMes': h_cyp['NombreMes'],
+                        'Paños_Totales': h_cyp['Total Paños'],
+                        'MO_Facturada': h_cyp['MO Total']
+                    })
                     
-                    # Búsqueda en Cta Res Jujuy
-                    if 'CTA RES CHAPA JUJUY' in data:
-                        df_crj = data['CTA RES CHAPA JUJUY']
-                        c_mes_j = find_col(df_crj, [mes_str])
-                        if c_mes_j:
-                            fila_costo_j = df_crj[df_crj.iloc[:, 0].astype(str).str.contains("Controlable", case=False, na=False)]
-                            if not fila_costo_j.empty:
-                                costo_j = pd.to_numeric(fila_costo_j[c_mes_j].iloc[0], errors='coerce')
-                            elif len(df_crj) >= 26:
-                                costo_j = pd.to_numeric(df_crj[c_mes_j].iloc[25], errors='coerce') # Fallback índice Fila 27
+                    df['Dias_Habiles'] = df['Mes_Num'].apply(get_habiles)
+                    # Cálculo de Capacidad (Técnicos x 8 hs productivas x 90% disponibilidad)
+                    df['Hs_Ideales'] = df['Dias_Habiles'] * techs * 8
+                    df['Hs_Reales'] = df['Hs_Ideales'] * 0.90
                     
-                    # Búsqueda en Cta Res Salta
-                    if 'CTA RES CHAPA SALTA' in data:
-                        df_crs = data['CTA RES CHAPA SALTA']
-                        c_mes_s = find_col(df_crs, [mes_str])
-                        if c_mes_s:
-                            fila_costo_s = df_crs[df_crs.iloc[:, 0].astype(str).str.contains("Controlable", case=False, na=False)]
-                            if not fila_costo_s.empty:
-                                costo_s = pd.to_numeric(fila_costo_s[c_mes_s].iloc[0], errors='coerce')
-                            elif len(df_crs) >= 26:
-                                costo_s = pd.to_numeric(df_crs[c_mes_s].iloc[25], errors='coerce')
-                                
-                    return pd.Series([costo_j, costo_s]).fillna(0).sum()
-
-                df_efi_cyp['Costo_Total'] = df_efi_cyp['Mes_Num'].apply(get_costo_cyp)
-                
-                # 6. Costo Unitario y Ratio de Margen
-                df_efi_cyp['Costo_por_Paño'] = df_efi_cyp.apply(
-                    lambda r: r['Costo_Total'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, 
-                    axis=1
-                )
-                
-                df_efi_cyp['Margen_Ratio'] = df_efi_cyp.apply(
-                    lambda r: r['MO_Facturada'] / r['Costo_Total'] if r['Costo_Total'] > 0 else 0, 
-                    axis=1
-                )
-                
-                # --- RENDERIZADO VISUAL ---
-                idx_cyp = -2 if prog_t < 1.0 and len(df_efi_cyp) >= 2 else -1
-                if not df_efi_cyp.empty:
-                    row_act = df_efi_cyp.iloc[idx_cyp]
-                    row_ant = df_efi_cyp.iloc[idx_cyp - 1] if len(df_efi_cyp) >= abs(idx_cyp) + 1 else None
-                    nom_mes_cerrado = row_act['NombreMes']
-                    
-                    st.markdown(f"**Indicadores de Gestión a Mes Cerrado ({nom_mes_cerrado})**")
-                    c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
-                    
-                    def delta_str(act, ant, reverse=False):
-                        if not ant or ant == 0: return None
-                        var = (act / ant - 1) * 100
-                        return f"{var:+.1f}% vs Mes Ant"
-                    
-                    c_kpi1.metric("Hs Reales Disponibles", f"{row_act['Hs_Reales']:,.0f} hs", "11 Téc x 8hs x 90%")
-                    
-                    # Para horas y costos, bajar el número es positivo (delta_color="inverse")
-                    c_kpi2.metric(
-                        "Horas por Paño", 
-                        f"{row_act['Hs_por_Paño']:.1f} hs", 
-                        delta_str(row_act['Hs_por_Paño'], row_ant['Hs_por_Paño'] if row_ant is not None else 0),
-                        delta_color="inverse" 
+                    df['Hs_por_Paño'] = df.apply(
+                        lambda r: r['Hs_Reales'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, 
+                        axis=1
                     )
                     
-                    c_kpi3.metric(
-                        "Costo por Paño", 
-                        f"${row_act['Costo_por_Paño']:,.0f}", 
-                        delta_str(row_act['Costo_por_Paño'], row_ant['Costo_por_Paño'] if row_ant is not None else 0),
-                        delta_color="inverse"
-                    )
-                    
-                    # Para el ratio de margen, subir es positivo (delta normal)
-                    c_kpi4.metric(
-                        "Margen (MO / Costo)", 
-                        f"{row_act['Margen_Ratio']:.2f}x", 
-                        delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
-                    )
-                    
-                    # Gráficos de Tendencia
-                    cg1, cg2 = st.columns(2)
-                    with cg1:
-                        fig_hs_pano = go.Figure()
-                        fig_hs_pano.add_trace(go.Scatter(
-                            x=df_efi_cyp['NombreMes'], y=df_efi_cyp['Hs_por_Paño'], 
-                            mode='lines+markers+text', name='Hs/Paño',
-                            text=[f"{v:.1f}h" if v > 0 else "" for v in df_efi_cyp['Hs_por_Paño']],
-                            textposition='top center', line=dict(color='#ffc107', width=3)
-                        ))
-                        max_y_hs = df_efi_cyp['Hs_por_Paño'].max() * 1.25 if not df_efi_cyp.empty else 10
-                        fig_hs_pano.update_layout(
-                            title="Evolución Horas Invertidas por Paño", 
-                            height=320, margin=dict(t=40, b=0, l=0, r=0),
-                            yaxis=dict(range=[0, max_y_hs])
-                        )
-                        st.plotly_chart(fig_hs_pano, use_container_width=True)
+                    # Obtener Costos desde Cta Res
+                    def get_costo(mes_num):
+                        costo = 0
+                        mes_str = meses_nom.get(mes_num, "").upper()
+                        df_cr = data.get(f'CTA RES CHAPA {sucursal.upper()}')
                         
-                    with cg2:
-                        fig_costo_pano = go.Figure()
-                        fig_costo_pano.add_trace(go.Bar(
-                            x=df_efi_cyp['NombreMes'], y=df_efi_cyp['Costo_por_Paño'], 
-                            name='Costo/Paño', marker_color='#dc3545',
-                            text=[f"${v:,.0f}" if v > 0 else "" for v in df_efi_cyp['Costo_por_Paño']],
-                            textposition='outside', textfont=dict(color="#444444", size=11)
-                        ))
-                        max_y_costo = df_efi_cyp['Costo_por_Paño'].max() * 1.25 if not df_efi_cyp.empty else 100
-                        fig_costo_pano.update_layout(
-                            title="Evolución Costo por Paño ($)", 
-                            height=320, margin=dict(t=40, b=0, l=0, r=0),
-                            yaxis=dict(range=[0, max_y_costo])
+                        if df_cr is not None:
+                            c_mes = find_col(df_cr, [mes_str])
+                            if c_mes:
+                                fila_costo = df_cr[df_cr.iloc[:, 0].astype(str).str.contains("Controlable", case=False, na=False)]
+                                if not fila_costo.empty:
+                                    costo = pd.to_numeric(fila_costo[c_mes].iloc[0], errors='coerce')
+                                elif len(df_cr) >= 26:
+                                    costo = pd.to_numeric(df_cr[c_mes].iloc[25], errors='coerce') # Fallback Fila 27
+                        return pd.Series([costo]).fillna(0).sum()
+                        
+                    df['Costo_Total'] = df['Mes_Num'].apply(get_costo)
+                    
+                    df['Costo_por_Paño'] = df.apply(
+                        lambda r: r['Costo_Total'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, 
+                        axis=1
+                    )
+                    
+                    df['Margen_Ratio'] = df.apply(
+                        lambda r: r['MO_Facturada'] / r['Costo_Total'] if r['Costo_Total'] > 0 else 0, 
+                        axis=1
+                    )
+                    return df
+
+                # 3. Generar DataFrames independientes (11 en Jujuy, 9 en Salta)
+                df_efi_j = build_efi_df(h_cyp_j, 'JUJUY', 11)
+                df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9)
+
+                # 4. Renderizado visual en sub-pestañas
+                tab_efi_j, tab_efi_s = st.tabs(["📍 Jujuy (11 Téc)", "📍 Salta (9 Téc)"])
+                
+                def render_efi_tab(df_efi, sucursal_name, techs):
+                    idx_cyp = -2 if prog_t < 1.0 and len(df_efi) >= 2 else -1
+                    if not df_efi.empty:
+                        row_act = df_efi.iloc[idx_cyp]
+                        row_ant = df_efi.iloc[idx_cyp - 1] if len(df_efi) >= abs(idx_cyp) + 1 else None
+                        nom_mes_cerrado = row_act['NombreMes']
+                        
+                        st.markdown(f"**Indicadores de Gestión a Mes Cerrado ({nom_mes_cerrado})**")
+                        c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
+                        
+                        def delta_str(act, ant):
+                            if not ant or ant == 0: return None
+                            var = (act / ant - 1) * 100
+                            return f"{var:+.1f}% vs Mes Ant"
+                        
+                        c_kpi1.metric("Hs Reales Disponibles", f"{row_act['Hs_Reales']:,.0f} hs", f"{techs} Téc x 8hs x 90%")
+                        
+                        c_kpi2.metric(
+                            "Horas por Paño", 
+                            f"{row_act['Hs_por_Paño']:.1f} hs", 
+                            delta_str(row_act['Hs_por_Paño'], row_ant['Hs_por_Paño'] if row_ant is not None else 0),
+                            delta_color="inverse" 
                         )
-                        st.plotly_chart(fig_costo_pano, use_container_width=True)
+                        
+                        c_kpi3.metric(
+                            "Costo por Paño", 
+                            f"${row_act['Costo_por_Paño']:,.0f}", 
+                            delta_str(row_act['Costo_por_Paño'], row_ant['Costo_por_Paño'] if row_ant is not None else 0),
+                            delta_color="inverse"
+                        )
+                        
+                        c_kpi4.metric(
+                            "Margen (MO / Costo)", 
+                            f"{row_act['Margen_Ratio']:.2f}x", 
+                            delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
+                        )
+                        
+                        # Gráficos de Tendencia
+                        cg1, cg2 = st.columns(2)
+                        with cg1:
+                            fig_hs_pano = go.Figure()
+                            fig_hs_pano.add_trace(go.Scatter(
+                                x=df_efi['NombreMes'], y=df_efi['Hs_por_Paño'], 
+                                mode='lines+markers+text', name='Hs/Paño',
+                                text=[f"{v:.1f}h" if v > 0 else "" for v in df_efi['Hs_por_Paño']],
+                                textposition='top center', line=dict(color='#ffc107', width=3)
+                            ))
+                            max_y_hs = df_efi['Hs_por_Paño'].max() * 1.25 if not df_efi.empty else 10
+                            fig_hs_pano.update_layout(
+                                title=f"Evolución Horas Invertidas por Paño", 
+                                height=320, margin=dict(t=40, b=0, l=0, r=0),
+                                yaxis=dict(range=[0, max_y_hs])
+                            )
+                            st.plotly_chart(fig_hs_pano, use_container_width=True)
+                            
+                        with cg2:
+                            fig_costo_pano = go.Figure()
+                            fig_costo_pano.add_trace(go.Bar(
+                                x=df_efi['NombreMes'], y=df_efi['Costo_por_Paño'], 
+                                name='Costo/Paño', marker_color='#dc3545',
+                                text=[f"${v:,.0f}" if v > 0 else "" for v in df_efi['Costo_por_Paño']],
+                                textposition='outside', textfont=dict(color="#444444", size=11)
+                            ))
+                            max_y_costo = df_efi['Costo_por_Paño'].max() * 1.25 if not df_efi.empty else 100
+                            fig_costo_pano.update_layout(
+                                title=f"Evolución Costo por Paño ($)", 
+                                height=320, margin=dict(t=40, b=0, l=0, r=0),
+                                yaxis=dict(range=[0, max_y_costo])
+                            )
+                            st.plotly_chart(fig_costo_pano, use_container_width=True)
+
+                with tab_efi_j:
+                    render_efi_tab(df_efi_j, "Jujuy", 11)
+                
+                with tab_efi_s:
+                    render_efi_tab(df_efi_s, "Salta", 9)
 
     else:
         st.warning("No se pudieron cargar los datos.")
