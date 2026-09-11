@@ -2016,7 +2016,7 @@ try:
                         if not row.empty: return float(row[c_hab].iloc[0] or 22)
                     return 22
 
-                # 2. Función constructora de datos para cada sucursal
+                # 2. Función constructora de datos
                 def build_efi_df(h_cyp, sucursal, techs):
                     df = pd.DataFrame({
                         'Mes_Num': h_cyp['Mes'], 
@@ -2026,7 +2026,7 @@ try:
                     })
                     
                     df['Dias_Habiles'] = df['Mes_Num'].apply(get_habiles)
-                    # Cálculo de Capacidad (Técnicos x 8 hs productivas x 90% disponibilidad)
+                    # Cálculo de Capacidad: Días Hábiles x Técnicos x 8 hs x 90%
                     df['Hs_Ideales'] = df['Dias_Habiles'] * techs * 8
                     df['Hs_Reales'] = df['Hs_Ideales'] * 0.90
                     
@@ -2035,21 +2035,31 @@ try:
                         axis=1
                     )
                     
-                    # Obtener Costos desde Cta Res
+                    # Búsqueda robusta de costos en Cta Res
                     def get_costo(mes_num):
                         costo = 0
                         mes_str = meses_nom.get(mes_num, "").upper()
-                        df_cr = data.get(f'CTA RES CHAPA {sucursal.upper()}')
+                        
+                        # Buscar el dataframe correcto en el diccionario de datos
+                        df_cr = None
+                        for k, v in data.items():
+                            if 'CTA' in k.upper() and 'RES' in k.upper() and 'CHAPA' in k.upper() and sucursal.upper() in k.upper():
+                                df_cr = v
+                                break
                         
                         if df_cr is not None:
                             c_mes = find_col(df_cr, [mes_str])
                             if c_mes:
-                                fila_costo = df_cr[df_cr.iloc[:, 0].astype(str).str.contains("Controlable", case=False, na=False)]
-                                if not fila_costo.empty:
-                                    costo = pd.to_numeric(fila_costo[c_mes].iloc[0], errors='coerce')
-                                elif len(df_cr) >= 26:
-                                    costo = pd.to_numeric(df_cr[c_mes].iloc[25], errors='coerce') # Fallback Fila 27
-                        return pd.Series([costo]).fillna(0).sum()
+                                # En pandas, el índice 0 es la fila 2 de Excel.
+                                # Por ende: Fila 27 de Excel = index 25. Fila 26 de Excel = index 24.
+                                idx = 25 if sucursal.upper() == 'JUJUY' else 24
+                                if len(df_cr) > idx:
+                                    val = df_cr[c_mes].iloc[idx]
+                                    # Limpiamos símbolos de moneda o espacios por si el Excel viene sucio
+                                    if isinstance(val, str):
+                                        val = val.replace('$', '').replace(',', '').strip()
+                                    costo = pd.to_numeric(val, errors='coerce')
+                        return costo if pd.notna(costo) else 0
                         
                     df['Costo_Total'] = df['Mes_Num'].apply(get_costo)
                     
@@ -2064,7 +2074,7 @@ try:
                     )
                     return df
 
-                # 3. Generar DataFrames independientes (11 en Jujuy, 9 en Salta)
+                # 3. Generar DataFrames independientes
                 df_efi_j = build_efi_df(h_cyp_j, 'JUJUY', 11)
                 df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9)
 
@@ -2086,7 +2096,9 @@ try:
                             var = (act / ant - 1) * 100
                             return f"{var:+.1f}% vs Mes Ant"
                         
-                        c_kpi1.metric("Hs Reales Disponibles", f"{row_act['Hs_Reales']:,.0f} hs", f"{techs} Téc x 8hs x 90%")
+                        # Mostramos dinámicamente los Días Hábiles en la tarjeta
+                        dias_hab = row_act['Dias_Habiles']
+                        c_kpi1.metric("Hs Reales Disponibles", f"{row_act['Hs_Reales']:,.0f} hs", f"{dias_hab:.0f} Días x {techs} Téc x 8hs x 90%")
                         
                         c_kpi2.metric(
                             "Horas por Paño", 
@@ -2108,7 +2120,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # Gráficos de Tendencia
+                        # Gráficos de Tendencia (Con "key" único)
                         cg1, cg2 = st.columns(2)
                         with cg1:
                             fig_hs_pano = go.Figure()
@@ -2124,7 +2136,7 @@ try:
                                 height=320, margin=dict(t=40, b=0, l=0, r=0),
                                 yaxis=dict(range=[0, max_y_hs])
                             )
-                            st.plotly_chart(fig_hs_pano, use_container_width=True)
+                            st.plotly_chart(fig_hs_pano, use_container_width=True, key=f"fig_hs_{sucursal_name}")
                             
                         with cg2:
                             fig_costo_pano = go.Figure()
@@ -2140,7 +2152,7 @@ try:
                                 height=320, margin=dict(t=40, b=0, l=0, r=0),
                                 yaxis=dict(range=[0, max_y_costo])
                             )
-                            st.plotly_chart(fig_costo_pano, use_container_width=True)
+                            st.plotly_chart(fig_costo_pano, use_container_width=True, key=f"fig_costo_{sucursal_name}")
 
                 with tab_efi_j:
                     render_efi_tab(df_efi_j, "Jujuy", 11)
