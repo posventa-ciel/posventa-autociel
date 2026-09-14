@@ -2190,6 +2190,7 @@ try:
                 
                 with tab_efi_s:
                     render_efi_tab(df_efi_s, "Salta", 9)
+                    
     else:
         st.warning("No se pudieron cargar los datos.")
 except Exception as e:
