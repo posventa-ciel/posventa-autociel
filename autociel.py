@@ -2022,7 +2022,7 @@ try:
                         'Mes_Num': h_cyp['Mes'], 
                         'NombreMes': h_cyp['NombreMes'],
                         'Paños_Totales': h_cyp['Total Paños'],
-                        'MO_Facturada': h_cyp['MO Total']
+                        'MO_Facturada': h_cyp['MO Total'] # Solo Mano de Obra, excluye Repuestos
                     })
                     
                     # Cálculo de Capacidad: Días Hábiles x Técnicos x 8 hs x 90%
@@ -2047,19 +2047,18 @@ try:
                                 break
                         
                         if df_cr is not None:
-                            # 1. Volvemos a tu find_col que maneja bien las fechas internas, descartando columnas basura
                             c_mes = find_col(df_cr, [mes_str], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"])
                             
                             if not c_mes:
-                                mes_corto = mes_str[:3] # ej: "ENE"
+                                mes_corto = mes_str[:3]
                                 c_mes = find_col(df_cr, [mes_corto], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"])
                                 
                             if c_mes:
-                                # 2. Buscar la fila escaneando las primeras 3 columnas (para atrapar CONCEPTO aunque se mueva)
+                                # Buscar la fila EXACTA para evitar atrapar otros "Controlables"
                                 idx_row = None
                                 for i in range(len(df_cr)):
                                     row_text = " ".join([str(x).upper() for x in df_cr.iloc[i, 0:3]])
-                                    if "CONTROLABLE" in row_text:
+                                    if "CTOS CONTROLABLES Y NO" in row_text or "COSTOS CONTROLABLES Y NO" in row_text:
                                         idx_row = i
                                         break
                                 
@@ -2070,21 +2069,19 @@ try:
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
                                     
-                                    # 3. Limpieza a prueba de balas para números con puntos/comas
                                     if isinstance(val, str):
                                         val = val.replace('$', '').strip()
                                         if ',' in val and '.' in val:
-                                            # Ej: 1.234.567,89
                                             if val.rfind(',') > val.rfind('.'):
                                                 val = val.replace('.', '').replace(',', '.')
                                             else:
                                                 val = val.replace(',', '')
                                         elif ',' in val:
-                                            val = val.replace(',', '.') # Ej: 1234,56
+                                            val = val.replace(',', '.')
                                         elif '.' in val and val.count('.') > 1:
-                                            val = val.replace('.', '') # Ej: 1.234.567
+                                            val = val.replace('.', '')
                                         elif '.' in val and len(val.split('.')[-1]) == 3:
-                                            val = val.replace('.', '') # Ej: 54.228 (como miles)
+                                            val = val.replace('.', '')
                                             
                                     costo = pd.to_numeric(val, errors='coerce')
                                     
