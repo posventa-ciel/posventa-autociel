@@ -2035,7 +2035,7 @@ try:
                         axis=1
                     )
                     
-                    # Búsqueda robusta de costos en Cta Res
+                    # Búsqueda robusta de costos y limpieza de formato moneda Argentina
                     def get_costo(mes_num):
                         costo = 0
                         mes_completo = meses_nom.get(mes_num, "").strip().upper()
@@ -2051,7 +2051,12 @@ try:
                             c_mes = None
                             for col in df_cr.columns:
                                 col_upper = str(col).strip().upper()
-                                if mes_corto in col_upper and not any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%"]):
+                                # Descartar columnas anexas
+                                if any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"]):
+                                    continue
+                                
+                                # Coincidencia exacta o que empiece estricto (ej: "AGO ", "AGO 2026")
+                                if col_upper == mes_completo or col_upper == mes_corto or col_upper.startswith(f"{mes_corto} "):
                                     c_mes = col
                                     break
                                 
@@ -2068,16 +2073,15 @@ try:
                                     
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
-                                    # Limpieza segura para formato de Argentina ($ 1.234.567,89)
+                                    # Limpieza de Moneda (formato argentino)
                                     if isinstance(val, str):
                                         val = val.replace('$', '').strip()
-                                        if ',' in val and '.' in val:
-                                            if val.rfind(',') > val.rfind('.'):
-                                                val = val.replace('.', '').replace(',', '.')
-                                            else:
-                                                val = val.replace(',', '')
-                                        elif ',' in val:
-                                            val = val.replace(',', '.')
+                                        if ',' in val:
+                                            # Tiene decimales (ej: 62.110.801,00)
+                                            val = val.replace('.', '').replace(',', '.')
+                                        else:
+                                            # Solo miles (ej: 54.228.694)
+                                            val = val.replace('.', '')
                                     costo = pd.to_numeric(val, errors='coerce')
                                     
                         return costo if pd.notna(costo) else 0
@@ -2141,7 +2145,7 @@ try:
                         )
                         
                         # --- FILTRAR MESES INCOMPLETOS PARA LOS GRÁFICOS ---
-                        # Si el mes no cerró (prog_t < 1.0), limitamos el gráfico hasta el mes cerrado.
+                        # Evita que septiembre se dispare dividiendo por pocos paños
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
