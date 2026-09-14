@@ -2025,8 +2025,8 @@ try:
                         'MO_Facturada': h_cyp['MO Total']
                     })
                     
-                    df['Dias_Habiles'] = df['Mes_Num'].apply(get_habiles)
                     # Cálculo de Capacidad: Días Hábiles x Técnicos x 8 hs x 90%
+                    df['Dias_Habiles'] = df['Mes_Num'].apply(get_habiles)
                     df['Hs_Ideales'] = df['Dias_Habiles'] * techs * 8
                     df['Hs_Reales'] = df['Hs_Ideales'] * 0.90
                     
@@ -2038,9 +2038,8 @@ try:
                     # Búsqueda robusta de costos en Cta Res
                     def get_costo(mes_num):
                         costo = 0
-                        mes_str = meses_nom.get(mes_num, "").upper()
+                        mes_str = meses_nom.get(mes_num, "").strip().upper()
                         
-                        # Buscar el dataframe correcto en el diccionario de datos
                         df_cr = None
                         for k, v in data.items():
                             if 'CTA' in k.upper() and 'RES' in k.upper() and 'CHAPA' in k.upper() and sucursal.upper() in k.upper():
@@ -2048,17 +2047,37 @@ try:
                                 break
                         
                         if df_cr is not None:
-                            c_mes = find_col(df_cr, [mes_str])
+                            c_mes = None
+                            # FIX: Buscar coincidencia EXACTA del nombre del mes primero.
+                            # Evita atrapar columnas como "Presupuesto Enero" o "Acumulado Agosto"
+                            for col in df_cr.columns:
+                                if str(col).strip().upper() == mes_str:
+                                    c_mes = col
+                                    break
+                            
+                            # Si no hay exacta, usamos find_col excluyendo palabras típicas de columnas extra
+                            if not c_mes:
+                                c_mes = find_col(df_cr, [mes_str], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "OBJ", "PROYECTADO"])
+                                
                             if c_mes:
-                                # En pandas, el índice 0 es la fila 2 de Excel.
-                                # Por ende: Fila 27 de Excel = index 25. Fila 26 de Excel = index 24.
-                                idx = 25 if sucursal.upper() == 'JUJUY' else 24
-                                if len(df_cr) > idx:
-                                    val = df_cr[c_mes].iloc[idx]
-                                    # Limpiamos símbolos de moneda o espacios por si el Excel viene sucio
+                                # Buscar la fila dinámicamente por la palabra clave
+                                idx_row = None
+                                for i in range(len(df_cr)):
+                                    val_col0 = str(df_cr.iloc[i, 0]).upper()
+                                    if "CONTROLABLE" in val_col0:
+                                        idx_row = i
+                                        break
+                                
+                                # Si la celda no dice "Controlable", caemos en el índice fijo (Fila 27 o 26)
+                                if idx_row is None:
+                                    idx_row = 25 if sucursal.upper() == 'JUJUY' else 24
+                                    
+                                if len(df_cr) > idx_row:
+                                    val = df_cr[c_mes].iloc[idx_row]
                                     if isinstance(val, str):
                                         val = val.replace('$', '').replace(',', '').strip()
                                     costo = pd.to_numeric(val, errors='coerce')
+                                    
                         return costo if pd.notna(costo) else 0
                         
                     df['Costo_Total'] = df['Mes_Num'].apply(get_costo)
@@ -2096,7 +2115,7 @@ try:
                             var = (act / ant - 1) * 100
                             return f"{var:+.1f}% vs Mes Ant"
                         
-                        # Mostramos dinámicamente los Días Hábiles en la tarjeta
+                        # Mostramos los Días Hábiles dinámicamente en la interfaz
                         dias_hab = row_act['Dias_Habiles']
                         c_kpi1.metric("Hs Reales Disponibles", f"{row_act['Hs_Reales']:,.0f} hs", f"{dias_hab:.0f} Días x {techs} Téc x 8hs x 90%")
                         
@@ -2120,7 +2139,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # Gráficos de Tendencia (Con "key" único)
+                        # Gráficos de Tendencia
                         cg1, cg2 = st.columns(2)
                         with cg1:
                             fig_hs_pano = go.Figure()
