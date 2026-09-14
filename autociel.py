@@ -2035,10 +2035,12 @@ try:
                         axis=1
                     )
                     
-                    # Búsqueda robusta de costos en Cta Res
+                    # Búsqueda robusta de costos en Cta Res adaptada a formato "ene 2026"
                     def get_costo(mes_num):
                         costo = 0
-                        mes_str = meses_nom.get(mes_num, "").strip().upper()
+                        mes_completo = meses_nom.get(mes_num, "").strip().upper()
+                        # Extraer las primeras 3 letras del mes (ej: "ENE", "ABR", "AGO")
+                        mes_corto = mes_completo[:3] if len(mes_completo) >= 3 else mes_completo
                         
                         df_cr = None
                         for k, v in data.items():
@@ -2048,16 +2050,12 @@ try:
                         
                         if df_cr is not None:
                             c_mes = None
-                            # FIX: Buscar coincidencia EXACTA del nombre del mes primero.
-                            # Evita atrapar columnas como "Presupuesto Enero" o "Acumulado Agosto"
+                            # Buscar en las columnas la abreviatura del mes (ej. que contenga "ene")
                             for col in df_cr.columns:
-                                if str(col).strip().upper() == mes_str:
+                                col_upper = str(col).strip().upper()
+                                if mes_corto in col_upper and not any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%"]):
                                     c_mes = col
                                     break
-                            
-                            # Si no hay exacta, usamos find_col excluyendo palabras típicas de columnas extra
-                            if not c_mes:
-                                c_mes = find_col(df_cr, [mes_str], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "OBJ", "PROYECTADO"])
                                 
                             if c_mes:
                                 # Buscar la fila dinámicamente por la palabra clave
@@ -2068,14 +2066,14 @@ try:
                                         idx_row = i
                                         break
                                 
-                                # Si la celda no dice "Controlable", caemos en el índice fijo (Fila 27 o 26)
+                                # Si no encuentra "Controlable", usar índice fijo
                                 if idx_row is None:
                                     idx_row = 25 if sucursal.upper() == 'JUJUY' else 24
                                     
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
                                     if isinstance(val, str):
-                                        val = val.replace('$', '').replace(',', '').strip()
+                                        val = val.replace('$', '').replace(',', '').replace('.', '').strip()
                                     costo = pd.to_numeric(val, errors='coerce')
                                     
                         return costo if pd.notna(costo) else 0
