@@ -2022,7 +2022,7 @@ try:
                         'Mes_Num': h_cyp['Mes'], 
                         'NombreMes': h_cyp['NombreMes'],
                         'Paños_Totales': h_cyp['Total Paños'],
-                        'MO_Facturada': h_cyp['MO Total'] # Solo Mano de Obra, excluye Repuestos
+                        'MO_Facturada': h_cyp['MO Total']
                     })
                     
                     # Cálculo de Capacidad: Días Hábiles x Técnicos x 8 hs x 90%
@@ -2038,7 +2038,8 @@ try:
                     # Búsqueda robusta de costos en Cta Res
                     def get_costo(mes_num):
                         costo = 0
-                        mes_str = meses_nom.get(mes_num, "").strip().upper()
+                        mes_completo = meses_nom.get(mes_num, "").strip().upper()
+                        mes_corto = mes_completo[:3] if len(mes_completo) >= 3 else mes_completo
                         
                         df_cr = None
                         for k, v in data.items():
@@ -2047,14 +2048,18 @@ try:
                                 break
                         
                         if df_cr is not None:
-                            c_mes = find_col(df_cr, [mes_str], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"])
-                            
-                            if not c_mes:
-                                mes_corto = mes_str[:3]
-                                c_mes = find_col(df_cr, [mes_corto], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"])
+                            c_mes = None
+                            # Busca columnas que empiecen con "ENE", "AGO", etc. (ej: "ago 2026")
+                            for col in df_cr.columns:
+                                col_upper = str(col).strip().upper()
+                                if any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"]):
+                                    continue
+                                if col_upper.startswith(mes_corto):
+                                    c_mes = col
+                                    break
                                 
                             if c_mes:
-                                # Buscar la fila EXACTA para evitar atrapar otros "Controlables"
+                                # Busca la fila exacta escaneando las primeras columnas para no confundirse
                                 idx_row = None
                                 for i in range(len(df_cr)):
                                     row_text = " ".join([str(x).upper() for x in df_cr.iloc[i, 0:3]])
@@ -2062,13 +2067,14 @@ try:
                                         idx_row = i
                                         break
                                 
-                                # Fallback a índice fijo si todo falla
+                                # Si no lo encuentra, usa la fila fija por defecto
                                 if idx_row is None:
                                     idx_row = 25 if sucursal.upper() == 'JUJUY' else 24
                                     
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
                                     
+                                    # Limpieza perfecta para el formato moneda de Argentina
                                     if isinstance(val, str):
                                         val = val.replace('$', '').strip()
                                         if ',' in val and '.' in val:
@@ -2145,7 +2151,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRAR MESES INCOMPLETOS PARA LOS GRÁFICOS ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Evita picos raros) ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
