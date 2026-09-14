@@ -2035,11 +2035,10 @@ try:
                         axis=1
                     )
                     
-                    # Búsqueda robusta de costos y limpieza de formato moneda Argentina
+                    # Búsqueda robusta de costos en Cta Res
                     def get_costo(mes_num):
                         costo = 0
-                        mes_completo = meses_nom.get(mes_num, "").strip().upper()
-                        mes_corto = mes_completo[:3] if len(mes_completo) >= 3 else mes_completo
+                        mes_str = meses_nom.get(mes_num, "").strip().upper()
                         
                         df_cr = None
                         for k, v in data.items():
@@ -2048,40 +2047,45 @@ try:
                                 break
                         
                         if df_cr is not None:
-                            c_mes = None
-                            for col in df_cr.columns:
-                                col_upper = str(col).strip().upper()
-                                # Descartar columnas anexas
-                                if any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"]):
-                                    continue
-                                
-                                # Coincidencia exacta o que empiece estricto (ej: "AGO ", "AGO 2026")
-                                if col_upper == mes_completo or col_upper == mes_corto or col_upper.startswith(f"{mes_corto} "):
-                                    c_mes = col
-                                    break
+                            # 1. Volvemos a tu find_col que maneja bien las fechas internas, descartando columnas basura
+                            c_mes = find_col(df_cr, [mes_str], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"])
+                            
+                            if not c_mes:
+                                mes_corto = mes_str[:3] # ej: "ENE"
+                                c_mes = find_col(df_cr, [mes_corto], exclude_keywords=["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"])
                                 
                             if c_mes:
+                                # 2. Buscar la fila escaneando las primeras 3 columnas (para atrapar CONCEPTO aunque se mueva)
                                 idx_row = None
                                 for i in range(len(df_cr)):
-                                    val_col0 = str(df_cr.iloc[i, 0]).upper()
-                                    if "CONTROLABLE" in val_col0:
+                                    row_text = " ".join([str(x).upper() for x in df_cr.iloc[i, 0:3]])
+                                    if "CONTROLABLE" in row_text:
                                         idx_row = i
                                         break
                                 
+                                # Fallback a índice fijo si todo falla
                                 if idx_row is None:
                                     idx_row = 25 if sucursal.upper() == 'JUJUY' else 24
                                     
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
-                                    # Limpieza de Moneda (formato argentino)
+                                    
+                                    # 3. Limpieza a prueba de balas para números con puntos/comas
                                     if isinstance(val, str):
                                         val = val.replace('$', '').strip()
-                                        if ',' in val:
-                                            # Tiene decimales (ej: 62.110.801,00)
-                                            val = val.replace('.', '').replace(',', '.')
-                                        else:
-                                            # Solo miles (ej: 54.228.694)
-                                            val = val.replace('.', '')
+                                        if ',' in val and '.' in val:
+                                            # Ej: 1.234.567,89
+                                            if val.rfind(',') > val.rfind('.'):
+                                                val = val.replace('.', '').replace(',', '.')
+                                            else:
+                                                val = val.replace(',', '')
+                                        elif ',' in val:
+                                            val = val.replace(',', '.') # Ej: 1234,56
+                                        elif '.' in val and val.count('.') > 1:
+                                            val = val.replace('.', '') # Ej: 1.234.567
+                                        elif '.' in val and len(val.split('.')[-1]) == 3:
+                                            val = val.replace('.', '') # Ej: 54.228 (como miles)
+                                            
                                     costo = pd.to_numeric(val, errors='coerce')
                                     
                         return costo if pd.notna(costo) else 0
@@ -2145,7 +2149,6 @@ try:
                         )
                         
                         # --- FILTRAR MESES INCOMPLETOS PARA LOS GRÁFICOS ---
-                        # Evita que septiembre se dispare dividiendo por pocos paños
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
