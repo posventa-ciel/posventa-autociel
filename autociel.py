@@ -2035,11 +2035,10 @@ try:
                         axis=1
                     )
                     
-                    # Búsqueda robusta de costos en Cta Res adaptada a formato "ene 2026"
+                    # Búsqueda robusta de costos en Cta Res
                     def get_costo(mes_num):
                         costo = 0
                         mes_completo = meses_nom.get(mes_num, "").strip().upper()
-                        # Extraer las primeras 3 letras del mes (ej: "ENE", "ABR", "AGO")
                         mes_corto = mes_completo[:3] if len(mes_completo) >= 3 else mes_completo
                         
                         df_cr = None
@@ -2050,7 +2049,6 @@ try:
                         
                         if df_cr is not None:
                             c_mes = None
-                            # Buscar en las columnas la abreviatura del mes (ej. que contenga "ene")
                             for col in df_cr.columns:
                                 col_upper = str(col).strip().upper()
                                 if mes_corto in col_upper and not any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%"]):
@@ -2058,7 +2056,6 @@ try:
                                     break
                                 
                             if c_mes:
-                                # Buscar la fila dinámicamente por la palabra clave
                                 idx_row = None
                                 for i in range(len(df_cr)):
                                     val_col0 = str(df_cr.iloc[i, 0]).upper()
@@ -2066,14 +2063,21 @@ try:
                                         idx_row = i
                                         break
                                 
-                                # Si no encuentra "Controlable", usar índice fijo
                                 if idx_row is None:
                                     idx_row = 25 if sucursal.upper() == 'JUJUY' else 24
                                     
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
+                                    # Limpieza segura para formato de Argentina ($ 1.234.567,89)
                                     if isinstance(val, str):
-                                        val = val.replace('$', '').replace(',', '').replace('.', '').strip()
+                                        val = val.replace('$', '').strip()
+                                        if ',' in val and '.' in val:
+                                            if val.rfind(',') > val.rfind('.'):
+                                                val = val.replace('.', '').replace(',', '.')
+                                            else:
+                                                val = val.replace(',', '')
+                                        elif ',' in val:
+                                            val = val.replace(',', '.')
                                     costo = pd.to_numeric(val, errors='coerce')
                                     
                         return costo if pd.notna(costo) else 0
@@ -2113,7 +2117,6 @@ try:
                             var = (act / ant - 1) * 100
                             return f"{var:+.1f}% vs Mes Ant"
                         
-                        # Mostramos los Días Hábiles dinámicamente en la interfaz
                         dias_hab = row_act['Dias_Habiles']
                         c_kpi1.metric("Hs Reales Disponibles", f"{row_act['Hs_Reales']:,.0f} hs", f"{dias_hab:.0f} Días x {techs} Téc x 8hs x 90%")
                         
@@ -2137,17 +2140,21 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # Gráficos de Tendencia
+                        # --- FILTRAR MESES INCOMPLETOS PARA LOS GRÁFICOS ---
+                        # Si el mes no cerró (prog_t < 1.0), limitamos el gráfico hasta el mes cerrado.
+                        limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
+                        df_chart = df_efi.iloc[:limit_idx]
+
                         cg1, cg2 = st.columns(2)
                         with cg1:
                             fig_hs_pano = go.Figure()
                             fig_hs_pano.add_trace(go.Scatter(
-                                x=df_efi['NombreMes'], y=df_efi['Hs_por_Paño'], 
+                                x=df_chart['NombreMes'], y=df_chart['Hs_por_Paño'], 
                                 mode='lines+markers+text', name='Hs/Paño',
-                                text=[f"{v:.1f}h" if v > 0 else "" for v in df_efi['Hs_por_Paño']],
+                                text=[f"{v:.1f}h" if v > 0 else "" for v in df_chart['Hs_por_Paño']],
                                 textposition='top center', line=dict(color='#ffc107', width=3)
                             ))
-                            max_y_hs = df_efi['Hs_por_Paño'].max() * 1.25 if not df_efi.empty else 10
+                            max_y_hs = df_chart['Hs_por_Paño'].max() * 1.25 if not df_chart.empty else 10
                             fig_hs_pano.update_layout(
                                 title=f"Evolución Horas Invertidas por Paño", 
                                 height=320, margin=dict(t=40, b=0, l=0, r=0),
@@ -2158,12 +2165,12 @@ try:
                         with cg2:
                             fig_costo_pano = go.Figure()
                             fig_costo_pano.add_trace(go.Bar(
-                                x=df_efi['NombreMes'], y=df_efi['Costo_por_Paño'], 
+                                x=df_chart['NombreMes'], y=df_chart['Costo_por_Paño'], 
                                 name='Costo/Paño', marker_color='#dc3545',
-                                text=[f"${v:,.0f}" if v > 0 else "" for v in df_efi['Costo_por_Paño']],
+                                text=[f"${v:,.0f}" if v > 0 else "" for v in df_chart['Costo_por_Paño']],
                                 textposition='outside', textfont=dict(color="#444444", size=11)
                             ))
-                            max_y_costo = df_efi['Costo_por_Paño'].max() * 1.25 if not df_efi.empty else 100
+                            max_y_costo = df_chart['Costo_por_Paño'].max() * 1.25 if not df_chart.empty else 100
                             fig_costo_pano.update_layout(
                                 title=f"Evolución Costo por Paño ($)", 
                                 height=320, margin=dict(t=40, b=0, l=0, r=0),
@@ -2176,7 +2183,6 @@ try:
                 
                 with tab_efi_s:
                     render_efi_tab(df_efi_s, "Salta", 9)
-
     else:
         st.warning("No se pudieron cargar los datos.")
 except Exception as e:
