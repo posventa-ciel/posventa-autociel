@@ -2016,8 +2016,34 @@ try:
                         if not row.empty: return float(row[c_hab].iloc[0] or 22)
                     return 22
 
-                # 2. Función constructora de datos (AHORA RECIBE LA FILA EXACTA DEL EXCEL)
-                def build_efi_df(h_cyp, sucursal, techs, fila_excel):
+                # 2. Función de limpieza de moneda (Formato Argentina)
+                def clean_money(val):
+                    if pd.isna(val): return 0
+                    if isinstance(val, (int, float)): return float(val)
+                    val = str(val).upper().replace('$', '').replace(' ', '').strip()
+                    if val in ['-', '', 'NAN', 'NULL']: return 0
+                    
+                    if '(' in val and ')' in val: # Negativos contables
+                        val = '-' + val.replace('(', '').replace(')', '')
+                        
+                    if ',' in val and '.' in val:
+                        if val.rfind(',') > val.rfind('.'):
+                            val = val.replace('.', '').replace(',', '.')
+                        else:
+                            val = val.replace(',', '')
+                    elif ',' in val:
+                        val = val.replace(',', '.')
+                    elif '.' in val:
+                        parts = val.split('.')
+                        if len(parts) > 2 or len(parts[-1]) == 3:
+                            val = val.replace('.', '')
+                    try:
+                        return float(val)
+                    except:
+                        return 0
+
+                # 3. Función constructora de datos (BÚSQUEDA POR COORDENADAS)
+                def build_efi_df(h_cyp, sucursal, techs):
                     df = pd.DataFrame({
                         'Mes_Num': h_cyp['Mes'], 
                         'NombreMes': h_cyp['NombreMes'],
@@ -2025,21 +2051,13 @@ try:
                         'MO_Facturada': h_cyp['MO Total']
                     })
                     
-                    # Cálculo de Capacidad: Días Hábiles x Técnicos x 8 hs x 90%
                     df['Dias_Habiles'] = df['Mes_Num'].apply(get_habiles)
                     df['Hs_Ideales'] = df['Dias_Habiles'] * techs * 8
                     df['Hs_Reales'] = df['Hs_Ideales'] * 0.90
+                    df['Hs_por_Paño'] = df.apply(lambda r: r['Hs_Reales'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, axis=1)
                     
-                    df['Hs_por_Paño'] = df.apply(
-                        lambda r: r['Hs_Reales'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, 
-                        axis=1
-                    )
-                    
-                    # Búsqueda de costos DIRECTO A LA FILA
-                    def get_costo(mes_num):
-                        costo = 0
-                        mes_completo = meses_nom.get(mes_num, "").strip().upper()
-                        mes_corto = mes_completo[:3] if len(mes_completo) >= 3 else mes_completo
+                    def get_costo_matrix(mes_num):
+                        mes_corto = meses_nom.get(mes_num, "").strip().upper()[:3]
                         
                         df_cr = None
                         for k, v in data.items():
@@ -2048,60 +2066,53 @@ try:
                                 break
                         
                         if df_cr is not None:
-                            c_mes = None
-                            for col in df_cr.columns:
-                                col_upper = str(col).strip().upper()
-                                if any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"]):
-                                    continue
-                                if col_upper.startswith(mes_corto):
-                                    c_mes = col
+                            row_idx = None
+                            col_idx = None
+                            
+                            # A) Encontrar la FILA escaneando las primeras 5 columnas
+                            for i in range(len(df_cr)):
+                                for j in range(min(5, len(df_cr.columns))):
+                                    cell_str = str(df_cr.iloc[i, j]).strip().upper()
+                                    if "CTOS CONTROLABLES Y NO" in cell_str or "COSTOS CONTROLABLES Y NO" in cell_str:
+                                        row_idx = i
+                                        break
+                                if row_idx is not None: break
+                            
+                            # B) Encontrar la COLUMNA buscando el mes (ej: "AGO" y "202")
+                            # Primero buscamos en los nombres de las columnas
+                            for j, col_name in enumerate(df_cr.columns):
+                                col_str = str(col_name).strip().upper()
+                                if mes_corto in col_str and "20" in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM"]):
+                                    col_idx = j
                                     break
-                                
-                            if c_mes:
-                                # En Pandas, si la fila 1 del Excel es el título, la fila 2 es el índice 0.
-                                # Por lo tanto, le restamos 2 al número de fila real del Excel para caer exacto.
-                                idx_row = fila_excel - 2
-                                
-                                if len(df_cr) > idx_row:
-                                    val = df_cr[c_mes].iloc[idx_row]
                                     
-                                    # Limpieza perfecta para el formato moneda de Argentina
-                                    if isinstance(val, str):
-                                        val = val.replace('$', '').strip()
-                                        if ',' in val and '.' in val:
-                                            if val.rfind(',') > val.rfind('.'):
-                                                val = val.replace('.', '').replace(',', '.')
-                                            else:
-                                                val = val.replace(',', '')
-                                        elif ',' in val:
-                                            val = val.replace(',', '.')
-                                        elif '.' in val and val.count('.') > 1:
-                                            val = val.replace('.', '')
-                                        elif '.' in val and len(val.split('.')[-1]) == 3:
-                                            val = val.replace('.', '')
-                                            
-                                    costo = pd.to_numeric(val, errors='coerce')
-                                    
-                        return costo if pd.notna(costo) else 0
+                            # Si no está en el encabezado, buscamos en las primeras 4 filas
+                            if col_idx is None:
+                                for i in range(min(4, len(df_cr))):
+                                    for j in range(len(df_cr.columns)):
+                                        cell_str = str(df_cr.iloc[i, j]).strip().upper()
+                                        if mes_corto in cell_str and "20" in cell_str and not any(x in cell_str for x in ["%", "VAR", "ACUM"]):
+                                            col_idx = j
+                                            break
+                                    if col_idx is not None: break
+                            
+                            # C) Cruzar Coordenadas (Fila, Columna)
+                            if row_idx is not None and col_idx is not None:
+                                val = df_cr.iloc[row_idx, col_idx]
+                                return clean_money(val)
+                                
+                        return 0
                         
-                    df['Costo_Total'] = df['Mes_Num'].apply(get_costo)
-                    
-                    df['Costo_por_Paño'] = df.apply(
-                        lambda r: r['Costo_Total'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, 
-                        axis=1
-                    )
-                    
-                    df['Margen_Ratio'] = df.apply(
-                        lambda r: r['MO_Facturada'] / r['Costo_Total'] if r['Costo_Total'] > 0 else 0, 
-                        axis=1
-                    )
+                    df['Costo_Total'] = df['Mes_Num'].apply(get_costo_matrix)
+                    df['Costo_por_Paño'] = df.apply(lambda r: r['Costo_Total'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, axis=1)
+                    df['Margen_Ratio'] = df.apply(lambda r: r['MO_Facturada'] / r['Costo_Total'] if r['Costo_Total'] > 0 else 0, axis=1)
                     return df
 
-                # 3. Generar DataFrames independientes (PASAMOS LA FILA EXACTA COMO PARÁMETRO)
-                df_efi_j = build_efi_df(h_cyp_j, 'JUJUY', 11, fila_excel=27)
-                df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9, fila_excel=26)
+                # 4. Generar DataFrames independientes
+                df_efi_j = build_efi_df(h_cyp_j, 'JUJUY', 11)
+                df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9)
 
-                # 4. Renderizado visual en sub-pestañas
+                # 5. Renderizado visual en sub-pestañas
                 tab_efi_j, tab_efi_s = st.tabs(["📍 Jujuy (11 Téc)", "📍 Salta (9 Téc)"])
                 
                 def render_efi_tab(df_efi, sucursal_name, techs):
@@ -2142,7 +2153,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Evita picos raros en septiembre) ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Septiembre) ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
