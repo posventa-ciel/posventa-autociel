@@ -2016,8 +2016,8 @@ try:
                         if not row.empty: return float(row[c_hab].iloc[0] or 22)
                     return 22
 
-                # 2. Función constructora de datos
-                def build_efi_df(h_cyp, sucursal, techs):
+                # 2. Función constructora de datos (AHORA RECIBE LA FILA EXACTA DEL EXCEL)
+                def build_efi_df(h_cyp, sucursal, techs, fila_excel):
                     df = pd.DataFrame({
                         'Mes_Num': h_cyp['Mes'], 
                         'NombreMes': h_cyp['NombreMes'],
@@ -2035,7 +2035,7 @@ try:
                         axis=1
                     )
                     
-                    # Búsqueda robusta de costos en Cta Res
+                    # Búsqueda de costos DIRECTO A LA FILA
                     def get_costo(mes_num):
                         costo = 0
                         mes_completo = meses_nom.get(mes_num, "").strip().upper()
@@ -2049,7 +2049,6 @@ try:
                         
                         if df_cr is not None:
                             c_mes = None
-                            # Busca columnas que empiecen con "ENE", "AGO", etc. (ej: "ago 2026")
                             for col in df_cr.columns:
                                 col_upper = str(col).strip().upper()
                                 if any(ex in col_upper for ex in ["PRESUPUESTO", "VAR", "ACUM", "YTD", "%", "PROYECTADO"]):
@@ -2059,18 +2058,10 @@ try:
                                     break
                                 
                             if c_mes:
-                                # Busca la fila exacta escaneando las primeras columnas para no confundirse
-                                idx_row = None
-                                for i in range(len(df_cr)):
-                                    row_text = " ".join([str(x).upper() for x in df_cr.iloc[i, 0:3]])
-                                    if "CTOS CONTROLABLES Y NO" in row_text or "COSTOS CONTROLABLES Y NO" in row_text:
-                                        idx_row = i
-                                        break
+                                # En Pandas, si la fila 1 del Excel es el título, la fila 2 es el índice 0.
+                                # Por lo tanto, le restamos 2 al número de fila real del Excel para caer exacto.
+                                idx_row = fila_excel - 2
                                 
-                                # Si no lo encuentra, usa la fila fija por defecto
-                                if idx_row is None:
-                                    idx_row = 25 if sucursal.upper() == 'JUJUY' else 24
-                                    
                                 if len(df_cr) > idx_row:
                                     val = df_cr[c_mes].iloc[idx_row]
                                     
@@ -2106,9 +2097,9 @@ try:
                     )
                     return df
 
-                # 3. Generar DataFrames independientes
-                df_efi_j = build_efi_df(h_cyp_j, 'JUJUY', 11)
-                df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9)
+                # 3. Generar DataFrames independientes (PASAMOS LA FILA EXACTA COMO PARÁMETRO)
+                df_efi_j = build_efi_df(h_cyp_j, 'JUJUY', 11, fila_excel=27)
+                df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9, fila_excel=26)
 
                 # 4. Renderizado visual en sub-pestañas
                 tab_efi_j, tab_efi_s = st.tabs(["📍 Jujuy (11 Téc)", "📍 Salta (9 Téc)"])
@@ -2151,7 +2142,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Evita picos raros) ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Evita picos raros en septiembre) ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
