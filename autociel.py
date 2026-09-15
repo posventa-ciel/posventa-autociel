@@ -2016,14 +2016,14 @@ try:
                         if not row.empty: return float(row[c_hab].iloc[0] or 22)
                     return 22
 
-                # 2. Función de limpieza de moneda (Formato Argentina)
+                # 2. Función de limpieza de moneda (A prueba de formatos argentinos)
                 def clean_money(val):
                     if pd.isna(val): return 0
                     if isinstance(val, (int, float)): return float(val)
                     val = str(val).upper().replace('$', '').replace(' ', '').strip()
                     if val in ['-', '', 'NAN', 'NULL']: return 0
                     
-                    if '(' in val and ')' in val: # Negativos contables
+                    if '(' in val and ')' in val:
                         val = '-' + val.replace('(', '').replace(')', '')
                         
                     if ',' in val and '.' in val:
@@ -2035,6 +2035,7 @@ try:
                         val = val.replace(',', '.')
                     elif '.' in val:
                         parts = val.split('.')
+                        # Si tiene más de un punto (1.234.567) o el último bloque es de 3 cifras (54.228), es separador de miles
                         if len(parts) > 2 or len(parts[-1]) == 3:
                             val = val.replace('.', '')
                     try:
@@ -2042,7 +2043,7 @@ try:
                     except:
                         return 0
 
-                # 3. Función constructora de datos (BÚSQUEDA POR COORDENADAS)
+                # 3. Función constructora de datos
                 def build_efi_df(h_cyp, sucursal, techs):
                     df = pd.DataFrame({
                         'Mes_Num': h_cyp['Mes'], 
@@ -2069,34 +2070,39 @@ try:
                             row_idx = None
                             col_idx = None
                             
-                            # A) Encontrar la FILA escaneando las primeras 5 columnas
+                            # A) Encontrar la FILA por coincidencia EXACTA
                             for i in range(len(df_cr)):
-                                for j in range(min(5, len(df_cr.columns))):
+                                for j in range(min(3, len(df_cr.columns))):
                                     cell_str = str(df_cr.iloc[i, j]).strip().upper()
-                                    if "CTOS CONTROLABLES Y NO" in cell_str or "COSTOS CONTROLABLES Y NO" in cell_str:
+                                    if cell_str == "CTOS CONTROLABLES Y NO CONTROLABLES":
                                         row_idx = i
                                         break
                                 if row_idx is not None: break
-                            
-                            # B) Encontrar la COLUMNA buscando el mes (ej: "AGO" y "202")
-                            # Primero buscamos en los nombres de las columnas
-                            for j, col_name in enumerate(df_cr.columns):
-                                col_str = str(col_name).strip().upper()
-                                if mes_corto in col_str and "20" in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM"]):
-                                    col_idx = j
-                                    break
-                                    
-                            # Si no está en el encabezado, buscamos en las primeras 4 filas
-                            if col_idx is None:
-                                for i in range(min(4, len(df_cr))):
-                                    for j in range(len(df_cr.columns)):
-                                        cell_str = str(df_cr.iloc[i, j]).strip().upper()
-                                        if mes_corto in cell_str and "20" in cell_str and not any(x in cell_str for x in ["%", "VAR", "ACUM"]):
+                                
+                            # B) Encontrar la COLUMNA (Sorteando la auto-conversión de Pandas)
+                            for j, col in enumerate(df_cr.columns):
+                                # 1. Si Pandas lo convirtió a fecha real (datetime)
+                                if hasattr(col, 'month'):
+                                    if col.month == mes_num:
+                                        col_idx = j
+                                        break
+                                
+                                col_str = str(col).strip().upper()
+                                
+                                # 2. Si lo convirtió a string tipo fecha '2026-02-01'
+                                if len(col_str) >= 10 and '-' in col_str:
+                                    try:
+                                        if pd.to_datetime(col_str).month == mes_num:
                                             col_idx = j
                                             break
-                                    if col_idx is not None: break
+                                    except: pass
+                                
+                                # 3. Si sigue siendo texto normal 'FEB 2026'
+                                if mes_corto in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP"]):
+                                    col_idx = j
+                                    break
                             
-                            # C) Cruzar Coordenadas (Fila, Columna)
+                            # C) Extraer el dato
                             if row_idx is not None and col_idx is not None:
                                 val = df_cr.iloc[row_idx, col_idx]
                                 return clean_money(val)
@@ -2153,7 +2159,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Septiembre) ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
