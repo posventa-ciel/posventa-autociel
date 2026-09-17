@@ -2069,18 +2069,20 @@ try:
                             row_idx = None
                             col_idx = None
                             
-                            # A) Encontrar la FILA (Busca la frase ignorando espacios o saltos)
+                            # A) Encontrar la FILA (Busca en las primeras columnas y CLAVA LOS FRENOS al encontrarlo)
                             for i in range(len(df_cr)):
-                                # Unimos el texto de las primeras 4 columnas por si está desfasado
-                                celdas = [str(x).upper() for x in df_cr.iloc[i, 0:4] if pd.notna(x)]
-                                row_text = " ".join(celdas)
-                                row_text = " ".join(row_text.split()) # Elimina dobles espacios
+                                for j in range(min(4, len(df_cr.columns))):
+                                    cell_val = str(df_cr.iloc[i, j]).strip().upper()
+                                    # Normalizamos espacios intermedios
+                                    cell_val = " ".join(cell_val.split())
+                                    
+                                    if "CTOS CONTROLABLES Y NO" in cell_val or "COSTOS CONTROLABLES Y NO" in cell_val:
+                                        row_idx = i
+                                        break # Freno de columna
+                                if row_idx is not None:
+                                    break # Freno de fila (¡Este es el que faltaba ayer!)
                                 
-                                if "CTOS CONTROLABLES" in row_text or "COSTOS CONTROLABLES" in row_text:
-                                    row_idx = i
-                                    # No hacemos break; dejamos que siga hasta abajo para agarrar el total final
-                                
-                            # B) Encontrar la COLUMNA (Sorteando la auto-conversión de Pandas)
+                            # B) Encontrar la COLUMNA
                             for j, col in enumerate(df_cr.columns):
                                 if hasattr(col, 'month'):
                                     if col.month == mes_num:
@@ -2108,7 +2110,6 @@ try:
                         
                     df['Costo_Total'] = df['Mes_Num'].apply(get_costo_matrix)
                     
-                    # AQUÍ SE DIVIDE EL COSTO TOTAL SOBRE LOS PAÑOS TOTALES
                     df['Costo_por_Paño'] = df.apply(lambda r: r['Costo_Total'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, axis=1)
                     df['Margen_Ratio'] = df.apply(lambda r: r['MO_Facturada'] / r['Costo_Total'] if r['Costo_Total'] > 0 else 0, axis=1)
                     return df
@@ -2158,7 +2159,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Septiembre) ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
