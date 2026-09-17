@@ -2016,7 +2016,7 @@ try:
                         if not row.empty: return float(row[c_hab].iloc[0] or 22)
                     return 22
 
-                # 2. Función de limpieza de moneda (A prueba de formatos argentinos)
+                # 2. Función de limpieza de moneda (A prueba de formatos)
                 def clean_money(val):
                     if pd.isna(val): return 0
                     if isinstance(val, (int, float)): return float(val)
@@ -2035,7 +2035,6 @@ try:
                         val = val.replace(',', '.')
                     elif '.' in val:
                         parts = val.split('.')
-                        # Si tiene más de un punto (1.234.567) o el último bloque es de 3 cifras (54.228), es separador de miles
                         if len(parts) > 2 or len(parts[-1]) == 3:
                             val = val.replace('.', '')
                     try:
@@ -2070,26 +2069,25 @@ try:
                             row_idx = None
                             col_idx = None
                             
-                            # A) Encontrar la FILA por coincidencia EXACTA
+                            # A) Encontrar la FILA (Busca la frase ignorando espacios o saltos)
                             for i in range(len(df_cr)):
-                                for j in range(min(3, len(df_cr.columns))):
-                                    cell_str = str(df_cr.iloc[i, j]).strip().upper()
-                                    if cell_str == "CTOS CONTROLABLES Y NO CONTROLABLES":
-                                        row_idx = i
-                                        break
-                                if row_idx is not None: break
+                                # Unimos el texto de las primeras 4 columnas por si está desfasado
+                                celdas = [str(x).upper() for x in df_cr.iloc[i, 0:4] if pd.notna(x)]
+                                row_text = " ".join(celdas)
+                                row_text = " ".join(row_text.split()) # Elimina dobles espacios
+                                
+                                if "CTOS CONTROLABLES" in row_text or "COSTOS CONTROLABLES" in row_text:
+                                    row_idx = i
+                                    # No hacemos break; dejamos que siga hasta abajo para agarrar el total final
                                 
                             # B) Encontrar la COLUMNA (Sorteando la auto-conversión de Pandas)
                             for j, col in enumerate(df_cr.columns):
-                                # 1. Si Pandas lo convirtió a fecha real (datetime)
                                 if hasattr(col, 'month'):
                                     if col.month == mes_num:
                                         col_idx = j
                                         break
                                 
                                 col_str = str(col).strip().upper()
-                                
-                                # 2. Si lo convirtió a string tipo fecha '2026-02-01'
                                 if len(col_str) >= 10 and '-' in col_str:
                                     try:
                                         if pd.to_datetime(col_str).month == mes_num:
@@ -2097,12 +2095,11 @@ try:
                                             break
                                     except: pass
                                 
-                                # 3. Si sigue siendo texto normal 'FEB 2026'
-                                if mes_corto in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP"]):
+                                if mes_corto in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP", "YTD"]):
                                     col_idx = j
                                     break
                             
-                            # C) Extraer el dato
+                            # C) Extraer el dato y limpiarlo
                             if row_idx is not None and col_idx is not None:
                                 val = df_cr.iloc[row_idx, col_idx]
                                 return clean_money(val)
@@ -2110,6 +2107,8 @@ try:
                         return 0
                         
                     df['Costo_Total'] = df['Mes_Num'].apply(get_costo_matrix)
+                    
+                    # AQUÍ SE DIVIDE EL COSTO TOTAL SOBRE LOS PAÑOS TOTALES
                     df['Costo_por_Paño'] = df.apply(lambda r: r['Costo_Total'] / r['Paños_Totales'] if r['Paños_Totales'] > 0 else 0, axis=1)
                     df['Margen_Ratio'] = df.apply(lambda r: r['MO_Facturada'] / r['Costo_Total'] if r['Costo_Total'] > 0 else 0, axis=1)
                     return df
@@ -2159,7 +2158,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Septiembre) ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
