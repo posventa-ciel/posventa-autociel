@@ -2069,7 +2069,7 @@ try:
                             row_idx = None
                             col_idx = None
                             
-                            # A) Encontrar la FILA
+                            # A) Encontrar la FILA (Ya funciona perfecto)
                             for i in range(len(df_cr)):
                                 for j in range(min(4, len(df_cr.columns))):
                                     cell_val = str(df_cr.iloc[i, j]).strip().upper()
@@ -2080,34 +2080,49 @@ try:
                                 if row_idx is not None:
                                     break
                                 
-                            # B) Encontrar la COLUMNA - ¡OBLIGATORIO AÑO 2026 PARA NO AGARRAR 2025!
+                            # B) Encontrar la COLUMNA (Estrategia: Buscar todas y quedarse con la de más a la derecha)
+                            matched_cols = []
                             for j, col in enumerate(df_cr.columns):
-                                if hasattr(col, 'month') and hasattr(col, 'year'):
-                                    if col.month == mes_num and col.year == 2026:
-                                        col_idx = j
-                                        break
-                                
                                 col_str = str(col).strip().upper()
-                                if len(col_str) >= 10 and '-' in col_str:
+                                
+                                # Evitamos columnas que sean porcentajes o acumulados
+                                if any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP", "YTD", "PROYECTADO"]):
+                                    continue
+                                    
+                                is_match = False
+                                
+                                # 1. Si Pandas lo auto-convirtió a Fecha
+                                if hasattr(col, 'month'):
+                                    if col.month == mes_num:
+                                        is_match = True
+                                        
+                                # 2. Si se convirtió a string tipo fecha (ej: '2026-02-01')
+                                elif len(col_str) >= 10 and '-' in col_str:
                                     try:
                                         dt = pd.to_datetime(col_str)
-                                        if dt.month == mes_num and dt.year == 2026:
-                                            col_idx = j
-                                            break
+                                        if dt.month == mes_num:
+                                            is_match = True
                                     except: pass
-                                
-                                # Crucial: Exigimos que diga "2026"
-                                if mes_corto in col_str and "2026" in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP", "YTD"]):
-                                    col_idx = j
-                                    break
                                     
-                            # Si los meses quedaron en la fila 0 por formato de Excel, los buscamos ahí
-                            if col_idx is None and len(df_cr) > 0:
+                                # 3. Si es texto normal (ej: 'FEB 2026')
+                                if not is_match and mes_corto in col_str:
+                                    is_match = True
+                                    
+                                if is_match:
+                                    matched_cols.append(j)
+                                    
+                            # Si no encontró nada, revisa la primera fila de datos por si los títulos bajaron un renglón
+                            if not matched_cols and len(df_cr) > 0:
                                 for j in range(len(df_cr.columns)):
                                     cell_val = str(df_cr.iloc[0, j]).strip().upper()
-                                    if mes_corto in cell_val and "2026" in cell_val and not any(x in cell_val for x in ["%", "VAR", "ACUM"]):
-                                        col_idx = j
-                                        break
+                                    if any(x in cell_val for x in ["%", "VAR", "ACUM", "PRESUP"]):
+                                        continue
+                                    if mes_corto in cell_val:
+                                        matched_cols.append(j)
+                            
+                            # Seleccionamos la ÚLTIMA columna encontrada (la más a la derecha = año actual)
+                            if matched_cols:
+                                col_idx = matched_cols[-1]
 
                             # C) Extraer el dato y limpiarlo
                             if row_idx is not None and col_idx is not None:
