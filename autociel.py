@@ -1618,7 +1618,7 @@ try:
                 ganancia_secundaria = ganancia_primaria + primas_input
                 pct_margen_secundario = (ganancia_secundaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
 
-                # --- 2. GESTIÓN DE STOCK Y OBJETIVOS (¡AHORA SÍ, PRIMERO DE TODO!) ---
+                # --- 2. GESTIÓN DE STOCK Y OBJETIVOS (¡AHORA PRIMERO VISUALMENTE!) ---
                 st.markdown(f'<div style="background-color: #eef2f7; padding: 10px; border-radius: 5px; border-left: 4px solid #6f42c1; margin-bottom: 15px;"><span style="color:#00235d; font-weight:bold;">💰 Primas/Rappels del Mes:</span> <span style="color:#28a745; font-weight:bold; font-size:1.1rem;">${primas_input:,.0f}</span> <span style="color:#666; font-size:0.8rem;">(Dato leído automáticamente de la planilla)</span></div>', unsafe_allow_html=True)
 
                 st.markdown("#### 📦 Gestión de Stock y Objetivos")
@@ -1690,7 +1690,7 @@ try:
                     '''
                     st.markdown(html_stock, unsafe_allow_html=True)
 
-                # --- 3. ANÁLISIS FINANCIERO Y MÁRGENES ---
+                # --- 3. ANÁLISIS FINANCIERO Y MÁRGENES (AHORA SEGUNDO) ---
                 st.markdown("---")
                 st.markdown("#### 📊 Análisis Financiero y Márgenes")
 
@@ -1924,7 +1924,6 @@ try:
                         with c1_s: val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
                         
                         # --- SOLUCIÓN AL ERROR DEL -36.28 ---
-                        # Cambié el límite mínimo de 0.0 a -100.0 para que soporte canales que dan pérdida.
                         with c2_s: val_marg = st.number_input(f"% Margen {c}", -100.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
                         
                         mix_ideal[c] = val_mix / 100
