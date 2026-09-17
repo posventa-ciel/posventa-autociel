@@ -2069,7 +2069,7 @@ try:
                             row_idx = None
                             col_idx = None
                             
-                            # A) Encontrar la FILA (Ya funciona perfecto)
+                            # A) Encontrar la FILA
                             for i in range(len(df_cr)):
                                 for j in range(min(4, len(df_cr.columns))):
                                     cell_val = str(df_cr.iloc[i, j]).strip().upper()
@@ -2080,23 +2080,20 @@ try:
                                 if row_idx is not None:
                                     break
                                 
-                            # B) Encontrar la COLUMNA (Estrategia: Buscar todas y quedarse con la de más a la derecha)
+                            # B) Encontrar la COLUMNA (Siempre la última a la derecha)
                             matched_cols = []
                             for j, col in enumerate(df_cr.columns):
                                 col_str = str(col).strip().upper()
                                 
-                                # Evitamos columnas que sean porcentajes o acumulados
                                 if any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP", "YTD", "PROYECTADO"]):
                                     continue
                                     
                                 is_match = False
                                 
-                                # 1. Si Pandas lo auto-convirtió a Fecha
                                 if hasattr(col, 'month'):
                                     if col.month == mes_num:
                                         is_match = True
                                         
-                                # 2. Si se convirtió a string tipo fecha (ej: '2026-02-01')
                                 elif len(col_str) >= 10 and '-' in col_str:
                                     try:
                                         dt = pd.to_datetime(col_str)
@@ -2104,14 +2101,12 @@ try:
                                             is_match = True
                                     except: pass
                                     
-                                # 3. Si es texto normal (ej: 'FEB 2026')
                                 if not is_match and mes_corto in col_str:
                                     is_match = True
                                     
                                 if is_match:
                                     matched_cols.append(j)
                                     
-                            # Si no encontró nada, revisa la primera fila de datos por si los títulos bajaron un renglón
                             if not matched_cols and len(df_cr) > 0:
                                 for j in range(len(df_cr.columns)):
                                     cell_val = str(df_cr.iloc[0, j]).strip().upper()
@@ -2120,7 +2115,6 @@ try:
                                     if mes_corto in cell_val:
                                         matched_cols.append(j)
                             
-                            # Seleccionamos la ÚLTIMA columna encontrada (la más a la derecha = año actual)
                             if matched_cols:
                                 col_idx = matched_cols[-1]
 
@@ -2142,7 +2136,7 @@ try:
                 df_efi_s = build_efi_df(h_cyp_s, 'SALTA', 9)
 
                 # 5. Renderizado visual en sub-pestañas
-                tab_efi_j, tab_efi_s = st.tabs(["📍 Jujuy (11 Téc)", "📍 Salta (9 Téc)"])
+                tab_efi_j, tab_efi_s = st.tabs(["📍 Autociel Jujuy (11 Téc)", "📍 Autolux Salta (9 Téc)"])
                 
                 def render_efi_tab(df_efi, sucursal_name, techs):
                     idx_cyp = -2 if prog_t < 1.0 and len(df_efi) >= 2 else -1
@@ -2186,6 +2180,7 @@ try:
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
+                        # --- GRÁFICOS DE HORAS Y COSTOS ---
                         cg1, cg2 = st.columns(2)
                         with cg1:
                             fig_hs_pano = go.Figure()
@@ -2198,7 +2193,7 @@ try:
                             max_y_hs = df_chart['Hs_por_Paño'].max() * 1.25 if not df_chart.empty else 10
                             fig_hs_pano.update_layout(
                                 title=f"Evolución Horas Invertidas por Paño", 
-                                height=320, margin=dict(t=40, b=0, l=0, r=0),
+                                height=280, margin=dict(t=40, b=0, l=0, r=0),
                                 yaxis=dict(range=[0, max_y_hs])
                             )
                             st.plotly_chart(fig_hs_pano, use_container_width=True, key=f"fig_hs_{sucursal_name}")
@@ -2214,10 +2209,43 @@ try:
                             max_y_costo = df_chart['Costo_por_Paño'].max() * 1.25 if not df_chart.empty else 100
                             fig_costo_pano.update_layout(
                                 title=f"Evolución Costo por Paño ($)", 
-                                height=320, margin=dict(t=40, b=0, l=0, r=0),
+                                height=280, margin=dict(t=40, b=0, l=0, r=0),
                                 yaxis=dict(range=[0, max_y_costo])
                             )
                             st.plotly_chart(fig_costo_pano, use_container_width=True, key=f"fig_costo_{sucursal_name}")
+
+                        # --- NUEVO GRÁFICO DE MARGEN A LO ANCHO ---
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        fig_margen = go.Figure()
+                        
+                        fig_margen.add_trace(go.Scatter(
+                            x=df_chart['NombreMes'], 
+                            y=df_chart['Margen_Ratio'], 
+                            mode='lines+markers+text', 
+                            name='Margen',
+                            text=[f"{v:.2f}x" if v > 0 else "" for v in df_chart['Margen_Ratio']],
+                            textposition='top center', 
+                            line=dict(color='#28a745', width=4),
+                            marker=dict(size=9)
+                        ))
+                        
+                        # Línea visual del Punto de Equilibrio
+                        fig_margen.add_hline(
+                            y=1.00, 
+                            line_dash="dash", 
+                            line_color="red", 
+                            annotation_text="Punto de Equilibrio (1.00x) - Sustentabilidad con MO", 
+                            annotation_position="bottom right"
+                        )
+                        
+                        max_y_margen = df_chart['Margen_Ratio'].max() * 1.20 if not df_chart.empty else 2.0
+                        fig_margen.update_layout(
+                            title=f"Evolución del Margen (Mano de Obra vs Costos)",
+                            height=300, 
+                            margin=dict(t=40, b=0, l=0, r=0),
+                            yaxis=dict(range=[0, max_y_margen])
+                        )
+                        st.plotly_chart(fig_margen, use_container_width=True, key=f"fig_margen_{sucursal_name}")
 
                 with tab_efi_j:
                     render_efi_tab(df_efi_j, "Jujuy", 11)
