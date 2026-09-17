@@ -2069,38 +2069,46 @@ try:
                             row_idx = None
                             col_idx = None
                             
-                            # A) Encontrar la FILA (Busca en las primeras columnas y CLAVA LOS FRENOS al encontrarlo)
+                            # A) Encontrar la FILA
                             for i in range(len(df_cr)):
                                 for j in range(min(4, len(df_cr.columns))):
                                     cell_val = str(df_cr.iloc[i, j]).strip().upper()
-                                    # Normalizamos espacios intermedios
                                     cell_val = " ".join(cell_val.split())
-                                    
                                     if "CTOS CONTROLABLES Y NO" in cell_val or "COSTOS CONTROLABLES Y NO" in cell_val:
                                         row_idx = i
-                                        break # Freno de columna
+                                        break
                                 if row_idx is not None:
-                                    break # Freno de fila (¡Este es el que faltaba ayer!)
+                                    break
                                 
-                            # B) Encontrar la COLUMNA
+                            # B) Encontrar la COLUMNA - ¡OBLIGATORIO AÑO 2026 PARA NO AGARRAR 2025!
                             for j, col in enumerate(df_cr.columns):
-                                if hasattr(col, 'month'):
-                                    if col.month == mes_num:
+                                if hasattr(col, 'month') and hasattr(col, 'year'):
+                                    if col.month == mes_num and col.year == 2026:
                                         col_idx = j
                                         break
                                 
                                 col_str = str(col).strip().upper()
                                 if len(col_str) >= 10 and '-' in col_str:
                                     try:
-                                        if pd.to_datetime(col_str).month == mes_num:
+                                        dt = pd.to_datetime(col_str)
+                                        if dt.month == mes_num and dt.year == 2026:
                                             col_idx = j
                                             break
                                     except: pass
                                 
-                                if mes_corto in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP", "YTD"]):
+                                # Crucial: Exigimos que diga "2026"
+                                if mes_corto in col_str and "2026" in col_str and not any(x in col_str for x in ["%", "VAR", "ACUM", "PRESUP", "YTD"]):
                                     col_idx = j
                                     break
-                            
+                                    
+                            # Si los meses quedaron en la fila 0 por formato de Excel, los buscamos ahí
+                            if col_idx is None and len(df_cr) > 0:
+                                for j in range(len(df_cr.columns)):
+                                    cell_val = str(df_cr.iloc[0, j]).strip().upper()
+                                    if mes_corto in cell_val and "2026" in cell_val and not any(x in cell_val for x in ["%", "VAR", "ACUM"]):
+                                        col_idx = j
+                                        break
+
                             # C) Extraer el dato y limpiarlo
                             if row_idx is not None and col_idx is not None:
                                 val = df_cr.iloc[row_idx, col_idx]
@@ -2159,7 +2167,7 @@ try:
                             delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
                         )
                         
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO ---
+                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Septiembre) ---
                         limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
                         df_chart = df_efi.iloc[:limit_idx]
 
