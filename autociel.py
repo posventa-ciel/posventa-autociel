@@ -1573,303 +1573,377 @@ try:
                 fig_efi.add_trace(go.Scatter(x=h_tal['NombreMes'], y=h_tal['Productividad'], name='Productividad', mode='lines+markers', line=dict(color='#17a2b8', dash='dot', width=2)))
                 st.plotly_chart(fig_efi.update_layout(title="Tendencia de Rendimiento Operativo", yaxis_tickformat='.0%', height=350), use_container_width=True)
 
+            
             # ==========================================
             # PESTAÑA 3: REPUESTOS
             # ==========================================
             with tab_rep:
-                # --- 1. FLUJO, SALUD DE STOCK Y OBJETIVOS (MOVIDO ARRIBA) ---
-                st.markdown("#### 📉 Flujo y Salud del Stock")
-                
-                # Definimos las columnas de forma estricta para evitar duplicaciones
+                st.markdown("### 📦 Repuestos")
+
+                # --- 1. CÁLCULOS PREVIOS (INVISIBLES PERO NECESARIOS ARRIBA DE TODO) ---
+                c_primas = find_col(data['REPUESTOS'], ['PRIMA']) or find_col(data['REPUESTOS'], ['RAPPEL'])
+                primas_input = float(r_r.get(c_primas, 0.0)) if c_primas else 0.0
+
+                detalles = []
+                for c in canales_repuestos:
+                    v_col = find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"])
+                    if v_col:
+                        vb = r_r.get(v_col, 0)
+                        d = r_r.get(find_col(data['REPUESTOS'], ["DESC", c]), 0)
+                        cost = r_r.get(find_col(data['REPUESTOS'], ["COSTO", c]), 0)
+                        vn = vb - d
+                        ut = vn - cost
+                        detalles.append({"Canal": c, "Venta Bruta": vb, "Desc.": d, "Venta Neta": vn, "Costo": cost, "Utilidad $": ut, "Margen %": (ut/vn if vn>0 else 0)})
+                df_r = pd.DataFrame(detalles)
+
+                vta_total_bruta = df_r['Venta Bruta'].sum() if not df_r.empty else 0
+                vta_total_neta = df_r['Venta Neta'].sum() if not df_r.empty else 0
+
+                if vta_total_neta > 0:
+                    df_r['% Part.'] = df_r['Venta Neta'] / vta_total_neta
+                else:
+                    df_r['% Part.'] = 0.0
+
+                util_total_operativa = df_r['Utilidad $'].sum() if not df_r.empty else 0
+                util_total_final = util_total_operativa + primas_input
+                mg_total_final = util_total_final / vta_total_neta if vta_total_neta > 0 else 0
+                obj_rep_total = r_r.get(find_col(data['REPUESTOS'], ["OBJ", "FACT"]), 1)
+
+                costo_total_mes_actual_real = df_r['Costo'].sum() if not df_r.empty else 0
+                val_stock = float(r_r.get(find_col(data['REPUESTOS'], ["VALOR", "STOCK"]), 0))
+                desc_total = df_r['Desc.'].sum() if not df_r.empty else 0
+                ganancia_primaria = vta_total_neta - costo_total_mes_actual_real
+                pct_margen_primario = (ganancia_primaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
+
+                ganancia_secundaria = ganancia_primaria + primas_input
+                pct_margen_secundario = (ganancia_secundaria / vta_total_bruta) * 100 if vta_total_bruta > 0 else 0.0
+
+                # --- 2. GESTIÓN DE STOCK Y OBJETIVOS (¡AHORA SÍ, PRIMERO DE TODO!) ---
+                st.markdown(f'<div style="background-color: #eef2f7; padding: 10px; border-radius: 5px; border-left: 4px solid #6f42c1; margin-bottom: 15px;"><span style="color:#00235d; font-weight:bold;">💰 Primas/Rappels del Mes:</span> <span style="color:#28a745; font-weight:bold; font-size:1.1rem;">${primas_input:,.0f}</span> <span style="color:#666; font-size:0.8rem;">(Dato leído automáticamente de la planilla)</span></div>', unsafe_allow_html=True)
+
+                st.markdown("#### 📦 Gestión de Stock y Objetivos")
+                c_obj, c_stk = st.columns(2)
+
+                with c_obj:
+                    st.markdown(render_kpi_card("Cumplimiento Objetivo Ventas", vta_total_bruta, obj_rep_total), unsafe_allow_html=True)
+
+                with c_stk:
+                    # Cálculo de meses de stock
+                    def obtener_costo_mes_historico(d_target):
+                        df_h = data['REPUESTOS']
+                        rows = df_h[(df_h['Año'] == d_target.year) & (df_h['Mes'] == d_target.month)]
+                        if rows.empty: return 0.0
+                        last_row = rows.iloc[-1]
+                        total_c = 0
+                        for ch in canales_repuestos:
+                            col_c = find_col(df_h, ["COSTO", ch], exclude_keywords=["OBJ"])
+                            if col_c:
+                                try: total_c += float(last_row[col_c])
+                                except: pass
+                        return total_c
+
+                    date_curr = datetime(año_sel, mes_sel, 1)
+                    date_prev1 = (date_curr - timedelta(days=1)).replace(day=1)
+                    date_prev2 = (date_prev1 - timedelta(days=1)).replace(day=1)
+
+                    costo_mes_minus_1 = obtener_costo_mes_historico(date_prev1)
+                    costo_mes_minus_2 = obtener_costo_mes_historico(date_prev2)
+
+                    if prog_t > 0:
+                        costo_mes_actual_proy = costo_total_mes_actual_real / prog_t
+                    else:
+                        costo_mes_actual_proy = costo_total_mes_actual_real
+
+                    suma_trimestral = costo_mes_minus_2 + costo_mes_minus_1 + costo_mes_actual_proy
+                    promedio_costo_3m = suma_trimestral / 3 if suma_trimestral > 0 else 0
+
+                    if promedio_costo_3m > 0:
+                        meses_stock = val_stock / promedio_costo_3m
+                    else:
+                        meses_stock = 0
+
+                    color_stk = "#dc3545"
+                    icon_stk = "🛑"
+                    estado_txt = "Crítico"
+
+                    if meses_stock <= 3.0:
+                        color_stk = "#28a745"
+                        icon_stk = "✅"
+                        estado_txt = "Óptimo"
+                    elif meses_stock <= 5.0:
+                        color_stk = "#ffc107"
+                        icon_stk = "⚠️"
+                        estado_txt = "Medio"
+
+                    html_stock = f'''
+                    <div class="metric-card" style="padding: 18px;">
+                        <div>
+                            <p style="color:#666; font-size:0.9rem; margin-bottom:5px; font-weight: bold;">Meses Stock (Prom 3M)</p>
+                            <h3 style="color:{color_stk}; margin:0; font-size:1.8rem;">{meses_stock:.2f}</h3>
+                            <div style="height:10px;"></div>
+                        </div>
+                        <div class="metric-footer" style="font-size: 0.85rem;">
+                            <div>Obj: <b>3.0</b></div>
+                            <div style="color:{color_stk}">{icon_stk} Est: <b>{estado_txt}</b></div>
+                        </div>
+                    </div>
+                    '''
+                    st.markdown(html_stock, unsafe_allow_html=True)
+
+                # --- 3. ANÁLISIS FINANCIERO Y MÁRGENES ---
+                st.markdown("---")
+                st.markdown("#### 📊 Análisis Financiero y Márgenes")
+
+                c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+                def formato_p(val): return "${:,.0f}".format(val).replace(",", ".")
+
+                c_r1.markdown(f'<div class="metric-card"><div class="metric-title">Venta Bruta</div><div class="metric-value-money" style="color:#00235d;">{formato_p(vta_total_bruta)}</div></div>', unsafe_allow_html=True)
+                c_r2.markdown(f'<div class="metric-card"><div class="metric-title">Costo Repuestos</div><div class="metric-value-money" style="color:#dc3545;">{formato_p(costo_total_mes_actual_real)}</div></div>', unsafe_allow_html=True)
+                c_r3.markdown(f'<div class="metric-card"><div class="metric-title">Margen Bruto Primario</div><div class="metric-value-money" style="color:#28a745;">{formato_p(ganancia_primaria)}</div></div>', unsafe_allow_html=True)
+                c_r4.markdown(f'<div class="metric-card"><div class="metric-title">% Margen Primario</div><div class="metric-value-number" style="color:#17a2b8;">{pct_margen_primario:.2f}%</div><div class="metric-subtitle-gray">Sobre Venta Bruta</div></div>', unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                c_s1, c_s2, c_s3, c_s4 = st.columns(4)
+                c_s1.markdown(f'<div class="metric-card"><div class="metric-title">Descuentos Otorgados</div><div class="metric-value-money" style="color:#fd7e14;">{formato_p(desc_total)}</div></div>', unsafe_allow_html=True)
+                c_s2.markdown(f'<div class="metric-card"><div class="metric-title">Incentivos / Primas</div><div class="metric-value-money" style="color:#6f42c1;">{formato_p(primas_input)}</div></div>', unsafe_allow_html=True)
+                c_s3.markdown(f'<div class="metric-card" style="border: 2px solid #28a745; background-color: #f8f9fa;"><div class="metric-title">Margen Bruto Secundario</div><div class="metric-value-money" style="color:#28a745;">{formato_p(ganancia_secundaria)}</div></div>', unsafe_allow_html=True)
+                c_s4.markdown(f'<div class="metric-card" style="border: 2px solid #17a2b8; background-color: #f8f9fa;"><div class="metric-title">% Margen Secundario</div><div class="metric-value-number" style="color:#17a2b8;">{pct_margen_secundario:.2f}%</div><div class="metric-subtitle-gray">Flujo Real (S/ Bruta)</div></div>', unsafe_allow_html=True)
+
+                # --- 4. RENTABILIDAD Y COSTOS POR CANAL ---
+                st.markdown("---")
+                if not df_r.empty:
+                    st.markdown("##### 📊 Rentabilidad y Costos por Canal")
+
+                    t_vb = df_r['Venta Bruta'].sum()
+                    t_desc = df_r['Desc.'].sum()
+                    t_vn = df_r['Venta Neta'].sum()
+                    t_cost = df_r['Costo'].sum()
+                    t_ut = df_r['Utilidad $'].sum()
+                    t_mg = t_ut / t_vn if t_vn != 0 else 0
+
+                    row_total = pd.DataFrame([{
+                        "Canal": "TOTAL OPERATIVO",
+                        "Venta Bruta": t_vb,
+                        "Desc.": t_desc,
+                        "Venta Neta": t_vn,
+                        "Costo": t_cost,
+                        "Utilidad $": t_ut,
+                        "Margen %": t_mg,
+                        "% Part.": 1.0
+                    }])
+
+                    df_show = pd.concat([df_r, row_total], ignore_index=True)
+
+                    def color_margen(val):
+                        color = '#dc3545' if val < 0.15 else ('#ffc107' if val < 0.25 else '#28a745')
+                        return f'color: {color}; font-weight: bold;'
+
+                    cols_finales = ["Canal", "Venta Bruta", "Desc.", "Venta Neta", "Costo", "Utilidad $", "Margen %", "% Part."]
+
+                    st.dataframe(
+                        df_show[cols_finales].style
+                        .format({
+                            "Venta Bruta": "${:,.0f}",
+                            "Desc.": "${:,.0f}",
+                            "Venta Neta": "${:,.0f}",
+                            "Costo": "${:,.0f}",
+                            "Utilidad $": "${:,.0f}",
+                            "Margen %": "{:.1%}",
+                            "% Part.": "{:.1%}"
+                        })
+                        .map(color_margen, subset=['Margen %']),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if not df_r.empty: st.plotly_chart(px.pie(df_r, values="Venta Bruta", names="Canal", hole=0.4, title="Participación (Venta Bruta)"), use_container_width=True)
+                    with c2:
+                        p_vivo = float(r_r.get(find_col(data['REPUESTOS'], ["VIVO"]), 0))
+                        p_obs = float(r_r.get(find_col(data['REPUESTOS'], ["OBSOLETO"]), 0))
+                        p_muerto = float(r_r.get(find_col(data['REPUESTOS'], ["MUERTO"]), 0))
+                        f = 1 if p_vivo <= 1 else 100
+                        df_s = pd.DataFrame({"Estado": ["Vivo", "Obsoleto", "Muerto"], "Valor": [val_stock*(p_vivo/f), val_stock*(p_obs/f), val_stock*(p_muerto/f)]})
+                        st.plotly_chart(px.pie(df_s, values="Valor", names="Estado", hole=0.4, title="Salud del Stock", color="Estado", color_discrete_map={"Vivo": "#28a745", "Obsoleto": "#ffc107", "Muerto": "#dc3545"}), use_container_width=True)
+                        st.markdown(f'<div style="border: 1px solid #e6e9ef; border-radius: 5px; padding: 10px; text-align: center; background-color: #ffffff; margin-top: 10px;"><p style="margin: 0; color: #666; font-size: 0.8rem; text-transform: uppercase; font-weight: bold;">Valoración Total Stock</p><p style="margin: 0; color: #00235d; font-size: 1.2rem; font-weight: bold;">${val_stock:,.0f}</p></div>', unsafe_allow_html=True)
+
+                # --- 5. FLUJO HISTÓRICO Y CUMPLIMIENTO STELLANTIS ---
+                st.markdown("---")
+                st.markdown("#### 📉 Control de Flujo: Compras vs Costo de Venta (Histórico)")
+
                 c_obj_compra = find_col(h_rep, ["OBJ", "COMPRA"]) or find_col(h_rep, ["OBJETIVO", "COMPRA"])
                 c_compra_pr = find_col(h_rep, ["COMPRA", "PR"], exclude_keywords=["OBJ"]) or find_col(h_rep, ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
-                
+
                 h_rep['CostoTotalMes'] = 0
                 for c in canales_repuestos:
                     col_costo = find_col(h_rep, ["COSTO", c], exclude_keywords=["OBJ"])
                     if col_costo: h_rep['CostoTotalMes'] += h_rep[col_costo]
-                
-                # Alimentamos el gráfico de flujo directamente con la columna real detectada arriba
-                h_rep['CompraTotalMes'] = h_rep[c_compra_pr] if c_compra_pr else 0
+
+                h_rep['CompraTotalMes'] = pd.to_numeric(h_rep[c_compra_pr], errors='coerce').fillna(0) if c_compra_pr else 0
                 h_rep['VariacionStock'] = h_rep['CompraTotalMes'] - h_rep['CostoTotalMes']
-                
-                c_stk1, c_stk2 = st.columns(2)
-                with c_stk1:
-                    h_rep['CostoPromedio3M'] = h_rep['CostoTotalMes'].rolling(window=3, min_periods=1).mean()
-                    col_val_stock = find_col(h_rep, ["VALOR", "STOCK"])
-                    if col_val_stock:
-                        h_rep['MesesStock'] = h_rep.apply(lambda row: row[col_val_stock] / row['CostoPromedio3M'] if row['CostoPromedio3M'] > 0 else 0, axis=1)
-                        st.plotly_chart(go.Figure(go.Scatter(x=h_rep['NombreMes'], y=h_rep['MesesStock'], name='Meses Stock', mode='lines+markers', line=dict(color='#6610f2', width=3))).update_layout(title="Evolución Meses de Stock (Valor / Costo 3M)", height=320), use_container_width=True)
-                
-                with c_stk2:
-                    col_vivo, col_obs, col_muerto = find_col(h_rep, ["VIVO"]), find_col(h_rep, ["OBSOLETO"]), find_col(h_rep, ["MUERTO"])
-                    fig_stk_salud = go.Figure()
-                    if col_vivo: fig_stk_salud.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_vivo], name='Vivo', marker_color='#28a745'))
-                    if col_obs: fig_stk_salud.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_obs], name='Obsoleto', marker_color='#ffc107'))
-                    if col_muerto: fig_stk_salud.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[col_muerto], name='Muerto', marker_color='#dc3545'))
-                    st.plotly_chart(fig_stk_salud.update_layout(barmode='stack', title="Composición Salud del Stock", height=320), use_container_width=True)
 
-                st.markdown("##### Flujo Operativo y Proyección")
-                total_var_anual = h_rep['VariacionStock'].sum()
-                txt_var_anual = "Bajando Stock" if total_var_anual < 0 else "Subiendo Stock"
-                delta_color_anual = "normal" if total_var_anual < 0 else "inverse"
-                st.metric("Variación Acumulada Anual (Compras vs Salidas)", f"${total_var_anual:,.0f}", txt_var_anual, delta_color=delta_color_anual)
+                col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+                if not col_compra_sheet: col_compra_sheet = find_col(data['REPUESTOS'], ["ENTRADA"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
+                if not col_compra_sheet: col_compra_sheet = find_col(data['REPUESTOS'], ["COMPRAS"], exclude_keywords=["OBJ", "COSTO", "VENTA"])
 
+                compra_real_sheet = float(r_r.get(col_compra_sheet, 0)) if col_compra_sheet else 0.0
+
+                col_obj_term_in, _ = st.columns([1, 2])
+                with col_obj_term_in:
+                    obj_compra_terminal = st.number_input("🎯 Objetivo Compra Stellantis ($)", min_value=0.0, step=1000000.0, value=0.0)
+
+                costo_venta_total = df_r['Costo'].sum() if not df_r.empty else 0
+                diferencia_flujo = compra_real_sheet - costo_venta_total
+                ratio_reduccion = costo_venta_total / compra_real_sheet if compra_real_sheet > 0 else 0
+                objetivo_ratio = 1.20
+
+                k_f1, k_f2, k_f3 = st.columns(3)
+                k_f1.metric("Compra Real (Sheet)", f"${compra_real_sheet:,.0f}", help="Dato tomado de Columna AB del Excel")
+                k_f2.metric("Costo de Venta Total", f"${costo_venta_total:,.0f}")
+                if diferencia_flujo > 0:
+                    k_f3.metric("Flujo de Stock", f"+${diferencia_flujo:,.0f}", "📈 Stock Subiendo", delta_color="inverse")
+                else:
+                    k_f3.metric("Flujo de Stock", f"-${abs(diferencia_flujo):,.0f}", "📉 Stock Bajando", delta_color="normal")
+
+                st.markdown("##### 🚦 Semáforo de Reducción")
+                if compra_real_sheet == 0:
+                    st.warning("⚠️ No se detectaron compras en la columna del Excel.")
+                else:
+                    if ratio_reduccion >= objetivo_ratio:
+                        st.success(f"✅ **OBJETIVO CUMPLIDO:** Vendes {((ratio_reduccion-1)*100):.1f}% más de lo que compras.")
+                    elif ratio_reduccion > 1.0:
+                        st.info(f"⚠️ **ALERTA LEVE:** Vendes {((ratio_reduccion-1)*100):.1f}% más de lo que compras (Meta: 20%).")
+                    else:
+                        st.error(f"❌ **ALERTA CRÍTICA:** Estás comprando más de lo que vendes. El stock sube.")
+
+                # Gráfico Flujo
                 fig_flow = go.Figure()
-                fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CompraTotalMes'], name='Compras (Entradas)', marker_color='#00235d'))
-                fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CostoTotalMes'], name='Costo Venta (Salidas)', marker_color='#fd7e14'))
+                fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CompraTotalMes'], name='Compras', marker_color='#00235d'))
+                fig_flow.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep['CostoTotalMes'], name='Costo Venta', marker_color='#fd7e14'))
                 fig_flow.add_trace(go.Scatter(x=h_rep['NombreMes'], y=h_rep['VariacionStock'], name='Saldo', mode='lines+markers', line=dict(color='gray', width=2, dash='dot')))
                 st.plotly_chart(fig_flow.update_layout(title="Compras vs Costo de Venta Mensual", barmode='group', height=350), use_container_width=True)
 
-                ultimos_3 = h_rep.tail(3)
-                promedio_variacion = ultimos_3['VariacionStock'].mean()
-                
-                c_val_stock_actual = find_col(data['REPUESTOS'], ["VALOR", "STOCK"])
-                val_stock_actual = float(r_r.get(c_val_stock_actual, 0)) if c_val_stock_actual else 0
-                
-                costo_promedio_3m = ultimos_3['CostoTotalMes'].mean()
-                stock_objetivo_valor = costo_promedio_3m * 3.0 
-                
-                c_proy1, c_proy2, c_proy3 = st.columns(3)
-                c_proy1.metric("Stock Físico Actual", f"${val_stock_actual:,.0f}")
-                c_proy2.metric("Stock Ideal Objetivo (3 Meses)", f"${stock_objetivo_valor:,.0f}")
-                
-                if promedio_variacion < 0:
-                    meses_para_objetivo = (val_stock_actual - stock_objetivo_valor) / abs(promedio_variacion) if promedio_variacion != 0 else 0
-                    if meses_para_objetivo <= 0:
-                        c_proy3.metric("Tiempo Estimado al Objetivo", "¡Meta Alcanzada!", "Stock Sano")
-                    else:
-                        c_proy3.metric("Ritmo de Reducción (Prom 3M)", f"-${abs(promedio_variacion):,.0f} / mes")
-                        st.info(f"📉 A este ritmo, alcanzarán el stock ideal en aprox **{meses_para_objetivo:.1f} meses**.")
-                        
-                    vals_proy = [val_stock_actual + (promedio_variacion * i) for i in range(0, 6)]
-                    df_proy = pd.DataFrame({"Mes": ["Act.", "+1", "+2", "+3", "+4", "+5"], "Valor": vals_proy})
-                    fig_proy = go.Figure(go.Bar(x=df_proy['Mes'], y=df_proy['Valor'], marker_color="#17a2b8", text=[f"${v/1000000:.1f}M" for v in vals_proy], textposition="auto"))
-                    fig_proy.add_hline(y=stock_objetivo_valor, line_dash="dash", line_color="#28a745", annotation_text="Meta")
-                    st.plotly_chart(fig_proy.update_layout(title="Simulación Reducción (5 meses)", height=300), use_container_width=True)
-                else:
-                    c_proy3.metric("Ritmo de Variación (Prom 3M)", f"+${promedio_variacion:,.0f} / mes", "Stock en Aumento", delta_color="inverse")
-                    st.error("❌ El promedio de los últimos 3 meses indica que el stock está AUMENTANDO.")
 
-                # --- 2. CUMPLIMIENTO STELLANTIS (MEDIO) ---
-                st.markdown("---")
-                st.markdown("#### 🎯 Cumplimiento de Compra Stellantis")
-                
+                # --- 6. CUMPLIMIENTO STELLANTIS ---
                 if c_obj_compra and c_compra_pr:
                     h_rep[c_obj_compra] = pd.to_numeric(h_rep[c_obj_compra], errors='coerce').fillna(0)
                     h_rep[c_compra_pr] = pd.to_numeric(h_rep[c_compra_pr], errors='coerce').fillna(0)
-                    
-                    # Separar por semestres
+
                     s1_df = h_rep[h_rep['Mes'] <= 6]
                     s2_df = h_rep[h_rep['Mes'] >= 7]
-                    
-                    obj_s1 = s1_df[c_obj_compra].sum()
-                    compra_s1 = s1_df[c_compra_pr].sum()
+
+                    obj_s1 = s1_df[c_obj_compra].sum(); compra_s1 = s1_df[c_compra_pr].sum()
                     pct_s1 = (compra_s1 / obj_s1 * 100) if obj_s1 > 0 else 0
-                    
-                    obj_s2 = s2_df[c_obj_compra].sum()
-                    compra_s2 = s2_df[c_compra_pr].sum()
+
+                    obj_s2 = s2_df[c_obj_compra].sum(); compra_s2 = s2_df[c_compra_pr].sum()
                     pct_s2 = (compra_s2 / obj_s2 * 100) if obj_s2 > 0 else 0
-                    
-                    # Lógica de Cuartiles
+
                     def get_quartile(pct):
                         if pct >= 98.42: return "🏆 Q1", "#28a745"
                         elif pct >= 78.46: return "✅ Q2", "#17a2b8"
                         elif pct >= 51.81: return "⚠️ Q3", "#ffc107"
                         else: return "❌ Q4", "#dc3545"
-                        
+
                     q_s1, color_s1 = get_quartile(pct_s1)
                     q_s2, color_s2 = get_quartile(pct_s2)
-                    
+
                     c_q1, c_q2 = st.columns(2)
-                    
                     with c_q1:
                         st.markdown("**Semestre 1 (Cerrado)**")
                         st.metric("Compras vs Objetivo S1", f"${compra_s1:,.0f} / ${obj_s1:,.0f}", f"{pct_s1:.1f}% Cumplido")
                         st.markdown(f"<div style='background-color:{color_s1}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-top:10px;'>Estimación Cuartil: {q_s1}</div>", unsafe_allow_html=True)
-                        
                     with c_q2:
                         st.markdown("**Semestre 2 (En curso)**")
                         st.metric("Compras vs Objetivo S2", f"${compra_s2:,.0f} / ${obj_s2:,.0f}", f"{pct_s2:.1f}% Cumplido")
                         st.markdown(f"<div style='background-color:{color_s2}; color:white; padding:10px; border-radius:5px; text-align:center; font-weight:bold; margin-top:10px;'>Estimación Cuartil (Parcial): {q_s2}</div>", unsafe_allow_html=True)
-                        
-                    with st.expander("Ver Referencia de Cuartiles (Actualizada)"):
-                        st.markdown("""
-                        * **Q1:** Mayor o igual a **98.42%**
-                        * **Q2:** **78.46%** a **98.41%**
-                        * **Q3:** **51.81%** a **78.45%**
-                        * **Q4:** Menor o igual a **51.80%**
-                        """)
 
-                    # --- GRÁFICO DE CUMPLIMIENTO MENSUAL ---
-                    st.markdown("##### 📅 Evolución Mensual de Compras vs Objetivo")
-                    
-                    # Calcular el porcentaje de cumplimiento por mes
-                    h_rep['Pct_Cumplimiento_Mes'] = h_rep.apply(
-                        lambda row: (row[c_compra_pr] / row[c_obj_compra] * 100) if row[c_obj_compra] > 0 else 0, 
-                        axis=1
-                    )
-                    
+                    h_rep['Pct_Cumplimiento_Mes'] = h_rep.apply(lambda row: (row[c_compra_pr] / row[c_obj_compra] * 100) if row[c_obj_compra] > 0 else 0, axis=1)
                     fig_compra_mes = go.Figure()
-                    
-                    # Barra Objetivo
+                    fig_compra_mes.add_trace(go.Bar(x=h_rep['NombreMes'], y=h_rep[c_obj_compra], name='Objetivo', marker_color='#a5b1c2'))
                     fig_compra_mes.add_trace(go.Bar(
-                        x=h_rep['NombreMes'], 
-                        y=h_rep[c_obj_compra], 
-                        name='Objetivo', 
-                        marker_color='#a5b1c2'
-                    ))
-                    
-                    # Barra Compra Real
-                    fig_compra_mes.add_trace(go.Bar(
-                        x=h_rep['NombreMes'], 
-                        y=h_rep[c_compra_pr], 
-                        name='Compra PR', 
-                        marker_color='#17a2b8',
+                        x=h_rep['NombreMes'], y=h_rep[c_compra_pr], name='Compra PR', marker_color='#17a2b8',
                         text=[f"{v:.1f}%" if v > 0 else "" for v in h_rep['Pct_Cumplimiento_Mes']],
-                        textposition='outside', 
-                        textfont=dict(color="#444444", size=11)
-                    ))
-                    
-                    max_y_compra = max(h_rep[c_obj_compra].max(), h_rep[c_compra_pr].max()) * 1.25 if not h_rep.empty else 100
-                    
-                    fig_compra_mes.update_layout(
-                        barmode='group', 
-                        title="Cumplimiento de Compra por Mes", 
-                        height=350, 
-                        yaxis_title="Monto ($)",
-                        legend=dict(orientation="h", y=-0.2),
-                        margin=dict(t=40, b=0, l=0, r=0),
-                        yaxis=dict(range=[0, max_y_compra])
-                    )
-                    
-                    st.plotly_chart(fig_compra_mes, use_container_width=True)
-
-                else:
-                    st.info("💡 Asegúrate de incluir las columnas 'Objetivo Compra' y 'Compra PR' en el archivo Excel de Repuestos para ver la proyección del cuartil.")
-
-
-                # --- 3. PARTE FINANCIERA (MOVIDA AL FINAL) ---
-                st.markdown("---")
-                st.markdown("#### 📦 Evolución Facturación: Repuestos")
-                if not df_fact_hist.empty:
-                    df_fact_hist['Var_Rep'] = df_fact_hist['Repuestos'].pct_change()
-                    fig_fact_rep = go.Figure()
-                    fig_fact_rep.add_trace(go.Bar(
-                        x=df_fact_hist['Mes'], y=df_fact_hist['Repuestos'], 
-                        marker_color='#fd7e14', name='Facturación',
-                        text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in df_fact_hist['Var_Rep']],
                         textposition='outside', textfont=dict(color="#444444", size=11)
                     ))
-                    max_y_rep = df_fact_hist['Repuestos'].max() * 1.25 if not df_fact_hist.empty else 100
-                    fig_fact_rep.update_layout(height=320, margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_rep]))
-                    st.plotly_chart(fig_fact_rep, use_container_width=True)
-                
+                    max_y_compra = max(h_rep[c_obj_compra].max(), h_rep[c_compra_pr].max()) * 1.25 if not h_rep.empty else 100
+                    fig_compra_mes.update_layout(barmode='group', title="Cumplimiento de Compra por Mes", height=350, yaxis_title="Monto ($)", legend=dict(orientation="h", y=-0.2), margin=dict(t=40, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_compra]))
+                    st.plotly_chart(fig_compra_mes, use_container_width=True)
+
+                # --- 7. SIMULADORES Y CALCULADORAS (EL RESTO DEL CÓDIGO) ---
                 st.markdown("---")
-                st.markdown("#### 📊 Análisis de Ventas y Márgenes por Canal")
-                
-                # --- PREPARACIÓN DE DATOS DE VENTA Y MARGEN ---
-                cols_canales = [c for c in canales_repuestos if c in df_fact_hist.columns]
-                
-                # 1. Crear dataframe histórico calculando los márgenes
-                df_margen = pd.DataFrame({'Mes': h_rep['NombreMes'], 'Mes_Num': h_rep['Mes']})
-                margen_cols = []
-                for can in cols_canales:
-                    c_venta = find_col(h_rep, ["VENTA", can], exclude_keywords=["OBJ"])
-                    c_costo = find_col(h_rep, ["COSTO", can], exclude_keywords=["OBJ"])
-                    if c_venta and c_costo:
-                        venta_val = pd.to_numeric(h_rep[c_venta], errors='coerce').fillna(0)
-                        costo_val = pd.to_numeric(h_rep[c_costo], errors='coerce').fillna(0)
-                        df_margen[f'M_{can}'] = venta_val - costo_val
-                        margen_cols.append(f'M_{can}')
-                
-                # 2. Calcular la participación (%) SOLO para mostrar en la tarjeta
-                df_margen['Total_Margen'] = df_margen[margen_cols].sum(axis=1)
-                for can in cols_canales:
-                    if f'M_{can}' in df_margen.columns:
-                        df_margen[f'Mix_Margen_{can}'] = (df_margen[f'M_{can}'] / df_margen['Total_Margen'] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+                st.subheader("🏁 Asistente de Equilibrio y Simulador")
+                canales_premium = ['TALLER', 'MOSTRADOR', 'INTERNA']
+                vta_premium = df_r[df_r['Canal'].isin(canales_premium)]['Venta Neta'].sum()
+                util_premium = df_r[df_r['Canal'].isin(canales_premium)]['Utilidad $'].sum()
+                utilidad_objetivo_total = vta_total_neta * 0.21
+                margen_necesario_volumen = utilidad_objetivo_total - util_premium - primas_input
+                vta_volumen = df_r[df_r['Canal'].str.contains('MAYORISTA|SEGUROS|GAR', na=False)]['Venta Neta'].sum()
+                margen_critico = (margen_necesario_volumen / vta_volumen) if vta_volumen > 0 else 0
 
-                if cols_canales and len(df_fact_hist) > 0:
-                    df_can_melt = df_fact_hist.melt(id_vars=['Mes', 'Mes_Num'], value_vars=cols_canales, var_name='Canal', value_name='Venta')
-                    
-                    idx_rep = -2 if prog_t < 1.0 and len(df_fact_hist) >= 2 else -1
-                    mes_act_row = df_fact_hist.iloc[idx_rep]
-                    mes_cerrado = int(mes_act_row['Mes_Num'])
-                    nom_mes_cerrado = mes_act_row['Mes']
-                    mes_ant_row = df_fact_hist.iloc[idx_rep-1] if len(df_fact_hist) >= abs(idx_rep)+1 else None
-                    margen_act_row = df_margen.iloc[idx_rep] if not df_margen.empty else None
-                    
-                    st.markdown(f"**Rendimiento a Mes Cerrado ({nom_mes_cerrado})**")
-                    
-                    # Función para crear las tarjetas HTML con Doble Mix (Venta y Margen) SIN PROMEDIO
-                    def html_card_rep(title, val, var1_label, var1_val, mix_venta, mix_margen):
-                        def format_var(v):
-                            color = "#28a745" if v >= 0 else "#dc3545"
-                            icon = "▲" if v >= 0 else "▼"
-                            return f'<span style="color: {color}; font-weight: bold;">{icon} {v:+.1f}%</span>'
-                        return f'''
-                        <div style="background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #e0e0e0; text-align: center; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px;">
-                            <div style="font-size: 0.85rem; font-weight: bold; color: #666; margin-bottom: 5px; text-transform: uppercase;">{title}</div>
-                            <div style="font-size: 1.4rem; font-weight: bold; color: #00235d; margin-bottom: 8px;">${val:,.0f}</div>
-                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px; display:flex; justify-content:center; padding:0 5px;"><span>{var1_label}:</span>&nbsp;&nbsp;{format_var(var1_val)}</div>
-                            <div style="font-size: 0.75rem; color: #00A8E8; font-weight: bold; margin-top: 8px; border-top: 1px dashed #eee; padding-top: 6px; display:flex; justify-content:space-between;">
-                                <span title="Porcentaje de la facturación total de repuestos aportada por este canal">🛒 Mix Venta: {mix_venta:.1f}%</span>
-                                <span title="Porcentaje de la rentabilidad (o pérdida) aportada por este canal al total general">💰 Mix Margen: {mix_margen:.1f}%</span>
-                            </div>
-                        </div>
-                        '''
+                col_asist1, col_asist2 = st.columns([2, 1])
+                with col_asist1:
+                    if mg_total_final < 0.21: st.error(f"🔴 **Alerta:** Mix actual {mg_total_final:.1%}. Canales volumen necesitan marginar **{margen_critico:.1%}**.")
+                    else: st.success(f"🟢 **OK:** Mix actual {mg_total_final:.1%}. Margen crítico volumen: **{max(0, margen_critico):.1%}**.")
 
-                    total_rep_mes_act = df_fact_hist.iloc[idx_rep]['Repuestos']
+                st.markdown("#### 📈 Simulador de Operación Especial")
+                with st.expander("Abrir Simulador", expanded=True):
+                    c_sim1, c_sim2 = st.columns(2)
+                    with c_sim1: monto_especial = st.number_input("Monto Venta ($)", min_value=0.0, value=50000000.0, step=1000000.0)
+                    with c_sim2: margen_especial = st.slider("% Margen Operación", -10.0, 30.0, 10.0, 0.5) / 100
+                    nueva_venta_total = vta_total_neta + monto_especial
+                    nueva_utilidad_total = util_total_final + (monto_especial * margen_especial)
+                    nuevo_margen_global = nueva_utilidad_total / nueva_venta_total if nueva_venta_total > 0 else 0
+                    col_res1, col_res2 = st.columns(2)
+                    with col_res1:
+                        puntos_dif = (nuevo_margen_global - mg_total_final) * 100
+                        st.metric("Nuevo Margen Global", f"{nuevo_margen_global:.1%}", delta=f"{puntos_dif:.1f} pts vs actual")
+                    with col_res2:
+                        dif_objetivo = nueva_utilidad_total - (nueva_venta_total * 0.21)
+                        if nuevo_margen_global >= 0.21: st.success(f"✅ **Viable:** Sobran **${dif_objetivo:,.0f}** sobre el 21%.")
+                        else: st.error(f"❌ **Riesgoso:** Faltan **${abs(dif_objetivo):,.0f}** para el 21%.")
 
-                    cols_grid = st.columns(4)
-                    
-                    for i, can in enumerate(cols_canales):
-                        val_act = mes_act_row[can]
-                        val_ant = mes_ant_row[can] if mes_ant_row is not None else 0
-                        var_mom = (val_act / val_ant - 1) * 100 if val_ant > 0 else 0
+                st.markdown("### 🎯 Calculadora de Mix y Estrategia Ideal")
+                st.info("Define tu participación ideal por canal y el margen al que aspiras vender.")
+                col_mix_input, col_mix_res = st.columns([3, 2])
+                default_mix = {}
+                default_margin = {}
+                if vta_total_neta > 0:
+                    for idx, row in df_r.iterrows():
+                        default_mix[row['Canal']] = (row['Venta Neta'] / vta_total_neta) * 100
+                        default_margin[row['Canal']] = row['Margen %'] * 100
+                mix_ideal = {}
+                margin_ideal = {}
+                sum_mix = 0
+                with col_mix_input:
+                    for c in canales_repuestos:
+                        val_def_mix = float(default_mix.get(c, 0.0))
+                        val_def_marg = float(default_margin.get(c, 25.0))
+                        c1_s, c2_s = st.columns([2, 1])
+                        with c1_s: val_mix = st.slider(f"% Mix {c}", 0.0, 100.0, val_def_mix, 0.5, key=f"mix_{c}")
                         
-                        mix_pct_venta = (val_act / total_rep_mes_act) * 100 if total_rep_mes_act > 0 else 0
+                        # --- SOLUCIÓN AL ERROR DEL -36.28 ---
+                        # Cambié el límite mínimo de 0.0 a -100.0 para que soporte canales que dan pérdida.
+                        with c2_s: val_marg = st.number_input(f"% Margen {c}", -100.0, 100.0, val_def_marg, 0.5, key=f"marg_{c}")
                         
-                        mix_pct_margen = 0
-                        if margen_act_row is not None and f'Mix_Margen_{can}' in margen_act_row:
-                            mix_pct_margen = margen_act_row[f'Mix_Margen_{can}']
-                            
-                        card_html = html_card_rep(
-                            can, val_act, 
-                            "vs Mes Ant", var_mom, 
-                            mix_pct_venta, mix_pct_margen
-                        )
-                        with cols_grid[i % 4]:
-                            st.markdown(card_html, unsafe_allow_html=True)
-                    
-                    # --- GRÁFICOS: VENTA HISTÓRICA Y MARGEN BRUTO NOMINAL ---
-                    c_graf_ven, c_graf_mar = st.columns(2)
-                    
-                    with c_graf_ven:
-                        fig_can_line = px.line(df_can_melt, x='Mes', y='Venta', color='Canal', markers=True, title="Tendencia de Facturación Nominal")
-                        fig_can_line.update_layout(height=350, yaxis_title="Facturación ($)", legend=dict(orientation="h", y=-0.2))
-                        st.plotly_chart(fig_can_line, use_container_width=True)
-                        
-                    with c_graf_mar:
-                        # Gráfico de barras agrupadas para el margen nominal ($)
-                        fig_margen_nominal = go.Figure()
-                        for can in cols_canales:
-                            if f'M_{can}' in df_margen.columns:
-                                fig_margen_nominal.add_trace(go.Bar(
-                                    x=df_margen['Mes'], 
-                                    y=df_margen[f'M_{can}'], 
-                                    name=can
-                                ))
-                        fig_margen_nominal.update_layout(
-                            barmode='group', # Agrupadas, no apiladas
-                            title="Evolución del Margen Bruto Nominal ($)", 
-                            height=350, 
-                            yaxis_title="Margen Bruto ($)",
-                            legend=dict(orientation="h", y=-0.2)
-                        )
-                        # Agregar línea en cero para resaltar canales que van a pérdida
-                        fig_margen_nominal.add_hline(y=0, line_width=1, line_color="black")
-                        st.plotly_chart(fig_margen_nominal, use_container_width=True)
+                        mix_ideal[c] = val_mix / 100
+                        margin_ideal[c] = val_marg / 100
+                        sum_mix += val_mix
+                with col_mix_res:
+                    st.markdown(f"#### Objetivo Mensual: ${obj_rep_total:,.0f}")
+                    delta_sum = sum_mix - 100.0
+                    color_sum = "off"
+                    if abs(delta_sum) < 0.1: color_sum = "normal"
+                    else: color_sum = "inverse"
+                    st.metric("Suma del Mix Total", f"{sum_mix:.1f}%", f"{delta_sum:.1f}%", delta_color=color_sum)
+                    if abs(delta_sum) > 0.1: st.error(f"⚠️ El mix debe sumar 100%")
+                    total_profit_ideal = 0
+                    for c, share in mix_ideal.items():
+                        total_profit_ideal += (obj_rep_total * share) * margin_ideal.get(c, 0)
+                    global_margin_ideal = total_profit_ideal / obj_rep_total if obj_rep_total > 0 else 0
+                    st.markdown("#### Resultado Estratégico:")
+                    st.info(f"Con esta estrategia, tu **Margen Global** sería del **{global_margin_ideal:.1%}**")
                     
             # ==========================================
             # PESTAÑA 4: CHAPA
