@@ -1550,13 +1550,33 @@ try:
                     fig_fact_rep = go.Figure()
                     fig_fact_rep.add_trace(go.Bar(
                         x=df_fact_hist['Mes'], y=df_fact_hist['Repuestos'],
-                        marker_color='#28a745', name='Facturación',
+                        marker_color='#28a745', name='Total Repuestos',
                         text=[f"{v*100:+.1f}%" if pd.notna(v) and v != 0 else "" for v in df_fact_hist['Var_Rep']],
                         textposition='outside', textfont=dict(color="#444444", size=11)
                     ))
                     max_y_rep = df_fact_hist['Repuestos'].max() * 1.25 if not df_fact_hist.empty else 100
                     fig_fact_rep.update_layout(height=320, margin=dict(t=30, b=0, l=0, r=0), yaxis=dict(range=[0, max_y_rep]))
                     st.plotly_chart(fig_fact_rep, use_container_width=True)
+
+                    st.markdown("---")
+                    st.markdown("#### 🥧 Composición de Ventas por Canal")
+                    canales_hist = [c for c in canales_repuestos if c in df_fact_hist.columns]
+                    
+                    if canales_hist:
+                        # Gráfico Apilado
+                        fig_canales = px.bar(df_fact_hist, x='Mes', y=canales_hist, 
+                                             title="Evolución Mensual por Canal (Apilado)", 
+                                             barmode='stack',
+                                             color_discrete_sequence=px.colors.qualitative.Pastel)
+                        fig_canales.update_layout(height=400, yaxis_title="Facturación ($)", legend_title_text="Canal")
+                        st.plotly_chart(fig_canales, use_container_width=True)
+                        
+                        # Gráfico de Tendencias en Líneas
+                        fig_line_canales = px.line(df_fact_hist, x='Mes', y=canales_hist, 
+                                                   title="Tendencia por Canal (Líneas)", markers=True,
+                                                   color_discrete_sequence=px.colors.qualitative.Set1)
+                        fig_line_canales.update_layout(height=400, yaxis_title="Facturación ($)", legend_title_text="Canal")
+                        st.plotly_chart(fig_line_canales, use_container_width=True)
                     
             # ==========================================
             # PESTAÑA 4: CHAPA
