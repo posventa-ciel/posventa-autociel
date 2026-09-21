@@ -911,20 +911,20 @@ try:
             k_f2.metric("Costo de Venta Total", f"${costo_venta_total:,.0f}")
             k_f3.metric("Flujo de Stock", f"{'+' if diferencia_flujo>0 else '-'}${abs(diferencia_flujo):,.0f}", "📈 Stock Subiendo" if diferencia_flujo>0 else "📉 Stock Bajando", delta_color="inverse" if diferencia_flujo>0 else "normal")
 
-            # --- 7. SIMULADOR AVANZADO (LA MAGIA EMPIEZA ACÁ) ---
+            # --- 7. SIMULADOR DE NEGOCIOS ADICIONALES ---
             st.markdown("---")
-            st.subheader("🎛️ Simulador Avanzado de Escenarios y Mix")
-            st.info("💡 **Hacé doble clic en las columnas de la derecha de esta tabla para modificar los montos o los márgenes.** Podés escribir `$200000000` en Mayorista y ver el impacto global arriba. La Prima se prorratea automáticamente en Mayorista y Seguros según la venta simulada.")
+            st.subheader("🎛️ Simulador: Impacto de Nuevos Negocios")
+            st.info("💡 **Agregá ventas hipotéticas:** Ingresá el monto de una nueva venta y el margen esperado en el canal correspondiente. El sistema calculará tu nuevo escenario consolidado.")
 
             if not df_r.empty:
                 df_sim_data = []
                 for index, row in df_r.iterrows():
                     df_sim_data.append({
                         "Canal": row["Canal"],
-                        "Venta Real ($)": row["Venta Neta"],
-                        "Margen Real (%)": row["Margen %"] * 100,
-                        "Sim Venta ($)": float(row["Venta Neta"]),
-                        "Sim Margen (%)": float(row["Margen %"] * 100)
+                        "Vta Real ($)": float(row["Venta Bruta"]),
+                        "Margen Real (%)": float(row["Margen %"] * 100),
+                        "➕ Venta Extra ($)": 0,
+                        "🎯 Margen Extra (%)": float(row["Margen %"] * 100) # Por defecto sugiere el margen actual
                     })
                 df_sim = pd.DataFrame(df_sim_data)
 
@@ -932,63 +932,53 @@ try:
                     df_sim,
                     column_config={
                         "Canal": st.column_config.TextColumn("Canal", disabled=True),
-                        "Venta Real ($)": st.column_config.NumberColumn("Venta Real ($)", format="$%d", disabled=True),
-                        "Margen Real (%)": st.column_config.NumberColumn("Margen Real (%)", format="%.2f%%", disabled=True),
-                        "Sim Venta ($)": st.column_config.NumberColumn("Simular Venta ($) ✏️", format="%d", step=1000000, help="Doble clic para editar"),
-                        "Sim Margen (%)": st.column_config.NumberColumn("Simular Margen (%) ✏️", format="%.2f%%", step=0.5, help="Doble clic para editar"),
+                        "Vta Real ($)": st.column_config.NumberColumn("Vta Real ($)", format="$%d", disabled=True),
+                        "Margen Real (%)": st.column_config.NumberColumn("Margen Real (%)", format="%.1f%%", disabled=True),
+                        "➕ Venta Extra ($)": st.column_config.NumberColumn("➕ Venta Extra ($)", format="%d", step=1000000),
+                        "🎯 Margen Extra (%)": st.column_config.NumberColumn("🎯 Margen Extra (%)", format="%.1f%%", step=0.5),
                     },
                     hide_index=True,
                     use_container_width=True,
-                    key="simulador_repuestos"
+                    key="simulador_repuestos_nuevo"
                 )
 
-                # Cálculos Simulador
-                sim_vta_total = edited_sim["Sim Venta ($)"].sum()
-                edited_sim["Utilidad Base Sim"] = edited_sim["Sim Venta ($)"] * (edited_sim["Sim Margen (%)"] / 100)
-                sim_util_base_total = edited_sim["Utilidad Base Sim"].sum()
+                # --- CÁLCULOS DEL NUEVO ESCENARIO ---
+                # 1. Utilidad Real base
+                util_real_total = util_total_operativa # Viene de los cálculos de arriba
+                
+                # 2. Utilidad Extra generada por la simulación
+                edited_sim["Utilidad Extra"] = edited_sim["➕ Venta Extra ($)"] * (edited_sim["🎯 Margen Extra (%)"] / 100)
+                util_extra_total = edited_sim["Utilidad Extra"].sum()
+                
+                # 3. Totales del Nuevo Escenario
+                sim_vta_total = vta_total_bruta + edited_sim["➕ Venta Extra ($)"].sum()
+                sim_util_base = util_real_total + util_extra_total
+                
+                # 4. Impacto final (sumando la prima real que ya tenías)
+                sim_util_final = sim_util_base + primas_input
+                sim_mg_final = (sim_util_final / sim_vta_total) if sim_vta_total > 0 else 0
+                
+                real_margen = mg_total_final # El margen final real calculado arriba
 
-                # La utilidad global simplemente suma la prima
-                sim_util_final_total = sim_util_base_total + primas_input
-                sim_margen_final = (sim_util_final_total / sim_vta_total) if sim_vta_total > 0 else 0
-
-                real_vta = vta_total_neta
-                real_margen = mg_total_final
-
-                st.markdown("#### 🚀 Resultados Globales de la Simulación")
+                st.markdown("#### 🚀 Resultados del Escenario Proyectado")
                 c_sim1, c_sim2, c_sim3 = st.columns(3)
                 
-                dif_vta = sim_vta_total - real_vta
-                c_sim1.metric("Venta Total Simulada", f"${sim_vta_total:,.0f}", f"{'+' if dif_vta>0 else ''}{dif_vta:,.0f} vs Actual")
+                dif_vta = edited_sim["➕ Venta Extra ($)"].sum()
+                c_sim1.metric("Nueva Venta Total Bruta", f"${sim_vta_total:,.0f}", f"+${dif_vta:,.0f} vs Actual")
                 
-                dif_util = sim_util_final_total - util_total_final
-                c_sim2.metric("Utilidad Final Simulada", f"${sim_util_final_total:,.0f}", f"{'+' if dif_util>0 else ''}{dif_util:,.0f} vs Actual")
+                dif_util = sim_util_final - util_total_final
+                c_sim2.metric("Nueva Utilidad Final", f"${sim_util_final:,.0f}", f"+${dif_util:,.0f} vs Actual")
                 
-                dif_mg = (sim_margen_final - real_margen) * 100
-                c_sim3.metric("Margen Final Global (Simulado)", f"{sim_margen_final:.2%}", f"{dif_mg:+.2f} pts vs Actual", delta_color="normal" if dif_mg >= 0 else "inverse")
-
-                with st.expander("🔍 Ver Inyección de Prima detallada (Mayorista y Seguros)"):
-                    st.markdown(f"**Prima Total del Mes:** `${primas_input:,.0f}` (Prorrateada según participación simulada)")
-                    # Buscamos los canales Mayorista y Seguros
-                    is_vol = edited_sim['Canal'].str.contains('MAYOR|SEGUR', case=False, na=False)
-                    vta_vol_total = edited_sim.loc[is_vol, "Sim Venta ($)"].sum()
-                    
-                    if vta_vol_total > 0:
-                        det_prima = []
-                        for idx, row in edited_sim[is_vol].iterrows():
-                            pct_part = row["Sim Venta ($)"] / vta_vol_total
-                            prima_asig = primas_input * pct_part
-                            ut_canal = row["Utilidad Base Sim"] + prima_asig
-                            mg_canal = ut_canal / row["Sim Venta ($)"] if row["Sim Venta ($)"] > 0 else 0
-                            det_prima.append({
-                                "Canal": row["Canal"],
-                                "Venta Sim ($)": f"${row['Sim Venta ($)']:,.0f}",
-                                "Part. en Volumen": f"{pct_part:.1%}",
-                                "Prima Inyectada": f"${prima_asig:,.0f}",
-                                "Nuevo Margen del Canal (Con Prima)": f"{mg_canal:.2%}"
-                            })
-                        st.table(pd.DataFrame(det_prima))
-                    else:
-                        st.warning("No asignaste ventas simuladas en Mayorista o Seguros para inyectar la prima.")
+                dif_mg = (sim_mg_final - real_margen) * 100
+                c_sim3.metric("Nuevo Margen Global", f"{sim_mg_final:.2%}", f"{dif_mg:+.2f} pts vs Actual", delta_color="normal" if dif_mg >= 0 else "inverse")
+                
+                # Gráfico de la nueva torta de participación
+                edited_sim["Venta Proyectada"] = edited_sim["Vta Real ($)"] + edited_sim["➕ Venta Extra ($)"]
+                if edited_sim["➕ Venta Extra ($)"].sum() > 0:
+                    st.markdown("##### 🥧 Nueva Participación de Canales")
+                    fig_pie_sim = px.pie(edited_sim, values="Venta Proyectada", names="Canal", hole=0.4)
+                    fig_pie_sim.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig_pie_sim, use_container_width=True)
 
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
