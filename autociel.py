@@ -980,6 +980,35 @@ try:
                     fig_pie_sim.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig_pie_sim, use_container_width=True)
 
+            # --- 8. ANÁLISIS DE SENSIBILIDAD (BUSCADOR DE OBJETIVO) ---
+                st.markdown("---")
+                st.markdown("#### ⚖️ Análisis de Sensibilidad (Límite de Ventas)")
+                st.info("Calculá **cuánto podés facturar** en un canal de bajo margen sin que tu Margen Secundario Global caiga por debajo de tu objetivo (ej. 21% para cuidar la UDIG).")
+                
+                col_sens1, col_sens2, col_sens3 = st.columns(3)
+                target_margin_pct = col_sens1.number_input("🎯 Objetivo Margen Secundario (%)", value=21.0, step=0.5) / 100
+                canal_sens = col_sens2.selectbox("📦 Canal a Estresar", canales_repuestos, index=canales_repuestos.index("MAYORISTA") if "MAYORISTA" in canales_repuestos else 0)
+                
+                margen_canal_actual = df_r[df_r["Canal"] == canal_sens]["Margen %"].values[0] if canal_sens in df_r["Canal"].values else 0
+                margen_proyectado_sens = col_sens3.number_input(f"📉 Margen de esa Venta en {canal_sens} (%)", value=float(margen_canal_actual*100), step=1.0) / 100
+                
+                # Fórmula matemática de límite: V_extra = (Target * V_bruta - G_sec) / (m_extra - Target)
+                if margen_proyectado_sens >= target_margin_pct:
+                    st.success(f"✅ Como el margen de esta venta ({margen_proyectado_sens:.1%}) es igual o mayor a tu objetivo ({target_margin_pct:.1%}), **no hay límite**. Podés vender infinito sin bajar tu promedio.")
+                else:
+                    numerador = (target_margin_pct * vta_total_bruta) - util_total_final
+                    denominador = margen_proyectado_sens - target_margin_pct
+                    
+                    if denominador != 0:
+                        v_max = numerador / denominador
+                    else:
+                        v_max = 0
+                        
+                    if v_max <= 0:
+                        st.error(f"⚠️ Tu margen global actual ya está por debajo o demasiado cerca del {target_margin_pct:.1%}. No podés sumar ventas al {margen_proyectado_sens:.1%} sin empeorarlo.")
+                    else:
+                        st.success(f"🔥 Podés facturar hasta **${v_max:,.0f}** extra en {canal_sens} a un margen del **{margen_proyectado_sens:.1%}** para clavar tu Margen Secundario exactamente en **{target_margin_pct:.1%}**.")
+
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
             
