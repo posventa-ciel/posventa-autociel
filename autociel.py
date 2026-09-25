@@ -1009,19 +1009,25 @@ try:
                     else:
                         st.success(f"🔥 Podés facturar hasta **${v_max:,.0f}** extra en {canal_sens} a un margen del **{margen_proyectado_sens:.1%}** para clavar tu Margen Secundario exactamente en **{target_margin_pct:.1%}**.")
 
-            # --- 8. CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS - AUTOCIEL) ---
+            # --- 9. CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS - AUTOCIEL) ---
                 st.markdown("---")
                 st.markdown("#### 🏆 Cumplimiento de Compras PR y Proyección de Cuartiles")
 
                 # 1. Definir el dataframe crudo de la pestaña repuestos
                 df_base = data['REPUESTOS'].copy()
 
-                # Buscar las columnas exactas (AB y AC)
+                # Buscar las columnas exactas
+                col_fecha = find_col(df_base, ["FECHA"])
                 col_obj = find_col(df_base, ["OBJETIVO COMPRA", "OBJETIVO"])
                 col_compra = find_col(df_base, ["COMPRA PR", "COMPRA"])
 
-                if col_obj and col_compra:
-                    # Asegurar formato numérico para limpiar posibles errores de lectura
+                if col_fecha and col_obj and col_compra:
+                    # Convertir fecha directamente para asegurar la lectura del mes real
+                    df_base['Fecha_calc'] = pd.to_datetime(df_base[col_fecha], dayfirst=True, errors='coerce')
+                    df_base['Mes_calc'] = df_base['Fecha_calc'].dt.month
+                    df_base['Año_calc'] = df_base['Fecha_calc'].dt.year
+
+                    # Asegurar formato numérico
                     df_base[col_obj] = pd.to_numeric(df_base[col_obj], errors='coerce').fillna(0)
                     df_base[col_compra] = pd.to_numeric(df_base[col_compra], errors='coerce').fillna(0)
                     
@@ -1030,15 +1036,15 @@ try:
                         if df_sem.empty:
                             return 0, 0, 0, "Sin Datos", "#6c757d"
                         
-                        # OBJETIVOS: Agrupa por mes y suma solo 1 valor por mes (evita duplicar la meta semanal)
-                        objetivo_acumulado = df_sem[df_sem[col_obj] > 0].groupby('Mes')[col_obj].max().sum()
+                        # OBJETIVOS: Agrupar por mes real y tomar el máximo para evitar sumar la meta semanal repetida
+                        objetivo_acumulado = df_sem[df_sem[col_obj] > 0].groupby('Mes_calc')[col_obj].max().sum()
                         
-                        # COMPRAS: Suma todas las entradas cargadas en la columna PR
+                        # COMPRAS: Suma directa de todas las facturas
                         compras_acumuladas = df_sem[col_compra].sum()
                         
                         cumplimiento = (compras_acumuladas / objetivo_acumulado * 100) if objetivo_acumulado > 0 else 0
                         
-                        # Lógica estricta de Cuartiles Stellantis
+                        # Cuartiles Stellantis (Cumplimiento objetivo Compra PR)
                         if cumplimiento >= 98.42:
                             cuartil, color = "Q1 (Excelente)", "#28a745" # Verde
                         elif cumplimiento >= 78.46:
@@ -1051,8 +1057,9 @@ try:
                         return objetivo_acumulado, compras_acumuladas, cumplimiento, cuartil, color
 
                     # 2. Separar los DataFrames por semestre del año seleccionado
-                    df_sem1 = df_base[(df_base['Año'] == año_sel) & (df_base['Mes'] <= 6)]
-                    df_sem2 = df_base[(df_base['Año'] == año_sel) & (df_base['Mes'] >= 7)]
+                    df_año = df_base[df_base['Año_calc'] == año_sel]
+                    df_sem1 = df_año[df_año['Mes_calc'] <= 6]
+                    df_sem2 = df_año[df_año['Mes_calc'] >= 7]
 
                     # 3. Procesar resultados
                     obj1, comp1, pct1, q1, c1 = procesar_semestre(df_sem1)
@@ -1098,8 +1105,20 @@ try:
                             </div>
                         </div>
                         ''', unsafe_allow_html=True)
+
+                    # 5. Desplegable de referencia
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander("📊 Ver Tabla de Cuartiles Stellantis (Cumplimiento Objetivo Compra PR)"):
+                        st.markdown("""
+                        | Cuartil | Rango Mínimo | Rango Máximo | Estado |
+                        | :--- | :--- | :--- | :--- |
+                        | **Q1** | 98.42% | 197.64% | 🟢 Excelente |
+                        | **Q2** | 78.46% | 98.41% | 🔵 Cumple |
+                        | **Q3** | 51.81% | 78.45% | 🟡 En Riesgo |
+                        | **Q4** | 0.00% | 51.80% | 🔴 Crítico / Penalización |
+                        """)
                 else:
-                    st.error("⚠️ No se detectaron las columnas 'Objetivo Compra' o 'Compra PR' en la hoja REPUESTOS.")
+                    st.error("⚠️ Faltan columnas clave ('Fecha', 'Objetivo Compra' o 'Compra PR') en la hoja REPUESTOS.")
 
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
