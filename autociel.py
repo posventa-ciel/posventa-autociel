@@ -1688,7 +1688,86 @@ try:
                                                    color_discrete_sequence=px.colors.qualitative.Set1)
                         fig_line_canales.update_layout(height=400, yaxis_title="Facturación ($)", legend_title_text="Canal")
                         st.plotly_chart(fig_line_canales, use_container_width=True)
+
+            # --- GRÁFICO: EVOLUCIÓN MENSUAL COMPRAS VS OBJETIVO ---
+                st.markdown("---")
+                st.markdown("#### 📈 Evolución Mensual: Objetivo vs Compra PR")
+
+                # 1. Definir data base
+                df_hist = data['REPUESTOS'].copy()
+                
+                col_fecha = find_col(df_hist, ["FECHA"])
+                col_obj = find_col(df_hist, ["OBJETIVO COMPRA", "OBJETIVO"])
+                col_compra = find_col(df_hist, ["COMPRA PR", "COMPRA"])
+
+                if col_fecha and col_obj and col_compra:
+                    # Parsear fechas y asegurar formatos
+                    df_hist['Fecha_calc'] = pd.to_datetime(df_hist[col_fecha], dayfirst=True, errors='coerce')
+                    df_hist['Mes_calc'] = df_hist['Fecha_calc'].dt.month
+                    df_hist['Año_calc'] = df_hist['Fecha_calc'].dt.year
+
+                    df_hist[col_obj] = pd.to_numeric(df_hist[col_obj], errors='coerce').fillna(0)
+                    df_hist[col_compra] = pd.to_numeric(df_hist[col_compra], errors='coerce').fillna(0)
+
+                    # Filtrar por el año seleccionado en la app
+                    df_year = df_hist[df_hist['Año_calc'] == año_sel]
+
+                    if not df_year.empty:
+                        # 2. Agrupar tomando el máximo de cada mes (el cierre mensual real)
+                        df_grouped = df_year[df_year[col_obj] > 0].groupby('Mes_calc').agg({
+                            col_obj: 'max',
+                            col_compra: 'max'
+                        }).reset_index()
+
+                        # Diccionario para mostrar nombres de meses
+                        meses_nombres = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 
+                                         7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+                        df_grouped['Mes_Nombre'] = df_grouped['Mes_calc'].map(meses_nombres)
+
+                        # Calcular porcentaje de cumplimiento para mostrar en el tooltip
+                        df_grouped['Cumplimiento %'] = (df_grouped[col_compra] / df_grouped[col_obj] * 100).fillna(0)
+
+                        # 3. Armar el gráfico dual con Plotly Graph Objects
+                        import plotly.graph_objects as go
                         
+                        fig = go.Figure()
+                        
+                        # Barra de Objetivos
+                        fig.add_trace(go.Bar(
+                            x=df_grouped['Mes_Nombre'],
+                            y=df_grouped[col_obj],
+                            name='Objetivo Stellantis',
+                            marker_color='#6c757d',
+                            hovertemplate="Objetivo: $%{y:,.0f}<extra></extra>"
+                        ))
+                        
+                        # Barra de Compras Reales
+                        fig.add_trace(go.Bar(
+                            x=df_grouped['Mes_Nombre'],
+                            y=df_grouped[col_compra],
+                            name='Compra PR Real',
+                            marker_color='#00235d',
+                            text=df_grouped['Cumplimiento %'].apply(lambda x: f"{x:.1f}%"),
+                            textposition='outside',
+                            hovertemplate="Compra Real: $%{y:,.0f}<br>Cumplimiento: %{text}<extra></extra>"
+                        ))
+
+                        fig.update_layout(
+                            barmode='group',
+                            xaxis_title="Mes",
+                            yaxis_title="Monto ($)",
+                            legend_title="Indicador",
+                            hovermode="x unified",
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            margin=dict(t=20, b=20, l=0, r=0)
+                        )
+                        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#e9ecef')
+
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info(f"No hay registros cargados para el año {año_sel}.")
+                else:
+                    st.error("⚠️ Faltan columnas clave ('Fecha', 'Objetivo Compra' o 'Compra PR') para graficar la evolución.")
                     
             # ==========================================
             # PESTAÑA 4: CHAPA
