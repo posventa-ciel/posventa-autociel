@@ -1009,6 +1009,89 @@ try:
                     else:
                         st.success(f"🔥 Podés facturar hasta **${v_max:,.0f}** extra en {canal_sens} a un margen del **{margen_proyectado_sens:.1%}** para clavar tu Margen Secundario exactamente en **{target_margin_pct:.1%}**.")
 
+            # --- 9. CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS) ---
+                st.markdown("---")
+                st.markdown(f"#### 🏆 Cumplimiento de Compras y Proyección de Cuartil")
+
+                # Seguro técnico: si por algún motivo la variable no se generó arriba, la creamos en 0
+                if 'compra_real_sheet' not in locals():
+                    compra_real_sheet = 0.0
+                if 'h_rep' not in locals():
+                    h_rep = pd.DataFrame()
+
+                # 1. Detección automática del Semestre y meses transcurridos
+                if mes_sel <= 6:
+                    meses_semestre = [1, 2, 3, 4, 5, 6]
+                    nombre_semestre = "1er Semestre"
+                    meses_transcurridos = mes_sel
+                else:
+                    meses_semestre = [7, 8, 9, 10, 11, 12]
+                    nombre_semestre = "2do Semestre"
+                    meses_transcurridos = mes_sel - 6
+
+                # 2. Cálculo de compras acumuladas filtrando el histórico (h_rep)
+                if not h_rep.empty and 'CompraTotalMes' in h_rep.columns:
+                    df_semestre = h_rep[(h_rep['Año'] == año_sel) & (h_rep['Mes'].isin(meses_semestre))]
+                    compras_acumuladas_semestre = df_semestre['CompraTotalMes'].sum()
+                else:
+                    compras_acumuladas_semestre = compra_real_sheet 
+
+                # 3. Input del Objetivo Semestral
+                c_obj1, c_obj2 = st.columns([1, 2])
+                with c_obj1:
+                    objetivo_semestral_stellantis = st.number_input(
+                        f"🎯 Objetivo {nombre_semestre} Stellantis ($)", 
+                        min_value=0.0, step=5000000.0, value=50000000.0,
+                        key="obj_semestral_stellantis"
+                    )
+
+                # 4. Proyección y Cuartiles
+                if objetivo_semestral_stellantis > 0:
+                    cumplimiento_actual_pct = (compras_acumuladas_semestre / objetivo_semestral_stellantis) * 100
+                    if meses_transcurridos > 0:
+                        proyeccion_cierre = (compras_acumuladas_semestre / meses_transcurridos) * 6
+                    else:
+                        proyeccion_cierre = 0
+                    pct_proyectado = (proyeccion_cierre / objetivo_semestral_stellantis) * 100
+                else:
+                    cumplimiento_actual_pct = 0
+                    proyeccion_cierre = 0
+                    pct_proyectado = 0
+
+                brecha_cierre = objetivo_semestral_stellantis - proyeccion_cierre
+
+                # Lógica de Cuartiles Stellantis
+                if pct_proyectado >= 110:
+                    cuartil = "Q1 (Excelente)"
+                    color_q = "#28a745" 
+                elif pct_proyectado >= 100:
+                    cuartil = "Q2 (Cumple)"
+                    color_q = "#17a2b8" 
+                elif pct_proyectado >= 90:
+                    cuartil = "Q3 (En Riesgo)"
+                    color_q = "#ffc107" 
+                else:
+                    cuartil = "Q4 (Crítico)"
+                    color_q = "#dc3545" 
+
+                # 5. Visualización de Resultados
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                
+                col_m1.markdown(f'<div class="metric-card"><div class="metric-title">Compras Acumuladas ({nombre_semestre})</div><div class="metric-value-money" style="color:#00235d;">${compras_acumuladas_semestre:,.0f}</div></div>', unsafe_allow_html=True)
+                
+                col_m2.markdown(f'<div class="metric-card"><div class="metric-title">Proyección a Cierre (Mes 6)</div><div class="metric-value-money" style="color:#6f42c1;">${proyeccion_cierre:,.0f}</div></div>', unsafe_allow_html=True)
+                
+                if brecha_cierre > 0:
+                    col_m3.markdown(f'<div class="metric-card"><div class="metric-title">Brecha Proyectada</div><div class="metric-value-money" style="color:#dc3545;">- ${brecha_cierre:,.0f}</div><div class="metric-subtitle-gray">Faltante para el objetivo</div></div>', unsafe_allow_html=True)
+                else:
+                    col_m3.markdown(f'<div class="metric-card"><div class="metric-title">Superávit Proyectado</div><div class="metric-value-money" style="color:#28a745;">+ ${abs(brecha_cierre):,.0f}</div><div class="metric-subtitle-gray">Por encima del objetivo</div></div>', unsafe_allow_html=True)
+
+                col_m4.markdown(f'<div class="metric-card" style="border: 2px solid {color_q};"><div class="metric-title">Cuartil Simulado</div><div class="metric-value-money" style="color:{color_q}; font-size: 1.5rem;">{cuartil}</div><div class="metric-subtitle-gray">{pct_proyectado:.1f}% de alcance final</div></div>', unsafe_allow_html=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.progress(min(cumplimiento_actual_pct / 100, 1.0))
+                st.caption(f"Progreso actual: **{cumplimiento_actual_pct:.1f}%** de los fondos ejecutados sobre la meta semestral Stellantis.")
+
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
             
