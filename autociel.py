@@ -1036,11 +1036,11 @@ try:
                         if df_sem.empty:
                             return 0, 0, 0, "Sin Datos", "#6c757d"
                         
-                        # OBJETIVOS: Agrupar por mes real y tomar el máximo para evitar sumar la meta semanal repetida
+                        # OBJETIVOS: Tomar solo el valor máximo (cierre) de cada mes y sumarlos
                         objetivo_acumulado = df_sem[df_sem[col_obj] > 0].groupby('Mes_calc')[col_obj].max().sum()
                         
-                        # COMPRAS: Suma directa de todas las facturas
-                        compras_acumuladas = df_sem[col_compra].sum()
+                        # COMPRAS: Como la columna es un acumulado (YTD mensual), tomamos el máximo reportado de cada mes
+                        compras_acumuladas = df_sem[df_sem[col_compra] > 0].groupby('Mes_calc')[col_compra].max().sum()
                         
                         cumplimiento = (compras_acumuladas / objetivo_acumulado * 100) if objetivo_acumulado > 0 else 0
                         
