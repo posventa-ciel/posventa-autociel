@@ -1009,91 +1009,97 @@ try:
                     else:
                         st.success(f"🔥 Podés facturar hasta **${v_max:,.0f}** extra en {canal_sens} a un margen del **{margen_proyectado_sens:.1%}** para clavar tu Margen Secundario exactamente en **{target_margin_pct:.1%}**.")
 
-            # --- 9. CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS - AUTOCIEL) ---
+            # --- 8. CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS - AUTOCIEL) ---
                 st.markdown("---")
-                st.markdown(f"#### 🏆 Cumplimiento de Compras PR y Proyección de Cuartil")
+                st.markdown("#### 🏆 Cumplimiento de Compras PR y Proyección de Cuartiles")
 
                 # 1. Definir el dataframe crudo de la pestaña repuestos
-                df_base = data['REPUESTOS']
+                df_base = data['REPUESTOS'].copy()
 
-                # 2. Buscar las columnas exactas (AB y AC) basándonos en sus nombres
+                # Buscar las columnas exactas (AB y AC)
                 col_obj = find_col(df_base, ["OBJETIVO COMPRA", "OBJETIVO"])
-                col_compra = find_col(df_base, ["COMPRA PR"])
+                col_compra = find_col(df_base, ["COMPRA PR", "COMPRA"])
 
                 if col_obj and col_compra:
-                    # 3. Identificar semestre actual según el mes seleccionado en la app
-                    if mes_sel <= 6:
-                        meses_semestre = [1, 2, 3, 4, 5, 6]
-                        nombre_semestre = "1er Semestre"
-                        meses_transcurridos = mes_sel
-                    else:
-                        meses_semestre = [7, 8, 9, 10, 11, 12]
-                        nombre_semestre = "2do Semestre"
-                        meses_transcurridos = mes_sel - 6
-
-                    # Filtrar los datos exclusivamente para el semestre en curso
-                    df_semestre = df_base[(df_base['Año'] == año_sel) & (df_base['Mes'].isin(meses_semestre))].copy()
-
-                    # Forzar formato numérico en las columnas para evitar errores de lectura de Google Sheets
-                    df_semestre[col_obj] = pd.to_numeric(df_semestre[col_obj], errors='coerce').fillna(0)
-                    df_semestre[col_compra] = pd.to_numeric(df_semestre[col_compra], errors='coerce').fillna(0)
-
-                    if not df_semestre.empty:
-                        # TRUCO: Agrupamos por mes y tomamos el valor máximo del objetivo para no duplicarlo
-                        # Luego sumamos los objetivos únicos de cada mes del semestre
-                        objetivo_semestral = df_semestre.groupby('Mes')[col_obj].max().sum()
-                        # Las compras sí se suman por completo (todas las filas)
-                        compras_acumuladas = df_semestre[col_compra].sum()
-                    else:
-                        objetivo_semestral = 0.0
-                        compras_acumuladas = 0.0
-
-                    # 4. Proyección a Cierre de Semestre (Líneal a 6 meses)
-                    if meses_transcurridos > 0:
-                        proyeccion_cierre_compras = (compras_acumuladas / meses_transcurridos) * 6
-                    else:
-                        proyeccion_cierre_compras = 0
-
-                    # Porcentajes de cumplimiento real actual y proyectado al mes 6
-                    cumplimiento_actual_pct = (compras_acumuladas / objetivo_semestral * 100) if objetivo_semestral > 0 else 0
-                    pct_proyectado = (proyeccion_cierre_compras / objetivo_semestral * 100) if objetivo_semestral > 0 else 0
-
-                    brecha_cierre = objetivo_semestral - proyeccion_cierre_compras
-
-                    # 5. Lógica estricta de Cuartiles Stellantis (Cumplimiento objetivo Compra PR)
-                    if pct_proyectado >= 98.42:
-                        cuartil = "Q1 (Excelente)"
-                        color_q = "#28a745" # Verde
-                    elif pct_proyectado >= 78.46:
-                        cuartil = "Q2 (Cumple)"
-                        color_q = "#17a2b8" # Celeste
-                    elif pct_proyectado >= 51.81:
-                        cuartil = "Q3 (En Riesgo)"
-                        color_q = "#ffc107" # Amarillo
-                    else:
-                        cuartil = "Q4 (Crítico)"
-                        color_q = "#dc3545" # Rojo
-
-                    # 6. Renderizado de las tarjetas visuales
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    # Asegurar formato numérico para limpiar posibles errores de lectura
+                    df_base[col_obj] = pd.to_numeric(df_base[col_obj], errors='coerce').fillna(0)
+                    df_base[col_compra] = pd.to_numeric(df_base[col_compra], errors='coerce').fillna(0)
                     
-                    col_m1.markdown(f'<div class="metric-card"><div class="metric-title">Compras Acumuladas ({nombre_semestre})</div><div class="metric-value-money" style="color:#00235d;">${compras_acumuladas:,.0f}</div><div class="metric-subtitle-gray">Obj. Semestral: ${objetivo_semestral:,.0f}</div></div>', unsafe_allow_html=True)
-                    
-                    col_m2.markdown(f'<div class="metric-card"><div class="metric-title">Proyección a Cierre (Mes 6)</div><div class="metric-value-money" style="color:#6f42c1;">${proyeccion_cierre_compras:,.0f}</div></div>', unsafe_allow_html=True)
-                    
-                    if brecha_cierre > 0:
-                        col_m3.markdown(f'<div class="metric-card"><div class="metric-title">Brecha Proyectada</div><div class="metric-value-money" style="color:#dc3545;">- ${brecha_cierre:,.0f}</div><div class="metric-subtitle-gray">Faltante proyectado</div></div>', unsafe_allow_html=True)
-                    else:
-                        col_m3.markdown(f'<div class="metric-card"><div class="metric-title">Superávit Proyectado</div><div class="metric-value-money" style="color:#28a745;">+ ${abs(brecha_cierre):,.0f}</div><div class="metric-subtitle-gray">Por encima de meta</div></div>', unsafe_allow_html=True)
+                    # Función para procesar la data de un semestre específico
+                    def procesar_semestre(df_sem):
+                        if df_sem.empty:
+                            return 0, 0, 0, "Sin Datos", "#6c757d"
+                        
+                        # OBJETIVOS: Agrupa por mes y suma solo 1 valor por mes (evita duplicar la meta semanal)
+                        objetivo_acumulado = df_sem[df_sem[col_obj] > 0].groupby('Mes')[col_obj].max().sum()
+                        
+                        # COMPRAS: Suma todas las entradas cargadas en la columna PR
+                        compras_acumuladas = df_sem[col_compra].sum()
+                        
+                        cumplimiento = (compras_acumuladas / objetivo_acumulado * 100) if objetivo_acumulado > 0 else 0
+                        
+                        # Lógica estricta de Cuartiles Stellantis
+                        if cumplimiento >= 98.42:
+                            cuartil, color = "Q1 (Excelente)", "#28a745" # Verde
+                        elif cumplimiento >= 78.46:
+                            cuartil, color = "Q2 (Cumple)", "#17a2b8" # Celeste
+                        elif cumplimiento >= 51.81:
+                            cuartil, color = "Q3 (En Riesgo)", "#ffc107" # Amarillo
+                        else:
+                            cuartil, color = "Q4 (Crítico)", "#dc3545" # Rojo
+                            
+                        return objetivo_acumulado, compras_acumuladas, cumplimiento, cuartil, color
 
-                    col_m4.markdown(f'<div class="metric-card" style="border: 2px solid {color_q};"><div class="metric-title">Cuartil Simulado</div><div class="metric-value-money" style="color:{color_q}; font-size: 1.5rem;">{cuartil}</div><div class="metric-subtitle-gray">Cierre Proyectado: {pct_proyectado:.2f}%</div></div>', unsafe_allow_html=True)
+                    # 2. Separar los DataFrames por semestre del año seleccionado
+                    df_sem1 = df_base[(df_base['Año'] == año_sel) & (df_base['Mes'] <= 6)]
+                    df_sem2 = df_base[(df_base['Año'] == año_sel) & (df_base['Mes'] >= 7)]
 
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    st.progress(min(cumplimiento_actual_pct / 100, 1.0))
-                    st.caption(f"Progreso actual real: **{cumplimiento_actual_pct:.2f}%** ejecutado sobre el objetivo semestral asignado por fábrica.")
+                    # 3. Procesar resultados
+                    obj1, comp1, pct1, q1, c1 = procesar_semestre(df_sem1)
+                    obj2, comp2, pct2, q2, c2 = procesar_semestre(df_sem2)
 
+                    # 4. Renderizado en dos columnas
+                    col_s1, col_s2 = st.columns(2)
+
+                    with col_s1:
+                        st.markdown("##### 📅 1er Semestre (Cerrado)")
+                        st.markdown(f'''
+                        <div class="metric-card" style="border-top: 5px solid {c1}; padding: 20px;">
+                            <div class="metric-title">Cuartil Final Stellantis</div>
+                            <div class="metric-value-money" style="color:{c1}; font-size: 2rem; margin-bottom: 5px;">{q1}</div>
+                            <div style="font-weight: bold; font-size: 1.3rem; color: #495057;">{pct1:.2f}% de Cumplimiento</div>
+                            <hr style="margin: 15px 0; border-color: #e9ecef;">
+                            <div style="display:flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: #6c757d;">Total Compras PR:</span> 
+                                <strong style="font-size: 1.1rem;">${comp1:,.0f}</strong>
+                            </div>
+                            <div style="display:flex; justify-content: space-between;">
+                                <span style="color: #6c757d;">Objetivo Semestral:</span> 
+                                <strong style="font-size: 1.1rem;">${obj1:,.0f}</strong>
+                            </div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+
+                    with col_s2:
+                        st.markdown("##### 🔄 2do Semestre (En Curso)")
+                        st.markdown(f'''
+                        <div class="metric-card" style="border-top: 5px solid {c2}; padding: 20px;">
+                            <div class="metric-title">Cuartil Actual (YTD)</div>
+                            <div class="metric-value-money" style="color:{c2}; font-size: 2rem; margin-bottom: 5px;">{q2}</div>
+                            <div style="font-weight: bold; font-size: 1.3rem; color: #495057;">{pct2:.2f}% de Cumplimiento</div>
+                            <hr style="margin: 15px 0; border-color: #e9ecef;">
+                            <div style="display:flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="color: #6c757d;">Compras Acumuladas:</span> 
+                                <strong style="font-size: 1.1rem;">${comp2:,.0f}</strong>
+                            </div>
+                            <div style="display:flex; justify-content: space-between;">
+                                <span style="color: #6c757d;">Objetivo (Julio-Actual):</span> 
+                                <strong style="font-size: 1.1rem;">${obj2:,.0f}</strong>
+                            </div>
+                        </div>
+                        ''', unsafe_allow_html=True)
                 else:
-                    st.error("⚠️ No se detectaron las columnas 'Objetivo Compra' o 'Compra PR' en la hoja REPUESTOS. Revisá que los nombres en la fila 1 de Excel coincidan.")
+                    st.error("⚠️ No se detectaron las columnas 'Objetivo Compra' o 'Compra PR' en la hoja REPUESTOS.")
 
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
