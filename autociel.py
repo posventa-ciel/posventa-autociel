@@ -1689,18 +1689,32 @@ try:
                         fig_line_canales.update_layout(height=400, yaxis_title="Facturación ($)", legend_title_text="Canal")
                         st.plotly_chart(fig_line_canales, use_container_width=True)
 
-            # --- GRÁFICOS: COMPOSICIÓN Y MESES DE STOCK ---
+           # --- GRÁFICOS: COMPOSICIÓN Y MESES DE STOCK ---
                 st.markdown("---")
                 st.markdown("#### 📦 Evolución y Composición del Stock")
 
-                # 1. Identificar columnas de Stock
+                # 1. Definir data base histórica (Se usa para todos los gráficos de abajo)
+                df_hist = data['REPUESTOS'].copy()
+
+                # Parsear fechas globalmente para que sirvan para Stock y Compras
+                col_fecha = find_col(df_hist, ["FECHA"])
+                if col_fecha:
+                    df_hist['Fecha_calc'] = pd.to_datetime(df_hist[col_fecha], dayfirst=True, errors='coerce')
+                    df_hist['Mes_calc'] = df_hist['Fecha_calc'].dt.month
+                    df_hist['Año_calc'] = df_hist['Fecha_calc'].dt.year
+                else:
+                    # Fallback por si la columna fecha no existe pero sí 'Mes' y 'Año'
+                    df_hist['Mes_calc'] = df_hist['Mes'] if 'Mes' in df_hist.columns else 1
+                    df_hist['Año_calc'] = df_hist['Año'] if 'Año' in df_hist.columns else año_sel
+
+                # 2. Identificar columnas de Stock
                 col_val_stock = find_col(df_hist, ["VALOR STOCK", "VALOR", "STOCK"])
                 col_p_vivo = find_col(df_hist, ["% STOCK VIVO", "VIVO"])
                 col_p_obs = find_col(df_hist, ["% STOCK OBSOLETO", "OBSOLETO"])
                 col_p_muerto = find_col(df_hist, ["% STOCK MUERTO", "MUERTO"])
 
                 if col_val_stock and col_p_vivo and col_p_obs and col_p_muerto:
-                    # Diccionario de meses por si no se definió arriba
+                    # Diccionario de meses
                     meses_nombres = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 
                                      7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
 
@@ -1712,29 +1726,24 @@ try:
                         df_all_months[c] = pd.to_numeric(df_all_months[c], errors='coerce').fillna(0)
 
                     # --- CÁLCULO DE MESES DE STOCK (Basado en Costo Promedio 3M) ---
-                    # Identificar todas las columnas de costo para sumar el costo mensual total
                     costo_cols = [c for c in df_hist.columns if "COSTO" in str(c).upper() and "OBJ" not in str(c).upper()]
                     df_all_months['Costo_Total_Mes'] = 0
                     for c in costo_cols:
                         df_all_months['Costo_Total_Mes'] += pd.to_numeric(df_all_months[c], errors='coerce').fillna(0)
                         
-                    # Promedio móvil de 3 meses
                     df_all_months['Costo_Promedio_3M'] = df_all_months['Costo_Total_Mes'].rolling(window=3, min_periods=1).mean()
                     
-                    # Calcular métrica: Valor Stock / Costo Promedio 3M
                     df_all_months['Meses_Stock'] = df_all_months.apply(
                         lambda row: row[col_val_stock] / row['Costo_Promedio_3M'] if row['Costo_Promedio_3M'] > 0 else 0, 
                         axis=1
                     )
 
-                    # Filtrar solo el año seleccionado para graficar
                     df_stock_year = df_all_months[df_all_months['Año_calc'] == año_sel].copy()
-                    df_stock_year['Mes_Nombre'] = df_stock_year['Mes_calc'].map(meses_nombres)
-
+                    
                     if not df_stock_year.empty:
+                        df_stock_year['Mes_Nombre'] = df_stock_year['Mes_calc'].map(meses_nombres)
                         col_g1, col_g2 = st.columns(2)
 
-                        # --- GRÁFICO 1: Composición % ---
                         with col_g1:
                             fig_comp = go.Figure()
                             
@@ -1758,39 +1767,30 @@ try:
                             ))
 
                             fig_comp.update_layout(
-                                barmode='stack',
-                                title="Composición Mensual del Stock",
-                                xaxis_title="Mes",
-                                yaxis_title="Porcentaje (%)",
+                                barmode='stack', title="Composición Mensual del Stock",
+                                xaxis_title="Mes", yaxis_title="Porcentaje (%)",
                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                                hovermode="x unified",
-                                plot_bgcolor='rgba(0,0,0,0)',
+                                hovermode="x unified", plot_bgcolor='rgba(0,0,0,0)',
                                 margin=dict(t=40, b=20, l=0, r=0)
                             )
                             st.plotly_chart(fig_comp, use_container_width=True)
 
-                        # --- GRÁFICO 2: Evolución de Meses de Stock ---
                         with col_g2:
                             fig_meses = go.Figure()
                             fig_meses.add_trace(go.Scatter(
                                 x=df_stock_year['Mes_Nombre'], y=df_stock_year['Meses_Stock'],
-                                mode='lines+markers+text',
-                                name='Meses de Stock',
-                                line=dict(color='#6f42c1', width=3),
-                                marker=dict(size=8),
+                                mode='lines+markers+text', name='Meses de Stock',
+                                line=dict(color='#6f42c1', width=3), marker=dict(size=8),
                                 text=df_stock_year['Meses_Stock'].apply(lambda x: f"{x:.1f}"),
                                 textposition='top center'
                             ))
                             
-                            # Línea ideal objetivo (3 meses)
                             fig_meses.add_hline(y=3.0, line_dash="dash", line_color="#28a745", annotation_text="Objetivo (3.0)")
 
                             fig_meses.update_layout(
                                 title="Evolución Meses de Stock (Vs. Costo Prom. 3M)",
-                                xaxis_title="Mes",
-                                yaxis_title="Cant. de Meses",
-                                hovermode="x unified",
-                                plot_bgcolor='rgba(0,0,0,0)',
+                                xaxis_title="Mes", yaxis_title="Cant. de Meses",
+                                hovermode="x unified", plot_bgcolor='rgba(0,0,0,0)',
                                 margin=dict(t=40, b=20, l=0, r=0)
                             )
                             fig_meses.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#e9ecef')
@@ -1801,77 +1801,52 @@ try:
                 else:
                     st.warning("⚠️ Faltan columnas ('Valor Stock', '% Vivo', '% Obsoleto' o '% Muerto') para graficar el inventario.")
 
-            # --- GRÁFICO: EVOLUCIÓN MENSUAL COMPRAS VS OBJETIVO ---
+                # --- GRÁFICO: EVOLUCIÓN MENSUAL COMPRAS VS OBJETIVO ---
                 st.markdown("---")
                 st.markdown("#### 📈 Evolución Mensual: Objetivo vs Compra PR")
 
-                # 1. Definir data base
-                df_hist = data['REPUESTOS'].copy()
-                
-                col_fecha = find_col(df_hist, ["FECHA"])
                 col_obj = find_col(df_hist, ["OBJETIVO COMPRA", "OBJETIVO"])
                 col_compra = find_col(df_hist, ["COMPRA PR", "COMPRA"])
 
                 if col_fecha and col_obj and col_compra:
-                    # Parsear fechas y asegurar formatos
-                    df_hist['Fecha_calc'] = pd.to_datetime(df_hist[col_fecha], dayfirst=True, errors='coerce')
-                    df_hist['Mes_calc'] = df_hist['Fecha_calc'].dt.month
-                    df_hist['Año_calc'] = df_hist['Fecha_calc'].dt.year
-
+                    # Las columnas fecha y mes ya se calcularon arriba
                     df_hist[col_obj] = pd.to_numeric(df_hist[col_obj], errors='coerce').fillna(0)
                     df_hist[col_compra] = pd.to_numeric(df_hist[col_compra], errors='coerce').fillna(0)
 
-                    # Filtrar por el año seleccionado en la app
                     df_year = df_hist[df_hist['Año_calc'] == año_sel]
 
                     if not df_year.empty:
-                        # 2. Agrupar tomando el máximo de cada mes (el cierre mensual real)
                         df_grouped = df_year[df_year[col_obj] > 0].groupby('Mes_calc').agg({
                             col_obj: 'max',
                             col_compra: 'max'
                         }).reset_index()
 
-                        # Diccionario para mostrar nombres de meses
                         meses_nombres = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 
                                          7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
                         df_grouped['Mes_Nombre'] = df_grouped['Mes_calc'].map(meses_nombres)
 
-                        # Calcular porcentaje de cumplimiento para mostrar en el tooltip
                         df_grouped['Cumplimiento %'] = (df_grouped[col_compra] / df_grouped[col_obj] * 100).fillna(0)
-
-                        # 3. Armar el gráfico dual con Plotly Graph Objects
-                        import plotly.graph_objects as go
                         
                         fig = go.Figure()
                         
-                        # Barra de Objetivos
                         fig.add_trace(go.Bar(
-                            x=df_grouped['Mes_Nombre'],
-                            y=df_grouped[col_obj],
-                            name='Objetivo Stellantis',
-                            marker_color='#6c757d',
+                            x=df_grouped['Mes_Nombre'], y=df_grouped[col_obj],
+                            name='Objetivo Stellantis', marker_color='#6c757d',
                             hovertemplate="Objetivo: $%{y:,.0f}<extra></extra>"
                         ))
                         
-                        # Barra de Compras Reales
                         fig.add_trace(go.Bar(
-                            x=df_grouped['Mes_Nombre'],
-                            y=df_grouped[col_compra],
-                            name='Compra PR Real',
-                            marker_color='#00235d',
+                            x=df_grouped['Mes_Nombre'], y=df_grouped[col_compra],
+                            name='Compra PR Real', marker_color='#00235d',
                             text=df_grouped['Cumplimiento %'].apply(lambda x: f"{x:.1f}%"),
                             textposition='outside',
                             hovertemplate="Compra Real: $%{y:,.0f}<br>Cumplimiento: %{text}<extra></extra>"
                         ))
 
                         fig.update_layout(
-                            barmode='group',
-                            xaxis_title="Mes",
-                            yaxis_title="Monto ($)",
-                            legend_title="Indicador",
-                            hovermode="x unified",
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            margin=dict(t=20, b=20, l=0, r=0)
+                            barmode='group', xaxis_title="Mes", yaxis_title="Monto ($)",
+                            legend_title="Indicador", hovermode="x unified",
+                            plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=20, b=20, l=0, r=0)
                         )
                         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#e9ecef')
 
