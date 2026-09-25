@@ -1689,6 +1689,118 @@ try:
                         fig_line_canales.update_layout(height=400, yaxis_title="Facturación ($)", legend_title_text="Canal")
                         st.plotly_chart(fig_line_canales, use_container_width=True)
 
+            # --- GRÁFICOS: COMPOSICIÓN Y MESES DE STOCK ---
+                st.markdown("---")
+                st.markdown("#### 📦 Evolución y Composición del Stock")
+
+                # 1. Identificar columnas de Stock
+                col_val_stock = find_col(df_hist, ["VALOR STOCK", "VALOR", "STOCK"])
+                col_p_vivo = find_col(df_hist, ["% STOCK VIVO", "VIVO"])
+                col_p_obs = find_col(df_hist, ["% STOCK OBSOLETO", "OBSOLETO"])
+                col_p_muerto = find_col(df_hist, ["% STOCK MUERTO", "MUERTO"])
+
+                if col_val_stock and col_p_vivo and col_p_obs and col_p_muerto:
+                    # Diccionario de meses por si no se definió arriba
+                    meses_nombres = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 
+                                     7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+
+                    # Agrupar TODO el historial tomando la última fila de cada mes (foto de cierre)
+                    df_all_months = df_hist.dropna(subset=[col_val_stock]).groupby(['Año_calc', 'Mes_calc']).last().reset_index()
+                    
+                    # Limpiar formatos de las columnas objetivo
+                    for c in [col_p_vivo, col_p_obs, col_p_muerto, col_val_stock]:
+                        df_all_months[c] = pd.to_numeric(df_all_months[c], errors='coerce').fillna(0)
+
+                    # --- CÁLCULO DE MESES DE STOCK (Basado en Costo Promedio 3M) ---
+                    # Identificar todas las columnas de costo para sumar el costo mensual total
+                    costo_cols = [c for c in df_hist.columns if "COSTO" in str(c).upper() and "OBJ" not in str(c).upper()]
+                    df_all_months['Costo_Total_Mes'] = 0
+                    for c in costo_cols:
+                        df_all_months['Costo_Total_Mes'] += pd.to_numeric(df_all_months[c], errors='coerce').fillna(0)
+                        
+                    # Promedio móvil de 3 meses
+                    df_all_months['Costo_Promedio_3M'] = df_all_months['Costo_Total_Mes'].rolling(window=3, min_periods=1).mean()
+                    
+                    # Calcular métrica: Valor Stock / Costo Promedio 3M
+                    df_all_months['Meses_Stock'] = df_all_months.apply(
+                        lambda row: row[col_val_stock] / row['Costo_Promedio_3M'] if row['Costo_Promedio_3M'] > 0 else 0, 
+                        axis=1
+                    )
+
+                    # Filtrar solo el año seleccionado para graficar
+                    df_stock_year = df_all_months[df_all_months['Año_calc'] == año_sel].copy()
+                    df_stock_year['Mes_Nombre'] = df_stock_year['Mes_calc'].map(meses_nombres)
+
+                    if not df_stock_year.empty:
+                        col_g1, col_g2 = st.columns(2)
+
+                        # --- GRÁFICO 1: Composición % ---
+                        with col_g1:
+                            fig_comp = go.Figure()
+                            
+                            fig_comp.add_trace(go.Bar(
+                                x=df_stock_year['Mes_Nombre'], y=df_stock_year[col_p_vivo],
+                                name='Vivo', marker_color='#28a745',
+                                text=df_stock_year[col_p_vivo].apply(lambda x: f"{x:.1f}%"),
+                                textposition='inside'
+                            ))
+                            fig_comp.add_trace(go.Bar(
+                                x=df_stock_year['Mes_Nombre'], y=df_stock_year[col_p_obs],
+                                name='Obsoleto', marker_color='#ffc107',
+                                text=df_stock_year[col_p_obs].apply(lambda x: f"{x:.1f}%"),
+                                textposition='inside'
+                            ))
+                            fig_comp.add_trace(go.Bar(
+                                x=df_stock_year['Mes_Nombre'], y=df_stock_year[col_p_muerto],
+                                name='Muerto', marker_color='#dc3545',
+                                text=df_stock_year[col_p_muerto].apply(lambda x: f"{x:.1f}%"),
+                                textposition='inside'
+                            ))
+
+                            fig_comp.update_layout(
+                                barmode='stack',
+                                title="Composición Mensual del Stock",
+                                xaxis_title="Mes",
+                                yaxis_title="Porcentaje (%)",
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                                hovermode="x unified",
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                margin=dict(t=40, b=20, l=0, r=0)
+                            )
+                            st.plotly_chart(fig_comp, use_container_width=True)
+
+                        # --- GRÁFICO 2: Evolución de Meses de Stock ---
+                        with col_g2:
+                            fig_meses = go.Figure()
+                            fig_meses.add_trace(go.Scatter(
+                                x=df_stock_year['Mes_Nombre'], y=df_stock_year['Meses_Stock'],
+                                mode='lines+markers+text',
+                                name='Meses de Stock',
+                                line=dict(color='#6f42c1', width=3),
+                                marker=dict(size=8),
+                                text=df_stock_year['Meses_Stock'].apply(lambda x: f"{x:.1f}"),
+                                textposition='top center'
+                            ))
+                            
+                            # Línea ideal objetivo (3 meses)
+                            fig_meses.add_hline(y=3.0, line_dash="dash", line_color="#28a745", annotation_text="Objetivo (3.0)")
+
+                            fig_meses.update_layout(
+                                title="Evolución Meses de Stock (Vs. Costo Prom. 3M)",
+                                xaxis_title="Mes",
+                                yaxis_title="Cant. de Meses",
+                                hovermode="x unified",
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                margin=dict(t=40, b=20, l=0, r=0)
+                            )
+                            fig_meses.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#e9ecef')
+                            
+                            st.plotly_chart(fig_meses, use_container_width=True)
+                    else:
+                        st.info(f"No hay registros de stock cargados para el año {año_sel}.")
+                else:
+                    st.warning("⚠️ Faltan columnas ('Valor Stock', '% Vivo', '% Obsoleto' o '% Muerto') para graficar el inventario.")
+
             # --- GRÁFICO: EVOLUCIÓN MENSUAL COMPRAS VS OBJETIVO ---
                 st.markdown("---")
                 st.markdown("#### 📈 Evolución Mensual: Objetivo vs Compra PR")
