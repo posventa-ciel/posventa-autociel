@@ -728,14 +728,69 @@ try:
                         fig_cargos.update_layout(height=500, xaxis_title="Cant. Órdenes", yaxis_title="", showlegend=False)
                         st.plotly_chart(fig_cargos, use_container_width=True)
                     
+                    # -------------------------------------------------------------------------
+                    # --- NUEVA SECCIÓN: ANTIGÜEDAD DE ÓRDENES (ANTES DE LA TABLA FINAL) ---
+                    # -------------------------------------------------------------------------
+                    st.markdown("---")
+                    st.markdown(f"##### 📅 Antigüedad de Órdenes Abiertas ({asesor_seleccionado})")
+                    
+                    # Filtramos solo las que tienen fecha para poder agruparlas
+                    df_fechas = df_filtrado.dropna(subset=['Fecha_Alta']).copy()
+                    
+                    if not df_fechas.empty:
+                        # Extraemos el año y mes
+                        df_fechas['Año_WIP'] = df_fechas['Fecha_Alta'].dt.year.astype(int)
+                        df_fechas['Mes_WIP'] = df_fechas['Fecha_Alta'].dt.month.astype(int)
+                        
+                        # Agrupamos los datos
+                        df_antiguedad = df_fechas.groupby(['Año_WIP', 'Mes_WIP']).agg(
+                            Cantidad=('Identificador', 'nunique'),
+                            Dinero=('Saldo', 'sum'),
+                            Asesores=('Nombre_Asesor', lambda x: ', '.join(sorted(x.unique())))
+                        ).reset_index().sort_values(['Año_WIP', 'Mes_WIP'], ascending=[False, False])
+                        
+                        # Traducimos los meses
+                        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+                        df_antiguedad['Mes_Nombre'] = df_antiguedad['Mes_WIP'].map(meses_dict)
+                        df_antiguedad['Período'] = df_antiguedad['Mes_Nombre'].astype(str) + " " + df_antiguedad['Año_WIP'].astype(str)
+                        
+                        # Dividimos la pantalla: Tabla a la izquierda, gráfico a la derecha
+                        col_tabla_ant, col_graf_ant = st.columns([3, 2])
+                        
+                        with col_tabla_ant:
+                            st.markdown("###### Detalle por Año y Mes")
+                            df_mostrar = df_antiguedad[['Año_WIP', 'Mes_Nombre', 'Cantidad', 'Dinero', 'Asesores']].rename(columns={'Año_WIP': 'Año', 'Mes_Nombre': 'Mes', 'Dinero': 'Saldo Total'})
+                            st.dataframe(
+                                df_mostrar.style.format({'Saldo Total': '${:,.2f}'}),
+                                use_container_width=True, hide_index=True
+                            )
+                            
+                        with col_graf_ant:
+                            fig_ant = px.bar(df_antiguedad.head(12), x='Período', y='Dinero', text='Cantidad', 
+                                             hover_data=['Asesores'], title="Dinero en taller por mes (Top 12)",
+                                             color='Dinero', color_continuous_scale='Reds')
+                            fig_ant.update_traces(texttemplate='%{text} autos', textposition='outside')
+                            fig_ant.update_layout(height=400, xaxis_title="", yaxis_title="Saldo ($)", xaxis={'categoryorder':'array', 'categoryarray':df_antiguedad['Período'].tolist()[::-1]})
+                            st.plotly_chart(fig_ant, use_container_width=True)
+                    else:
+                        st.info("No hay fechas de apertura válidas para calcular la antigüedad de las órdenes.")
+                    
+                    # -------------------------------------------------------------------------
+                    # --- TABLA FINAL DE DETALLES (CON LA CORRECCIÓN DE FECHAS VACÍAS) ---
+                    # -------------------------------------------------------------------------
+                    st.markdown("---")
                     st.markdown(f"##### 📋 Detalle de Autos: {asesor_seleccionado}")
                     cols_ver = ['Ref.OR', 'Fecha_Alta', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']
                     cols_finales = [c for c in cols_ver if c in df_filtrado.columns]
-                    st.dataframe(df_filtrado[cols_finales].style.format({'Saldo': "${:,.2f}", 'Fecha_Alta': '{:%d-%m-%Y}'}), use_container_width=True)
+                    
+                    # CORRECCIÓN AQUÍ: Usamos lambda para que no de error si hay fechas vacías (NaT)
+                    st.dataframe(df_filtrado[cols_finales].style.format({
+                        'Saldo': "${:,.2f}", 
+                        'Fecha_Alta': lambda t: t.strftime('%d-%m-%Y') if pd.notna(t) else "S/D"
+                    }), use_container_width=True)
+                    
                 else:
                     st.warning("⚠️ La hoja 'WIP' está vacía o no tiene las columnas correctas.")
-            else:
-                st.info("ℹ️ Para ver el WIP, crea una hoja llamada 'WIP' en tu Google Sheet y pega ahí los datos del reporte.")
 
         elif selected_tab == "📦 Repuestos":
             st.markdown("### 📦 Repuestos")
