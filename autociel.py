@@ -729,49 +729,82 @@ try:
                         st.plotly_chart(fig_cargos, use_container_width=True)
                     
                     # -------------------------------------------------------------------------
-                    # --- NUEVA SECCIÓN: ANTIGÜEDAD DE ÓRDENES (ANTES DE LA TABLA FINAL) ---
+                    # --- NUEVA SECCIÓN: ANÁLISIS DE ANTIGÜEDAD Y GESTIÓN DE OR ---
                     # -------------------------------------------------------------------------
                     st.markdown("---")
-                    st.markdown(f"##### 📅 Antigüedad de Órdenes Abiertas ({asesor_seleccionado})")
+                    st.markdown(f"##### 📅 Análisis de Antigüedad y Gestión de OR ({asesor_seleccionado})")
                     
-                    # Filtramos solo las que tienen fecha para poder agruparlas
                     df_fechas = df_filtrado.dropna(subset=['Fecha_Alta']).copy()
                     
                     if not df_fechas.empty:
-                        # Extraemos el año y mes
+                        # 1. CÁLCULO DE DÍAS ABIERTOS
+                        hoy = pd.Timestamp.now().normalize()
+                        df_fechas['Dias_Abierta'] = (hoy - df_fechas['Fecha_Alta']).dt.days
+                        
+                        promedio_dias = int(df_fechas['Dias_Abierta'].mean())
+                        max_dias = int(df_fechas['Dias_Abierta'].max())
+                        
+                        # Mostramos KPIs de días
+                        kpi_dias1, kpi_dias2, kpi_dias3 = st.columns(3)
+                        with kpi_dias1: st.metric("Días Promedio Abierta", f"{promedio_dias} días")
+                        with kpi_dias2: st.metric("OR de Mayor Antigüedad", f"{max_dias} días")
+                        with kpi_dias3: st.metric("Total OR con Fecha", len(df_fechas))
+
+                        # 2. AGRUPACIÓN POR AÑO PARA EL GRÁFICO
                         df_fechas['Año_WIP'] = df_fechas['Fecha_Alta'].dt.year.astype(int)
                         df_fechas['Mes_WIP'] = df_fechas['Fecha_Alta'].dt.month.astype(int)
                         
-                        # Agrupamos los datos
-                        df_antiguedad = df_fechas.groupby(['Año_WIP', 'Mes_WIP']).agg(
+                        df_por_ano = df_fechas.groupby('Año_WIP').agg(
                             Cantidad=('Identificador', 'nunique'),
-                            Dinero=('Saldo', 'sum'),
-                            Asesores=('Nombre_Asesor', lambda x: ', '.join(sorted(x.unique())))
-                        ).reset_index().sort_values(['Año_WIP', 'Mes_WIP'], ascending=[False, False])
+                            Dinero=('Saldo', 'sum')
+                        ).reset_index().sort_values('Año_WIP')
                         
-                        # Traducimos los meses
-                        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-                        df_antiguedad['Mes_Nombre'] = df_antiguedad['Mes_WIP'].map(meses_dict)
-                        df_antiguedad['Período'] = df_antiguedad['Mes_Nombre'].astype(str) + " " + df_antiguedad['Año_WIP'].astype(str)
-                        
-                        # --- MODIFICACIÓN: GRÁFICO A TODO LO ANCHO ---
-                        # 1. Primero mostramos el gráfico grande
-                        fig_ant = px.bar(df_antiguedad.head(12), x='Período', y='Dinero', text='Cantidad', 
-                                         hover_data=['Asesores'], title="Dinero en taller por mes (Top 12)",
-                                         color='Dinero', color_continuous_scale='Reds')
-                        fig_ant.update_traces(texttemplate='%{text} autos', textposition='outside')
-                        # Aumentamos la altura a 500 para que tenga más aire
-                        fig_ant.update_layout(height=500, xaxis_title="", yaxis_title="Saldo ($)", xaxis={'categoryorder':'array', 'categoryarray':df_antiguedad['Período'].tolist()[::-1]})
-                        st.plotly_chart(fig_ant, use_container_width=True)
+                        # Gráfico resumen por Año
+                        fig_ano = px.bar(df_por_ano, x='Año_WIP', y='Cantidad', text='Cantidad',
+                                         hover_data={'Dinero':':$,.0f'}, title="Órdenes Abiertas por Año",
+                                         color='Cantidad', color_continuous_scale='Blues')
+                        fig_ano.update_traces(texttemplate='%{text} ORs', textposition='outside')
+                        # Aseguramos que el eje X muestre los años enteros (ej. 2024, no 2024.5)
+                        fig_ano.update_layout(height=350, xaxis_title="Año", yaxis_title="Cantidad de OR", 
+                                              xaxis=dict(tickmode='linear', dtick=1))
+                        st.plotly_chart(fig_ano, use_container_width=True)
 
-                        # 2. Luego mostramos la tabla resumen debajo del gráfico
-                        st.markdown("###### Detalle por Año y Mes")
-                        df_mostrar = df_antiguedad[['Año_WIP', 'Mes_Nombre', 'Cantidad', 'Dinero', 'Asesores']].rename(columns={'Año_WIP': 'Año', 'Mes_Nombre': 'Mes', 'Dinero': 'Saldo Total'})
-                        st.dataframe(
-                            df_mostrar.style.format({'Saldo Total': '${:,.2f}'}),
-                            use_container_width=True, hide_index=True
-                        )
+                        # 3. TABLAS EXPANDIBLES (ACORDEÓN) POR AÑO CON DETALLES
+                        st.markdown("###### 🔍 Detalle para Gestión (Click para expandir)")
                         
+                        meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+                        
+                        # Ordenamos los años del más nuevo al más viejo
+                        anos_disponibles = sorted(df_fechas['Año_WIP'].unique(), reverse=True)
+                        año_actual = pd.Timestamp.now().year
+                        
+                        for ano in anos_disponibles:
+                            # Calculamos totales del año para el título del expansor
+                            tot_or = df_por_ano[df_por_ano['Año_WIP'] == ano]['Cantidad'].values[0]
+                            tot_din = df_por_ano[df_por_ano['Año_WIP'] == ano]['Dinero'].values[0]
+                            
+                            with st.expander(f"📂 Año {ano} - {tot_or} Órdenes (${tot_din:,.2f})"):
+                                df_ano = df_fechas[df_fechas['Año_WIP'] == ano].copy()
+                                
+                                # Si es el año actual, agrupamos por mes
+                                if ano == año_actual:
+                                    st.markdown(f"**Resumen mensual {ano}:**")
+                                    df_mes = df_ano.groupby('Mes_WIP').agg(
+                                        Cantidad=('Identificador', 'nunique'),
+                                        Dinero=('Saldo', 'sum')
+                                    ).reset_index().sort_values('Mes_WIP', ascending=False)
+                                    df_mes['Mes'] = df_mes['Mes_WIP'].map(meses_dict)
+                                    st.dataframe(df_mes[['Mes', 'Cantidad', 'Dinero']].style.format({'Dinero': '${:,.2f}'}), use_container_width=True, hide_index=True)
+                                
+                                # Tabla detallada del año para descargar/trabajar
+                                st.markdown("**Lista de Órdenes a Gestionar:**")
+                                cols_gestion = ['Dias_Abierta', 'Fecha_Alta', 'Nombre_Asesor', 'Identificador', 'Saldo', 'Ref.OR']
+                                df_mostrar_ano = df_ano[cols_gestion].sort_values('Dias_Abierta', ascending=False)
+                                
+                                st.dataframe(df_mostrar_ano.style.format({
+                                    'Saldo': '${:,.2f}', 
+                                    'Fecha_Alta': lambda t: t.strftime('%d-%m-%Y')
+                                }), use_container_width=True, hide_index=True)
                     else:
                         st.info("No hay fechas de apertura válidas para calcular la antigüedad de las órdenes.")
                     
