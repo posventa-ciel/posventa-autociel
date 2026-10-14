@@ -13,7 +13,7 @@ ASESORES_MAP = {
     "1": "Claudio Molina", "3": "Belen Juarez", "4": "Fatima Polli", "5": "Virginia Molina", "8": "Daniel Espin",
     "11": "César Oliva", "12": "Hector Corrales", "13": "Nazareno Segovia", "14": "Haydee Garnica",
     "21": "Javier Gutierrez", "22": "Antonio Mogro", "23": "Samuel Antunez", 
-    "28": "Fernanda Barranco", "29": "Ricardo Alvarez", "30": "Andrea Martins", "31": "Cristian Portal", "32": "Emanuel Fernandez"
+    "28": "Fernanda Barranco", "29": "Ricardo Alvarez", "30": "Andrea Martins", "31": "Cristian Portal", "32": "Emanuel Fernandez", "33": "Mauro Tapia"
 }
 
 CODIGOS_CYP = ['1B', '3G'] 
