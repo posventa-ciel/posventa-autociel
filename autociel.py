@@ -689,12 +689,26 @@ try:
                 
                 if df_w is not None and not df_w.empty:
                     lista_asesores = sorted(df_w['Nombre_Asesor'].unique().tolist())
-                    col_filtro, col_metricas_mini = st.columns([1, 3])
-                    with col_filtro:
-                        asesor_seleccionado = st.selectbox("👤 Filtrar por Asesor:", ["Todos"] + lista_asesores)
                     
-                    df_filtrado = df_w[df_w['Nombre_Asesor'] == asesor_seleccionado] if asesor_seleccionado != "Todos" else df_w
+                    # Extraemos los códigos de cargo para el nuevo filtro
+                    df_w['Codigo_Cargo'] = df_w['Tipo'].astype(str).str.split().str[0]
+                    lista_cargos = sorted([c for c in df_w['Codigo_Cargo'].unique().tolist() if c != 'nan' and c])
+                    
+                    # --- FILTROS SUPERIORES ---
+                    col_filtro_asesor, col_filtro_cargo, col_espacio = st.columns([1.5, 1.5, 2])
+                    with col_filtro_asesor:
+                        asesor_seleccionado = st.selectbox("👤 Filtrar por Asesor:", ["Todos"] + lista_asesores)
+                    with col_filtro_cargo:
+                        cargo_seleccionado = st.selectbox("🏷️ Filtrar por Cargo:", ["Todos"] + lista_cargos)
+                    
+                    # --- APLICAR FILTROS ---
+                    df_filtrado = df_w.copy()
+                    if asesor_seleccionado != "Todos":
+                        df_filtrado = df_filtrado[df_filtrado['Nombre_Asesor'] == asesor_seleccionado]
+                    if cargo_seleccionado != "Todos":
+                        df_filtrado = df_filtrado[df_filtrado['Codigo_Cargo'] == cargo_seleccionado]
 
+                    # --- KPIs GENERALES ---
                     f_plata = df_filtrado['Saldo'].sum()
                     f_autos = df_filtrado['Identificador'].nunique()
                     f_mec = df_filtrado[df_filtrado['Tipo_Taller'] == 'Mecánica']
@@ -704,16 +718,20 @@ try:
                     f_plata_cyp = f_cyp['Saldo'].sum()
                     f_autos_cyp = f_cyp['Identificador'].nunique()
 
+                    # Texto para los títulos (para saber qué estamos viendo)
+                    titulo_filtro = f"{asesor_seleccionado} | {cargo_seleccionado}"
+
                     kw1, kw2, kw3, kw4 = st.columns(4)
-                    with kw1: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Dinero Abierto ({asesor_seleccionado})</div><div style="font-size:1.5rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata:,.0f}</div><div style="font-size:0.75rem; color:#888;">Saldo pendiente</div></div>', unsafe_allow_html=True)
-                    with kw2: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Autos en Taller ({asesor_seleccionado})</div><div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{f_autos}</div><div style="font-size:0.75rem; color:#888;">Vehículos físicos</div></div>', unsafe_allow_html=True)
+                    with kw1: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Dinero Abierto</div><div style="font-size:1.5rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata:,.0f}</div><div style="font-size:0.75rem; color:#888;">{titulo_filtro}</div></div>', unsafe_allow_html=True)
+                    with kw2: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Autos en Taller</div><div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{f_autos}</div><div style="font-size:0.75rem; color:#888;">{titulo_filtro}</div></div>', unsafe_allow_html=True)
                     with kw3: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Mecánica</div><div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata_mec:,.0f}</div><div style="font-size:0.8rem; color:#28a745; font-weight:bold; margin-top:2px;">🚗 {f_autos_mec} autos</div></div>', unsafe_allow_html=True)
                     with kw4: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Chapa y Pintura</div><div style="font-size:1.2rem; color:#00235d; font-weight:bold; margin-top:5px;">${f_plata_cyp:,.0f}</div><div style="font-size:0.8rem; color:#17a2b8; font-weight:bold; margin-top:2px;">🚙 {f_autos_cyp} autos</div></div>', unsafe_allow_html=True)
                     
+                    # --- GRÁFICOS INICIALES ---
                     col_graf_asesor, col_graf_cargo = st.columns([2, 1])
                     with col_graf_asesor:
-                        st.markdown("##### 👥 Saldo Abierto por Asesor (Ranking Global)")
-                        df_asesor = df_w.groupby('Nombre_Asesor').agg(Dinero=('Saldo', 'sum'), Autos=('Identificador', 'nunique')).reset_index().sort_values('Dinero', ascending=True)
+                        st.markdown(f"##### 👥 Saldo Abierto por Asesor (Cargo: {cargo_seleccionado})")
+                        df_asesor = df_filtrado.groupby('Nombre_Asesor').agg(Dinero=('Saldo', 'sum'), Autos=('Identificador', 'nunique')).reset_index().sort_values('Dinero', ascending=True)
                         df_asesor['Etiqueta'] = df_asesor.apply(lambda x: f"{x['Autos']} autos (${x['Dinero']/1000:.0f}k)", axis=1)
                         fig_wip = px.bar(df_asesor, x='Dinero', y='Nombre_Asesor', text='Etiqueta', orientation='h', title="", color='Dinero', color_continuous_scale='Blues')
                         fig_wip.update_traces(textposition='outside')
@@ -722,17 +740,16 @@ try:
 
                     with col_graf_cargo:
                         st.markdown(f"##### 📊 Cantidad por Cargo ({asesor_seleccionado})")
-                        df_filtrado['Codigo_Cargo'] = df_filtrado['Tipo'].astype(str).str.split().str[0]
                         df_cargos = df_filtrado.groupby('Codigo_Cargo').agg(Cantidad=('Identificador', 'count'), Dinero=('Saldo', 'sum')).reset_index().sort_values('Cantidad', ascending=True)
                         fig_cargos = px.bar(df_cargos, x='Cantidad', y='Codigo_Cargo', text='Cantidad', orientation='h', title="", hover_data={'Dinero':':$,.0f'}, color='Cantidad', color_continuous_scale='Reds')
                         fig_cargos.update_layout(height=500, xaxis_title="Cant. Órdenes", yaxis_title="", showlegend=False)
                         st.plotly_chart(fig_cargos, use_container_width=True)
                     
                     # -------------------------------------------------------------------------
-                    # --- NUEVA SECCIÓN: ANÁLISIS DE ANTIGÜEDAD Y GESTIÓN DE OR ---
+                    # --- SECCIÓN: ANÁLISIS DE ANTIGÜEDAD Y GESTIÓN DE OR ---
                     # -------------------------------------------------------------------------
                     st.markdown("---")
-                    st.markdown(f"##### 📅 Análisis de Antigüedad y Gestión de OR ({asesor_seleccionado})")
+                    st.markdown(f"##### 📅 Análisis de Antigüedad y Gestión de OR ({titulo_filtro})")
                     
                     df_fechas = df_filtrado.dropna(subset=['Fecha_Alta']).copy()
                     
@@ -743,12 +760,14 @@ try:
                         
                         promedio_dias = int(df_fechas['Dias_Abierta'].mean())
                         max_dias = int(df_fechas['Dias_Abierta'].max())
+                        total_con_fecha = len(df_fechas)
                         
-                        # Mostramos KPIs de días
-                        kpi_dias1, kpi_dias2, kpi_dias3 = st.columns(3)
-                        with kpi_dias1: st.metric("Días Promedio Abierta", f"{promedio_dias} días")
-                        with kpi_dias2: st.metric("OR de Mayor Antigüedad", f"{max_dias} días")
-                        with kpi_dias3: st.metric("Total OR con Fecha", len(df_fechas))
+                        # Mostramos KPIs de días con formato de tarjeta
+                        kpi_dias1, kpi_dias2, kpi_dias3, kpi_vacio = st.columns([1,1,1,1])
+                        with kpi_dias1: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">Días Promedio Abierta</div><div style="font-size:1.8rem; color:#d9534f; font-weight:bold; margin-top:5px;">{promedio_dias}</div><div style="font-size:0.75rem; color:#888;">Tiempo medio en taller</div></div>', unsafe_allow_html=True)
+                        with kpi_dias2: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">OR Mayor Antigüedad</div><div style="font-size:1.8rem; color:#d9534f; font-weight:bold; margin-top:5px;">{max_dias}</div><div style="font-size:0.75rem; color:#888;">Días desde apertura</div></div>', unsafe_allow_html=True)
+                        with kpi_dias3: st.markdown(f'<div class="metric-card"><div style="font-size:0.85rem; color:#666; font-weight:600;">OR para Analizar</div><div style="font-size:1.8rem; color:#00235d; font-weight:bold; margin-top:5px;">{total_con_fecha}</div><div style="font-size:0.75rem; color:#888;">Órdenes con fecha válida</div></div>', unsafe_allow_html=True)
+
 
                         # 2. AGRUPACIÓN POR AÑO PARA EL GRÁFICO
                         df_fechas['Año_WIP'] = df_fechas['Fecha_Alta'].dt.year.astype(int)
@@ -764,29 +783,24 @@ try:
                                          hover_data={'Dinero':':$,.0f'}, title="Órdenes Abiertas por Año",
                                          color='Cantidad', color_continuous_scale='Blues')
                         fig_ano.update_traces(texttemplate='%{text} ORs', textposition='outside')
-                        # Aseguramos que el eje X muestre los años enteros (ej. 2024, no 2024.5)
                         fig_ano.update_layout(height=350, xaxis_title="Año", yaxis_title="Cantidad de OR", 
                                               xaxis=dict(tickmode='linear', dtick=1))
                         st.plotly_chart(fig_ano, use_container_width=True)
 
                         # 3. TABLAS EXPANDIBLES (ACORDEÓN) POR AÑO CON DETALLES
-                        st.markdown("###### 🔍 Detalle para Gestión (Click para expandir)")
+                        st.markdown("###### 🔍 Detalle para Gestión (Click para expandir el año y descargar)")
                         
                         meses_dict = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
-                        
-                        # Ordenamos los años del más nuevo al más viejo
                         anos_disponibles = sorted(df_fechas['Año_WIP'].unique(), reverse=True)
                         año_actual = pd.Timestamp.now().year
                         
                         for ano in anos_disponibles:
-                            # Calculamos totales del año para el título del expansor
                             tot_or = df_por_ano[df_por_ano['Año_WIP'] == ano]['Cantidad'].values[0]
                             tot_din = df_por_ano[df_por_ano['Año_WIP'] == ano]['Dinero'].values[0]
                             
                             with st.expander(f"📂 Año {ano} - {tot_or} Órdenes (${tot_din:,.2f})"):
                                 df_ano = df_fechas[df_fechas['Año_WIP'] == ano].copy()
                                 
-                                # Si es el año actual, agrupamos por mes
                                 if ano == año_actual:
                                     st.markdown(f"**Resumen mensual {ano}:**")
                                     df_mes = df_ano.groupby('Mes_WIP').agg(
@@ -796,9 +810,8 @@ try:
                                     df_mes['Mes'] = df_mes['Mes_WIP'].map(meses_dict)
                                     st.dataframe(df_mes[['Mes', 'Cantidad', 'Dinero']].style.format({'Dinero': '${:,.2f}'}), use_container_width=True, hide_index=True)
                                 
-                                # Tabla detallada del año para descargar/trabajar
                                 st.markdown("**Lista de Órdenes a Gestionar:**")
-                                cols_gestion = ['Dias_Abierta', 'Fecha_Alta', 'Nombre_Asesor', 'Identificador', 'Saldo', 'Ref.OR']
+                                cols_gestion = ['Dias_Abierta', 'Fecha_Alta', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo', 'Ref.OR', 'Tipo']
                                 df_mostrar_ano = df_ano[cols_gestion].sort_values('Dias_Abierta', ascending=False)
                                 
                                 st.dataframe(df_mostrar_ano.style.format({
@@ -809,14 +822,13 @@ try:
                         st.info("No hay fechas de apertura válidas para calcular la antigüedad de las órdenes.")
                     
                     # -------------------------------------------------------------------------
-                    # --- TABLA FINAL DE DETALLES (CON LA CORRECCIÓN DE FECHAS VACÍAS) ---
+                    # --- TABLA FINAL GLOBAL ---
                     # -------------------------------------------------------------------------
                     st.markdown("---")
-                    st.markdown(f"##### 📋 Detalle de Autos: {asesor_seleccionado}")
+                    st.markdown(f"##### 📋 Detalle Global de Autos ({titulo_filtro})")
                     cols_ver = ['Ref.OR', 'Fecha_Alta', 'Tipo', 'Nombre_Asesor', 'Identificador', 'Modelo', 'Saldo']
                     cols_finales = [c for c in cols_ver if c in df_filtrado.columns]
                     
-                    # CORRECCIÓN AQUÍ: Usamos lambda para que no de error si hay fechas vacías (NaT)
                     st.dataframe(df_filtrado[cols_finales].style.format({
                         'Saldo': "${:,.2f}", 
                         'Fecha_Alta': lambda t: t.strftime('%d-%m-%Y') if pd.notna(t) else "S/D"
