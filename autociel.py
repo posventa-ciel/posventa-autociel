@@ -774,7 +774,7 @@ try:
                         df_fechas['Mes_WIP'] = df_fechas['Fecha_Alta'].dt.month.astype(int)
                         
                         df_por_ano = df_fechas.groupby('Año_WIP').agg(
-                            Cantidad=('Identificador', 'nunique'),
+                            Cantidad=('Ref.OR', 'nunique'), # <-- CAMBIO AQUÍ
                             Dinero=('Saldo', 'sum')
                         ).reset_index().sort_values('Año_WIP')
                         
