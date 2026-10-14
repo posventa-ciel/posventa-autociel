@@ -803,10 +803,10 @@ try:
                                 
                                 if ano == año_actual:
                                     st.markdown(f"**Resumen mensual {ano}:**")
-                                    df_mes = df_ano.groupby('Mes_WIP').agg(
-                                        Cantidad=('Identificador', 'nunique'),
-                                        Dinero=('Saldo', 'sum')
-                                    ).reset_index().sort_values('Mes_WIP', ascending=False)
+                                    df_por_ano = df_fechas.groupby('Año_WIP').agg(
+                                    Cantidad=('Ref.OR', 'nunique'), # <-- CAMBIO AQUÍ
+                                    Dinero=('Saldo', 'sum')
+                                    ).reset_index().sort_values('Año_WIP')
                                     df_mes['Mes'] = df_mes['Mes_WIP'].map(meses_dict)
                                     st.dataframe(df_mes[['Mes', 'Cantidad', 'Dinero']].style.format({'Dinero': '${:,.2f}'}), use_container_width=True, hide_index=True)
                                 
