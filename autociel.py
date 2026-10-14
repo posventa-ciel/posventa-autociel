@@ -77,7 +77,9 @@ def cargar_datos(sheet_id):
             ]
             
             for col in df.columns:
-                if not any(x in col for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE"]):
+                col_u = col.upper().strip()
+                # Excluimos de la limpieza numérica a cualquier columna que contenga APER, ASESOR, A, REF, IDV, etc.
+                if not any(x in col_u for x in ["FECHA", "CANAL", "ESTADO", "MATRICUL", "MODELO", "DESCRIPCION", "TIPO", "VIN", "BASTIDOR", "NOMBRE", "APER", "ASESOR", "REF", "IDV"]) and col_u != "ASE":
                     serie = df[col].astype(str).str.replace(r'[^\d.,-]', '', regex=True)
                     serie = serie.str.replace('.', '', regex=False)
                     serie = serie.str.replace(',', '.', regex=False)
