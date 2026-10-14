@@ -754,24 +754,24 @@ try:
                         df_antiguedad['Mes_Nombre'] = df_antiguedad['Mes_WIP'].map(meses_dict)
                         df_antiguedad['Período'] = df_antiguedad['Mes_Nombre'].astype(str) + " " + df_antiguedad['Año_WIP'].astype(str)
                         
-                        # Dividimos la pantalla: Tabla a la izquierda, gráfico a la derecha
-                        col_tabla_ant, col_graf_ant = st.columns([3, 2])
+                        # --- MODIFICACIÓN: GRÁFICO A TODO LO ANCHO ---
+                        # 1. Primero mostramos el gráfico grande
+                        fig_ant = px.bar(df_antiguedad.head(12), x='Período', y='Dinero', text='Cantidad', 
+                                         hover_data=['Asesores'], title="Dinero en taller por mes (Top 12)",
+                                         color='Dinero', color_continuous_scale='Reds')
+                        fig_ant.update_traces(texttemplate='%{text} autos', textposition='outside')
+                        # Aumentamos la altura a 500 para que tenga más aire
+                        fig_ant.update_layout(height=500, xaxis_title="", yaxis_title="Saldo ($)", xaxis={'categoryorder':'array', 'categoryarray':df_antiguedad['Período'].tolist()[::-1]})
+                        st.plotly_chart(fig_ant, use_container_width=True)
+
+                        # 2. Luego mostramos la tabla resumen debajo del gráfico
+                        st.markdown("###### Detalle por Año y Mes")
+                        df_mostrar = df_antiguedad[['Año_WIP', 'Mes_Nombre', 'Cantidad', 'Dinero', 'Asesores']].rename(columns={'Año_WIP': 'Año', 'Mes_Nombre': 'Mes', 'Dinero': 'Saldo Total'})
+                        st.dataframe(
+                            df_mostrar.style.format({'Saldo Total': '${:,.2f}'}),
+                            use_container_width=True, hide_index=True
+                        )
                         
-                        with col_tabla_ant:
-                            st.markdown("###### Detalle por Año y Mes")
-                            df_mostrar = df_antiguedad[['Año_WIP', 'Mes_Nombre', 'Cantidad', 'Dinero', 'Asesores']].rename(columns={'Año_WIP': 'Año', 'Mes_Nombre': 'Mes', 'Dinero': 'Saldo Total'})
-                            st.dataframe(
-                                df_mostrar.style.format({'Saldo Total': '${:,.2f}'}),
-                                use_container_width=True, hide_index=True
-                            )
-                            
-                        with col_graf_ant:
-                            fig_ant = px.bar(df_antiguedad.head(12), x='Período', y='Dinero', text='Cantidad', 
-                                             hover_data=['Asesores'], title="Dinero en taller por mes (Top 12)",
-                                             color='Dinero', color_continuous_scale='Reds')
-                            fig_ant.update_traces(texttemplate='%{text} autos', textposition='outside')
-                            fig_ant.update_layout(height=400, xaxis_title="", yaxis_title="Saldo ($)", xaxis={'categoryorder':'array', 'categoryarray':df_antiguedad['Período'].tolist()[::-1]})
-                            st.plotly_chart(fig_ant, use_container_width=True)
                     else:
                         st.info("No hay fechas de apertura válidas para calcular la antigüedad de las órdenes.")
                     
