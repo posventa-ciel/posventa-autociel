@@ -1972,147 +1972,147 @@ try:
                     )
             
                 # --- CALIDAD Y SATISFACCIÓN (NPS) ---
-    st.markdown("---")
-    st.subheader("🎯 Calidad y Satisfacción: NPS Acumulado Año")
-
-    # Búsqueda automática de la columna NPS en la hoja de SERVICIOS
-    col_nps = (
-        find_col(data["SERVICIOS"], ["NPS"]) if "SERVICIOS" in data else None
-    )
-
-    if col_nps and col_nps in data["SERVICIOS"].columns:
-        df_nps_curr = data["SERVICIOS"][
-            data["SERVICIOS"]["Año"] == año_sel
-        ].copy()
-        df_nps_curr["NPS_num"] = pd.to_numeric(
-            df_nps_curr[col_nps], errors="coerce"
-        )
-
-        # Si el valor viene en formato decimal (ej: 0.935 en vez de 93.5), se escala a porcentaje
-        if (
-            not df_nps_curr["NPS_num"].dropna().empty
-            and df_nps_curr["NPS_num"].max() <= 1.0
-        ):
-            df_nps_curr["NPS_num"] = df_nps_curr["NPS_num"] * 100
-
-        nps_series = df_nps_curr["NPS_num"].dropna()
-        nps_actual = float(nps_series.iloc[-1]) if not nps_series.empty else 0.0
-    else:
-        df_nps_curr = pd.DataFrame()
-        nps_actual = 93.5
-
-    estado_nps, color_nps, emoji_nps = obtener_estado_nps(nps_actual)
-
-    col_nps_card, col_nps_gauge = st.columns([1, 2])
-
-    with col_nps_card:
-        st.markdown(
-            f"""
-            <div style="background-color: #ffffff; padding: 18px; border-radius: 8px; border: 1px solid #e0e0e0; border-left: 8px solid {color_nps}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px;">
-                <div style="font-size: 0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;">NPS Acumulado YTD</div>
-                <div style="font-size: 2.2rem; font-weight: bold; color: #00235d; margin-bottom: 5px;">{nps_actual:.1f}%</div>
-                <div style="font-size: 1rem; font-weight: bold; color: {color_nps};">
-                    {emoji_nps} Estado: {estado_nps}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("""
-        **Escala de Objetivo Marca:**
-        * 🔴 **< 88.3%**: Insuficiente
-        * 🟡 **88.3% - 93.4%**: Aceptable
-        * 🟢 **≥ 93.5%**: Sobresaliente
-        """)
-
-    with col_nps_gauge:
-        fig_gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=nps_actual,
-                number={"suffix": "%", "font": {"size": 32, "color": "#00235d"}},
-                title={"text": "NPS vs Objetivo Marca", "font": {"size": 16}},
-                gauge={
-                    "axis": {"range": [0, 100], "tickwidth": 1},
-                    "bar": {"color": "#00235d", "thickness": 0.25},
-                    "steps": [
-                        {"range": [0, 88.29], "color": "#FF4B4B"},
-                        {"range": [88.3, 93.4], "color": "#FFBB00"},
-                        {"range": [93.41, 100], "color": "#00CC66"},
-                    ],
-                    "threshold": {
-                        "line": {"color": "black", "width": 3},
-                        "thickness": 0.75,
-                        "value": 88.3,
-                    },
-                },
-            )
-        )
-        fig_gauge.update_layout(
-            height=240,
-            margin=dict(l=20, r=20, t=30, b=10),
-            paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_gauge, use_container_width=True)
-
-    # --- EVOLUCIÓN MENSUAL DEL NPS ---
-    st.markdown("##### 📅 Evolución Mensual del NPS")
-
-    if not df_nps_curr.empty and "Mes" in df_nps_curr.columns:
-        df_nps_mensual = df_nps_curr.sort_values("Mes").copy()
-        df_nps_mensual["NombreMes"] = df_nps_mensual["Mes"].map(meses_nom)
-        df_nps_mensual = df_nps_mensual.dropna(subset=["NPS_num"])
-
-        # Asignación de color según desempeño del mes
-        colores_barras = [
-            obtener_estado_nps(val)[1] for val in df_nps_mensual["NPS_num"]
-        ]
-
-        fig_nps_mes = go.Figure()
-
-        fig_nps_mes.add_trace(
-            go.Bar(
-                x=df_nps_mensual["NombreMes"],
-                y=df_nps_mensual["NPS_num"],
-                marker_color=colores_barras,
-                text=[f"{v:.1f}%" for v in df_nps_mensual["NPS_num"]],
-                textposition="outside",
-                textfont=dict(size=11, color="#333333"),
-                name="NPS Mensual",
-            )
-        )
-
-        # Línea objetivo mínimo 88.3%
-        fig_nps_mes.add_shape(
-            type="line",
-            x0=-0.5,
-            x1=len(df_nps_mensual) - 0.5,
-            y0=88.3,
-            y1=88.3,
-            line=dict(color="#FFBB00", width=2, dash="dash"),
-        )
-
-        # Línea objetivo sobresaliente 93.5%
-        fig_nps_mes.add_shape(
-            type="line",
-            x0=-0.5,
-            x1=len(df_nps_mensual) - 0.5,
-            y0=93.5,
-            y1=93.5,
-            line=dict(color="#00CC66", width=2, dash="dash"),
-        )
-
-        fig_nps_mes.update_layout(
-            height=280,
-            margin=dict(t=30, b=10, l=10, r=10),
-            yaxis=dict(range=[0, 110], title="NPS (%)"),
-            showlegend=False,
-        )
-
-        st.plotly_chart(fig_nps_mes, use_container_width=True)
-    else:
-        st.info("No hay información mensual de NPS disponible para este año.")
+                st.markdown("---")
+                st.subheader("🎯 Calidad y Satisfacción: NPS Acumulado Año")
+            
+                # Búsqueda automática de la columna NPS en la hoja de SERVICIOS
+                col_nps = (
+                    find_col(data["SERVICIOS"], ["NPS"]) if "SERVICIOS" in data else None
+                )
+            
+                if col_nps and col_nps in data["SERVICIOS"].columns:
+                    df_nps_curr = data["SERVICIOS"][
+                        data["SERVICIOS"]["Año"] == año_sel
+                    ].copy()
+                    df_nps_curr["NPS_num"] = pd.to_numeric(
+                        df_nps_curr[col_nps], errors="coerce"
+                    )
+            
+                    # Si el valor viene en formato decimal (ej: 0.935 en vez de 93.5), se escala a porcentaje
+                    if (
+                        not df_nps_curr["NPS_num"].dropna().empty
+                        and df_nps_curr["NPS_num"].max() <= 1.0
+                    ):
+                        df_nps_curr["NPS_num"] = df_nps_curr["NPS_num"] * 100
+            
+                    nps_series = df_nps_curr["NPS_num"].dropna()
+                    nps_actual = float(nps_series.iloc[-1]) if not nps_series.empty else 0.0
+                else:
+                    df_nps_curr = pd.DataFrame()
+                    nps_actual = 93.5
+            
+                estado_nps, color_nps, emoji_nps = obtener_estado_nps(nps_actual)
+            
+                col_nps_card, col_nps_gauge = st.columns([1, 2])
+            
+                with col_nps_card:
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #ffffff; padding: 18px; border-radius: 8px; border: 1px solid #e0e0e0; border-left: 8px solid {color_nps}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px;">
+                            <div style="font-size: 0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;">NPS Acumulado YTD</div>
+                            <div style="font-size: 2.2rem; font-weight: bold; color: #00235d; margin-bottom: 5px;">{nps_actual:.1f}%</div>
+                            <div style="font-size: 1rem; font-weight: bold; color: {color_nps};">
+                                {emoji_nps} Estado: {estado_nps}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+            
+                    st.markdown("""
+                    **Escala de Objetivo Marca:**
+                    * 🔴 **< 88.3%**: Insuficiente
+                    * 🟡 **88.3% - 93.4%**: Aceptable
+                    * 🟢 **≥ 93.5%**: Sobresaliente
+                    """)
+            
+                with col_nps_gauge:
+                    fig_gauge = go.Figure(
+                        go.Indicator(
+                            mode="gauge+number",
+                            value=nps_actual,
+                            number={"suffix": "%", "font": {"size": 32, "color": "#00235d"}},
+                            title={"text": "NPS vs Objetivo Marca", "font": {"size": 16}},
+                            gauge={
+                                "axis": {"range": [0, 100], "tickwidth": 1},
+                                "bar": {"color": "#00235d", "thickness": 0.25},
+                                "steps": [
+                                    {"range": [0, 88.29], "color": "#FF4B4B"},
+                                    {"range": [88.3, 93.4], "color": "#FFBB00"},
+                                    {"range": [93.41, 100], "color": "#00CC66"},
+                                ],
+                                "threshold": {
+                                    "line": {"color": "black", "width": 3},
+                                    "thickness": 0.75,
+                                    "value": 88.3,
+                                },
+                            },
+                        )
+                    )
+                    fig_gauge.update_layout(
+                        height=240,
+                        margin=dict(l=20, r=20, t=30, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_gauge, use_container_width=True)
+            
+                # --- EVOLUCIÓN MENSUAL DEL NPS ---
+                st.markdown("##### 📅 Evolución Mensual del NPS")
+            
+                if not df_nps_curr.empty and "Mes" in df_nps_curr.columns:
+                    df_nps_mensual = df_nps_curr.sort_values("Mes").copy()
+                    df_nps_mensual["NombreMes"] = df_nps_mensual["Mes"].map(meses_nom)
+                    df_nps_mensual = df_nps_mensual.dropna(subset=["NPS_num"])
+            
+                    # Asignación de color según desempeño del mes
+                    colores_barras = [
+                        obtener_estado_nps(val)[1] for val in df_nps_mensual["NPS_num"]
+                    ]
+            
+                    fig_nps_mes = go.Figure()
+            
+                    fig_nps_mes.add_trace(
+                        go.Bar(
+                            x=df_nps_mensual["NombreMes"],
+                            y=df_nps_mensual["NPS_num"],
+                            marker_color=colores_barras,
+                            text=[f"{v:.1f}%" for v in df_nps_mensual["NPS_num"]],
+                            textposition="outside",
+                            textfont=dict(size=11, color="#333333"),
+                            name="NPS Mensual",
+                        )
+                    )
+            
+                    # Línea objetivo mínimo 88.3%
+                    fig_nps_mes.add_shape(
+                        type="line",
+                        x0=-0.5,
+                        x1=len(df_nps_mensual) - 0.5,
+                        y0=88.3,
+                        y1=88.3,
+                        line=dict(color="#FFBB00", width=2, dash="dash"),
+                    )
+            
+                    # Línea objetivo sobresaliente 93.5%
+                    fig_nps_mes.add_shape(
+                        type="line",
+                        x0=-0.5,
+                        x1=len(df_nps_mensual) - 0.5,
+                        y0=93.5,
+                        y1=93.5,
+                        line=dict(color="#00CC66", width=2, dash="dash"),
+                    )
+            
+                    fig_nps_mes.update_layout(
+                        height=280,
+                        margin=dict(t=30, b=10, l=10, r=10),
+                        yaxis=dict(range=[0, 110], title="NPS (%)"),
+                        showlegend=False,
+                    )
+            
+                    st.plotly_chart(fig_nps_mes, use_container_width=True)
+                else:
+                    st.info("No hay información mensual de NPS disponible para este año.")
             
             # ==========================================
             # PESTAÑA 2: TALLER
