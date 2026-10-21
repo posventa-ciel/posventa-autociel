@@ -1975,19 +1975,25 @@ try:
                 st.markdown("---")
                 st.subheader("🎯 Calidad y Satisfacción: NPS por Marca")
             
-                # Columnas de NPS y Primas en la hoja de SERVICIOS
-                col_nps_peugeot = find_col(data["SERVICIOS"], ["NPS", "PEUGEOT"]) if "SERVICIOS" in data else None
-                col_nps_citroen = find_col(data["SERVICIOS"], ["NPS", "CITROEN"]) if "SERVICIOS" in data else None
+                # Función de protección para evitar el error 'arg must be a list, tuple...'
+                def obtener_serie_limpia(df, col_nombre):
+                    if not col_nombre or df.empty or col_nombre not in df.columns:
+                        return pd.Series(dtype=float)
+                    data_col = df[col_nombre]
+                    # Si existen columnas duplicadas con el mismo nombre, toma la primera
+                    if isinstance(data_col, pd.DataFrame):
+                        data_col = data_col.iloc[:, 0]
+                    return pd.to_numeric(data_col, errors="coerce")
+            
+                # Búsqueda de columnas tolerante a tildes/variaciones de nombre
+                col_nps_peugeot = find_col(data["SERVICIOS"], ["NPS", "PEUGEOT"]) or find_col(data["SERVICIOS"], ["NPS", "P"])
+                col_nps_citroen = find_col(data["SERVICIOS"], ["NPS", "CITROEN"]) or find_col(data["SERVICIOS"], ["NPS", "CITROËN"]) or find_col(data["SERVICIOS"], ["NPS", "C"])
                 
                 col_obj_prima_p = find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "P"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "PEUGEOT"])
                 col_real_prima_p = find_col(data["SERVICIOS"], ["PRIMA", "PEUGEOT"]) or find_col(data["SERVICIOS"], ["PRIMA", "P"])
                 
-                col_obj_prima_c = find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "C"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "CITROEN"])
-                col_real_prima_c = find_col(data["SERVICIOS"], ["PRIMA", "CITROEN"]) or find_col(data["SERVICIOS"], ["PRIMA", "C"])
-            
-                # Fallback si solo existe una columna general "NPS"
-                if not col_nps_peugeot and not col_nps_citroen:
-                    col_nps_peugeot = find_col(data["SERVICIOS"], ["NPS"])
+                col_obj_prima_c = find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "C"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "CITROEN"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "CITROËN"])
+                col_real_prima_c = find_col(data["SERVICIOS"], ["PRIMA", "CITROEN"]) or find_col(data["SERVICIOS"], ["PRIMA", "CITROËN"]) or find_col(data["SERVICIOS"], ["PRIMA", "C"])
             
                 df_nps_base = (
                     data["SERVICIOS"][data["SERVICIOS"]["Año"] == año_sel].copy()
@@ -1997,10 +2003,13 @@ try:
             
                 def render_bloque_nps(titulo_marca, col_nps, col_obj_p, col_real_p, key_prefix):
                     if col_nps and not df_nps_base.empty and col_nps in df_nps_base.columns:
-                        # 1. AGRUPAR POR MES Y TOMAR EL ÚLTIMO REGISTRO CADA MES (Cierra el amontonamiento del gráfico)
+                        # 1. Agrupar por mes y tomar el último registro
                         df_cols = ["Mes", col_nps]
                         if col_obj_p and col_obj_p in df_nps_base.columns: df_cols.append(col_obj_p)
                         if col_real_p and col_real_p in df_nps_base.columns: df_cols.append(col_real_p)
+            
+                        # Elimina columnas duplicadas si las hubiera
+                        df_cols = list(dict.fromkeys(df_cols))
             
                         df_nps_monthly = (
                             df_nps_base[df_cols]
@@ -2009,15 +2018,15 @@ try:
                             .sort_values("Mes")
                         )
             
-                        df_nps_monthly["NPS_num"] = pd.to_numeric(df_nps_monthly[col_nps], errors="coerce")
+                        df_nps_monthly["NPS_num"] = obtener_serie_limpia(df_nps_monthly, col_nps)
             
-                        # Escalar si viene en formato decimal
+                        # Escalar a porcentaje si viene en formato decimal (ej: 0.935)
                         if not df_nps_monthly["NPS_num"].dropna().empty and df_nps_monthly["NPS_num"].dropna().max() <= 1.0:
                             df_nps_monthly["NPS_num"] = df_nps_monthly["NPS_num"] * 100
             
                         df_nps_monthly = df_nps_monthly.dropna(subset=["NPS_num"])
             
-                        # 2. SEPARAR MESES CERRADOS DE MES EN CURSO (PARCIAL)
+                        # 2. Separar meses cerrados de mes parcial
                         if prog_t < 1.0 and len(df_nps_monthly) >= 2:
                             df_cerrado = df_nps_monthly.iloc[:-1]
                             row_parcial = df_nps_monthly.iloc[-1]
@@ -2025,7 +2034,7 @@ try:
                             df_cerrado = df_nps_monthly
                             row_parcial = None
             
-                        # PROMEDIO YTD SÓLO CON MESES CERRADOS
+                        # Promedio YTD exclusivo de meses cerrados
                         nps_ytd = float(df_cerrado["NPS_num"].mean()) if not df_cerrado.empty else 0.0
                         nps_parcial = float(row_parcial["NPS_num"]) if row_parcial is not None else None
             
@@ -2037,7 +2046,7 @@ try:
             
                     estado_nps, color_nps, emoji_nps = obtener_estado_nps(nps_ytd)
             
-                    # 3. TARJETA RESUMEN YTD + PARCIAL DEL MES
+                    # 3. Tarjeta Resumen YTD
                     html_parcial = ""
                     if nps_parcial is not None:
                         _, col_p, emo_p = obtener_estado_nps(nps_parcial)
@@ -2061,7 +2070,7 @@ try:
                         unsafe_allow_html=True,
                     )
             
-                    # 4. GRÁFICO VELOCÍMETRO
+                    # 4. Velocímetro
                     fig_gauge = go.Figure(
                         go.Indicator(
                             mode="gauge+number",
@@ -2090,7 +2099,7 @@ try:
                     )
                     st.plotly_chart(fig_gauge, use_container_width=True, key=f"nps_gauge_{key_prefix}")
             
-                    # 5. EVOLUCIÓN MENSUAL (LÍNEA CON 1 PUNTO POR MES)
+                    # 5. Gráfico de Evolución Mensual
                     st.markdown(
                         f"<div style='text-align: center; font-weight: bold; color: #555; margin-top: 10px;'>📅 Evolución Mensual {titulo_marca}</div>",
                         unsafe_allow_html=True,
@@ -2116,13 +2125,11 @@ try:
                             )
                         )
             
-                        # Rango Y adaptado
                         min_v = df_nps_monthly["NPS_num"].min()
                         max_v = df_nps_monthly["NPS_num"].max()
                         min_y = max(60, min_v - 8)
                         max_y = min(110, max_v + 8)
             
-                        # Líneas objetivo
                         fig_nps_line.add_shape(type="line", x0=-0.5, x1=len(df_nps_monthly)-0.5, y0=88.3, y1=88.3, line=dict(color="#FFBB00", width=2, dash="dash"))
                         fig_nps_line.add_shape(type="line", x0=-0.5, x1=len(df_nps_monthly)-0.5, y0=93.5, y1=93.5, line=dict(color="#00CC66", width=2, dash="dash"))
             
@@ -2135,11 +2142,16 @@ try:
                         )
             
                         st.plotly_chart(fig_nps_line, use_container_width=True, key=f"nps_line_{key_prefix}")
+                    else:
+                        st.info(f"Faltan cargar datos mensuales para {titulo_marca}")
             
-                    # 6. TARJETA FINANCIERA: PLATA GANADA VS POTENCIAL
+                    # 6. Tarjeta Financiera: Cobro vs Potencial
                     if col_obj_p and col_real_p and col_obj_p in df_cerrado.columns and col_real_p in df_cerrado.columns:
-                        potencial_ytd = pd.to_numeric(df_cerrado[col_obj_p], errors="coerce").fillna(0).sum()
-                        cobrado_ytd = pd.to_numeric(df_cerrado[col_real_p], errors="coerce").fillna(0).sum()
+                        s_obj = obtener_serie_limpia(df_cerrado, col_obj_p)
+                        s_real = obtener_serie_limpia(df_cerrado, col_real_p)
+                        
+                        potencial_ytd = s_obj.fillna(0).sum()
+                        cobrado_ytd = s_real.fillna(0).sum()
                         pct_alcance = (cobrado_ytd / potencial_ytd * 100) if potencial_ytd > 0 else 0.0
             
                         color_fin = "#28a745" if pct_alcance >= 90 else ("#FFBB00" if pct_alcance >= 75 else "#dc3545")
@@ -2169,17 +2181,14 @@ try:
                     unsafe_allow_html=True,
                 )
             
-                # Disposición de 2 columnas principales (Peugeot e/izq, Citroën e/der)
+                # Renderizado en dos columnas
                 col_m1, col_m2 = st.columns(2)
             
                 with col_m1:
                     render_bloque_nps("🦁 Peugeot", col_nps_peugeot, col_obj_prima_p, col_real_prima_p, key_prefix="peugeot")
             
                 with col_m2:
-                    if col_nps_citroen:
-                        render_bloque_nps("⏫ Citroën", col_nps_citroen, col_obj_prima_c, col_real_prima_c, key_prefix="citroen")
-                    else:
-                        st.warning("⚠️ No se encontró la columna 'NPS CITROEN' en la pestaña SERVICIOS.")
+                    render_bloque_nps("⏫ Citroën", col_nps_citroen, col_obj_prima_c, col_real_prima_c, key_prefix="citroen")
             
             # ==========================================
             # PESTAÑA 2: TALLER
