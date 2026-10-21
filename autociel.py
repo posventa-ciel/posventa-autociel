@@ -1125,117 +1125,6 @@ try:
                     else:
                         st.success(f"🔥 Podés facturar hasta **${v_max:,.0f}** extra en {canal_sens} a un margen del **{margen_proyectado_sens:.1%}** para clavar tu Margen Secundario exactamente en **{target_margin_pct:.1%}**.")
 
-            # --- 9. CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS - AUTOCIEL) ---
-                st.markdown("---")
-                st.markdown("#### 🏆 Cumplimiento de Compras PR y Proyección de Cuartiles")
-
-                # 1. Definir el dataframe crudo de la pestaña repuestos
-                df_base = data['REPUESTOS'].copy()
-
-                # Buscar las columnas exactas
-                col_fecha = find_col(df_base, ["FECHA"])
-                col_obj = find_col(df_base, ["OBJETIVO COMPRA", "OBJETIVO"])
-                col_compra = find_col(df_base, ["COMPRA PR", "COMPRA"])
-
-                if col_fecha and col_obj and col_compra:
-                    # Convertir fecha directamente para asegurar la lectura del mes real
-                    df_base['Fecha_calc'] = pd.to_datetime(df_base[col_fecha], dayfirst=True, errors='coerce')
-                    df_base['Mes_calc'] = df_base['Fecha_calc'].dt.month
-                    df_base['Año_calc'] = df_base['Fecha_calc'].dt.year
-
-                    # Asegurar formato numérico
-                    df_base[col_obj] = pd.to_numeric(df_base[col_obj], errors='coerce').fillna(0)
-                    df_base[col_compra] = pd.to_numeric(df_base[col_compra], errors='coerce').fillna(0)
-                    
-                    # Función para procesar la data de un semestre específico
-                    def procesar_semestre(df_sem):
-                        if df_sem.empty:
-                            return 0, 0, 0, "Sin Datos", "#6c757d"
-                        
-                        # OBJETIVOS: Tomar solo el valor máximo (cierre) de cada mes y sumarlos
-                        objetivo_acumulado = df_sem[df_sem[col_obj] > 0].groupby('Mes_calc')[col_obj].max().sum()
-                        
-                        # COMPRAS: Como la columna es un acumulado (YTD mensual), tomamos el máximo reportado de cada mes
-                        compras_acumuladas = df_sem[df_sem[col_compra] > 0].groupby('Mes_calc')[col_compra].max().sum()
-                        
-                        cumplimiento = (compras_acumuladas / objetivo_acumulado * 100) if objetivo_acumulado > 0 else 0
-                        
-                        # Cuartiles Stellantis (Cumplimiento objetivo Compra PR)
-                        if cumplimiento >= 98.42:
-                            cuartil, color = "Q1 (Excelente)", "#28a745" # Verde
-                        elif cumplimiento >= 78.46:
-                            cuartil, color = "Q2 (Cumple)", "#17a2b8" # Celeste
-                        elif cumplimiento >= 51.81:
-                            cuartil, color = "Q3 (En Riesgo)", "#ffc107" # Amarillo
-                        else:
-                            cuartil, color = "Q4 (Crítico)", "#dc3545" # Rojo
-                            
-                        return objetivo_acumulado, compras_acumuladas, cumplimiento, cuartil, color
-
-                    # 2. Separar los DataFrames por semestre del año seleccionado
-                    df_año = df_base[df_base['Año_calc'] == año_sel]
-                    df_sem1 = df_año[df_año['Mes_calc'] <= 6]
-                    df_sem2 = df_año[df_año['Mes_calc'] >= 7]
-
-                    # 3. Procesar resultados
-                    obj1, comp1, pct1, q1, c1 = procesar_semestre(df_sem1)
-                    obj2, comp2, pct2, q2, c2 = procesar_semestre(df_sem2)
-
-                    # 4. Renderizado en dos columnas
-                    col_s1, col_s2 = st.columns(2)
-
-                    with col_s1:
-                        st.markdown("##### 📅 1er Semestre (Cerrado)")
-                        st.markdown(f'''
-                        <div class="metric-card" style="border-top: 5px solid {c1}; padding: 20px;">
-                            <div class="metric-title">Cuartil Final Stellantis</div>
-                            <div class="metric-value-money" style="color:{c1}; font-size: 2rem; margin-bottom: 5px;">{q1}</div>
-                            <div style="font-weight: bold; font-size: 1.3rem; color: #495057;">{pct1:.2f}% de Cumplimiento</div>
-                            <hr style="margin: 15px 0; border-color: #e9ecef;">
-                            <div style="display:flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="color: #6c757d;">Total Compras PR:</span> 
-                                <strong style="font-size: 1.1rem;">${comp1:,.0f}</strong>
-                            </div>
-                            <div style="display:flex; justify-content: space-between;">
-                                <span style="color: #6c757d;">Objetivo Semestral:</span> 
-                                <strong style="font-size: 1.1rem;">${obj1:,.0f}</strong>
-                            </div>
-                        </div>
-                        ''', unsafe_allow_html=True)
-
-                    with col_s2:
-                        st.markdown("##### 🔄 2do Semestre (En Curso)")
-                        st.markdown(f'''
-                        <div class="metric-card" style="border-top: 5px solid {c2}; padding: 20px;">
-                            <div class="metric-title">Cuartil Actual (YTD)</div>
-                            <div class="metric-value-money" style="color:{c2}; font-size: 2rem; margin-bottom: 5px;">{q2}</div>
-                            <div style="font-weight: bold; font-size: 1.3rem; color: #495057;">{pct2:.2f}% de Cumplimiento</div>
-                            <hr style="margin: 15px 0; border-color: #e9ecef;">
-                            <div style="display:flex; justify-content: space-between; margin-bottom: 8px;">
-                                <span style="color: #6c757d;">Compras Acumuladas:</span> 
-                                <strong style="font-size: 1.1rem;">${comp2:,.0f}</strong>
-                            </div>
-                            <div style="display:flex; justify-content: space-between;">
-                                <span style="color: #6c757d;">Objetivo (Julio-Actual):</span> 
-                                <strong style="font-size: 1.1rem;">${obj2:,.0f}</strong>
-                            </div>
-                        </div>
-                        ''', unsafe_allow_html=True)
-
-                    # 5. Desplegable de referencia
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    with st.expander("📊 Ver Tabla de Cuartiles Stellantis (Cumplimiento Objetivo Compra PR)"):
-                        st.markdown("""
-                        | Cuartil | Rango Mínimo | Rango Máximo | Estado |
-                        | :--- | :--- | :--- | :--- |
-                        | **Q1** | 98.42% | 197.64% | 🟢 Excelente |
-                        | **Q2** | 78.46% | 98.41% | 🔵 Cumple |
-                        | **Q3** | 51.81% | 78.45% | 🟡 En Riesgo |
-                        | **Q4** | 0.00% | 51.80% | 🔴 Crítico / Penalización |
-                        """)
-                else:
-                    st.error("⚠️ Faltan columnas clave ('Fecha', 'Objetivo Compra' o 'Compra PR') en la hoja REPUESTOS.")
-
         elif selected_tab == "🎨 Chapa y Pintura":
             st.markdown("### 🎨 Chapa y Pintura")
             
@@ -2434,7 +2323,122 @@ try:
                         st.info(f"No hay registros cargados para el año {año_sel}.")
                 else:
                     st.error("⚠️ Faltan columnas clave ('Fecha', 'Objetivo Compra' o 'Compra PR') para graficar la evolución.")
+
+                # ==========================================
+                # PESTAÑA: HISTÓRICO DE REPUESTOS
+                # ==========================================
+                
+                st.markdown("### 🏆 Cumplimiento de Compras PR y Proyección de Cuartiles (Acumulado)")
+            
+                # 1. Lógica de Cuartiles Stellantis EXACTA según tabla oficial
+                def obtener_cuartil_pr(pct):
+                    if pct >= 98.42:
+                        return "Q1", "#00CC66" # Verde
+                    elif pct >= 78.46:
+                        return "Q2", "#00A8E8" # Azul/Celeste
+                    elif pct >= 51.81:
+                        return "Q3", "#FFBB00" # Amarillo
+                    else:
+                        return "Q4", "#FF4B4B" # Rojo
+            
+                # 2. Búsqueda de columnas en la hoja REPUESTOS
+                col_compra_pr = find_col(data.get("REPUESTOS", pd.DataFrame()), ["COMPRAS", "PR"], exclude_keywords=["OBJ"])
+                col_obj_pr = find_col(data.get("REPUESTOS", pd.DataFrame()), ["OBJ", "COMPRAS", "PR"])
+            
+                # 3. Procesamiento de datos por Semestre
+                df_rep = data.get("REPUESTOS", pd.DataFrame())
+                
+                if not df_rep.empty and col_compra_pr and col_obj_pr and "Mes" in df_rep.columns:
+                    # Filtrar solo el año seleccionado
+                    df_rep_anio = df_rep[df_rep["Año"] == año_sel].copy()
                     
+                    # Limpiar datos numéricos
+                    df_rep_anio["COMPRAS_NUM"] = pd.to_numeric(df_rep_anio[col_compra_pr], errors="coerce").fillna(0)
+                    df_rep_anio["OBJ_NUM"] = pd.to_numeric(df_rep_anio[col_obj_pr], errors="coerce").fillna(0)
+            
+                    # Separar Semestre 1 (Mes 1 a 6) y Semestre 2 (Mes 7 a 12)
+                    df_s1 = df_rep_anio[df_rep_anio["Mes"] <= 6]
+                    df_s2 = df_rep_anio[df_rep_anio["Mes"] > 6]
+            
+                    # Cálculos Semestre 1
+                    obj_s1 = df_s1["OBJ_NUM"].sum()
+                    real_s1 = df_s1["COMPRAS_NUM"].sum()
+                    pct_s1 = (real_s1 / obj_s1 * 100) if obj_s1 > 0 else 0.0
+                    q_texto_s1, q_color_s1 = obtener_cuartil_pr(pct_s1)
+            
+                    # Cálculos Semestre 2
+                    obj_s2 = df_s2["OBJ_NUM"].sum()
+                    real_s2 = df_s2["COMPRAS_NUM"].sum()
+                    pct_s2 = (real_s2 / obj_s2 * 100) if obj_s2 > 0 else 0.0
+                    q_texto_s2, q_color_s2 = obtener_cuartil_pr(pct_s2)
+            
+                    # 4. Renderizado de la Interfaz Visual
+                    col_s1, col_s2 = st.columns(2)
+            
+                    # Tarjeta Semestre 1
+                    with col_s1:
+                        st.markdown("##### 📅 1er Semestre (Cerrado)")
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; border-top: 5px solid {q_color_s1}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;">
+                                <div style="font-size: 0.95rem; color: #666; margin-bottom: 5px;">Cuartil Final Stellantis</div>
+                                <div style="font-size: 2.8rem; font-weight: bold; color: {q_color_s1}; margin-bottom: 5px;">{q_texto_s1}</div>
+                                <div style="font-size: 1.1rem; font-weight: bold; color: #333; margin-bottom: 15px;">{pct_s1:.2f}% de Cumplimiento</div>
+                                
+                                <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
+                                
+                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555; margin-bottom: 8px;">
+                                    <span>Total Compras PR:</span>
+                                    <span style="font-weight: bold; color: #111;">${real_s1:,.0f}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555;">
+                                    <span>Objetivo Semestral:</span>
+                                    <span style="font-weight: bold; color: #111;">${obj_s1:,.0f}</span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+            
+                    # Tarjeta Semestre 2
+                    with col_s2:
+                        st.markdown("##### 🔄 2do Semestre (En Curso)")
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; border-top: 5px solid {q_color_s2}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;">
+                                <div style="font-size: 0.95rem; color: #666; margin-bottom: 5px;">Cuartil Actual (YTD)</div>
+                                <div style="font-size: 2.8rem; font-weight: bold; color: {q_color_s2}; margin-bottom: 5px;">{q_texto_s2}</div>
+                                <div style="font-size: 1.1rem; font-weight: bold; color: #333; margin-bottom: 15px;">{pct_s2:.2f}% de Cumplimiento</div>
+                                
+                                <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
+                                
+                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555; margin-bottom: 8px;">
+                                    <span>Compras Acumuladas:</span>
+                                    <span style="font-weight: bold; color: #111;">${real_s2:,.0f}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555;">
+                                    <span>Objetivo (Julio-Actual):</span>
+                                    <span style="font-weight: bold; color: #111;">${obj_s2:,.0f}</span>
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+            
+                    # 5. Acordeón explicativo de los cuartiles
+                    st.write("") 
+                    with st.expander("📊 Ver Tabla Oficial de Cuartiles Stellantis (Compra PR)"):
+                        st.markdown("""
+                        **Escala de cumplimiento de objetivo Compra PR:**
+                        * 🟢 **Q1:** ≥ 98.42%
+                        * 🔵 **Q2:** 78.46% - 98.41%
+                        * 🟡 **Q3:** 51.81% - 78.45%
+                        * 🔴 **Q4:** ≤ 51.80%
+                        """)
+                        
+                else:
+                    st.info("⚠️ Faltan cargar las columnas de 'COMPRAS PR' u 'OBJ COMPRAS PR' en la hoja de REPUESTOS.")
+            
             # ==========================================
             # PESTAÑA 4: CHAPA
             # ==========================================
