@@ -1,10 +1,24 @@
-import streamlit as st
+from datetime import datetime, timedelta
+import os
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
-import numpy as np
-import os
+import streamlit as st
+
+
+# ==========================================
+# LÓGICA DE CLASIFICACIÓN DE NPS (MARCA)
+# ==========================================
+def obtener_estado_nps(valor_nps):
+    if valor_nps < 88.3:
+        return "Insuficiente", "#FF4B4B", "🔴"
+    elif 88.3 <= valor_nps <= 93.4:
+        return "Aceptable", "#FFBB00", "🟡"
+    elif valor_nps >= 93.5:
+        return "Sobresaliente", "#00CC66", "🟢"
+    return "N/A", "#808080", "⚪"
+
 
 st.set_page_config(page_title="Grupo CENOA - Gestión Posventa", layout="wide")
 
