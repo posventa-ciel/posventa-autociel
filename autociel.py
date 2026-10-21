@@ -2023,7 +2023,7 @@ try:
                             title={"text": "NPS vs Objetivo Marca", "font": {"size": 16}},
                             gauge={
                                 "axis": {"range": [0, 100], "tickwidth": 1},
-                                "bar": {"color": "#00235d", "width": 3},
+                                "bar": {"color": "#00235d", "thickness": 0.25},
                                 "steps": [
                                     {"range": [0, 88.29], "color": "#FF4B4B"},
                                     {"range": [88.3, 93.4], "color": "#FFBB00"},
