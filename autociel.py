@@ -2324,136 +2324,144 @@ try:
                 else:
                     st.error("⚠️ Faltan columnas clave ('Fecha', 'Objetivo Compra' o 'Compra PR') para graficar la evolución.")
 
-                # ==========================================
-                # PESTAÑA: HISTÓRICO DE REPUESTOS
-                # ==========================================
+                # --- CUMPLIMIENTO SEMESTRAL Y CUARTILES (STELLANTIS - AUTOCIEL) ---
+                with tab_rep_hist: # O el nombre que tenga tu pestaña histórica
+                    st.markdown("---")
+                    st.markdown("#### 🏆 Cumplimiento de Compras PR y Proyección de Cuartiles (Acumulado)")
                 
-                st.markdown("### 🏆 Cumplimiento de Compras PR y Proyección de Cuartiles (Acumulado)")
-            
-                # 1. Lógica de Cuartiles Stellantis EXACTA según tabla oficial
-                def obtener_cuartil_pr(pct):
-                    if pct >= 98.42:
-                        return "Q1", "#00CC66" # Verde
-                    elif pct >= 78.46:
-                        return "Q2", "#00A8E8" # Azul/Celeste
-                    elif pct >= 51.81:
-                        return "Q3", "#FFBB00" # Amarillo
-                    else:
-                        return "Q4", "#FF4B4B" # Rojo
-            
-                # 2. Búsqueda de columnas en la hoja REPUESTOS (Ajustado para ser más flexible)
-                df_rep = data.get("REPUESTOS", pd.DataFrame())
+                    # 1. Definir el dataframe crudo de la pestaña repuestos
+                    df_base = data['REPUESTOS'].copy()
                 
-                col_compra_pr = (
-                    find_col(df_rep, ["COMPRA", "PR"], exclude_keywords=["OBJ"]) or
-                    find_col(df_rep, ["COMPRAS", "PR"], exclude_keywords=["OBJ"]) or
-                    find_col(df_rep, ["REAL", "PR"])
-                )
-                col_obj_pr = (
-                    find_col(df_rep, ["OBJ", "COMPRA", "PR"]) or
-                    find_col(df_rep, ["OBJ", "COMPRAS", "PR"]) or
-                    find_col(df_rep, ["OBJ", "PR"]) or
-                    find_col(df_rep, ["OBJETIVO", "PR"])
-                )
-            
-                # 3. Procesamiento de datos por Semestre
-                if not df_rep.empty and col_compra_pr and col_obj_pr and "Mes" in df_rep.columns:
-                    # Filtrar solo el año seleccionado
-                    df_rep_anio = df_rep[df_rep["Año"] == año_sel].copy()
-                    
-                    # Limpiar datos numéricos
-                    df_rep_anio["COMPRAS_NUM"] = pd.to_numeric(df_rep_anio[col_compra_pr], errors="coerce").fillna(0)
-                    df_rep_anio["OBJ_NUM"] = pd.to_numeric(df_rep_anio[col_obj_pr], errors="coerce").fillna(0)
-            
-                    # Separar Semestre 1 (Mes 1 a 6) y Semestre 2 (Mes 7 a 12)
-                    df_s1 = df_rep_anio[df_rep_anio["Mes"] <= 6]
-                    df_s2 = df_rep_anio[df_rep_anio["Mes"] > 6]
-            
-                    # Cálculos Semestre 1
-                    obj_s1 = df_s1["OBJ_NUM"].sum()
-                    real_s1 = df_s1["COMPRAS_NUM"].sum()
-                    pct_s1 = (real_s1 / obj_s1 * 100) if obj_s1 > 0 else 0.0
-                    q_texto_s1, q_color_s1 = obtener_cuartil_pr(pct_s1)
-            
-                    # Cálculos Semestre 2
-                    obj_s2 = df_s2["OBJ_NUM"].sum()
-                    real_s2 = df_s2["COMPRAS_NUM"].sum()
-                    pct_s2 = (real_s2 / obj_s2 * 100) if obj_s2 > 0 else 0.0
-                    q_texto_s2, q_color_s2 = obtener_cuartil_pr(pct_s2)
-            
-                    # 4. Renderizado de la Interfaz Visual
-                    col_s1, col_s2 = st.columns(2)
-            
-                    # Tarjeta Semestre 1
-                    with col_s1:
-                        st.markdown("##### 📅 1er Semestre (Cerrado)")
-                        st.markdown(
-                            f"""
-                            <div style="background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; border-top: 5px solid {q_color_s1}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;">
-                                <div style="font-size: 0.95rem; color: #666; margin-bottom: 5px;">Cuartil Final Stellantis</div>
-                                <div style="font-size: 2.8rem; font-weight: bold; color: {q_color_s1}; margin-bottom: 5px;">{q_texto_s1}</div>
-                                <div style="font-size: 1.1rem; font-weight: bold; color: #333; margin-bottom: 15px;">{pct_s1:.2f}% de Cumplimiento</div>
-                                
-                                <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
-                                
-                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555; margin-bottom: 8px;">
-                                    <span>Total Compras PR:</span>
-                                    <span style="font-weight: bold; color: #111;">${real_s1:,.0f}</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555;">
-                                    <span>Objetivo Semestral:</span>
-                                    <span style="font-weight: bold; color: #111;">${obj_s1:,.0f}</span>
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-            
-                    # Tarjeta Semestre 2
-                    with col_s2:
-                        st.markdown("##### 🔄 2do Semestre (En Curso)")
-                        st.markdown(
-                            f"""
-                            <div style="background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; border-top: 5px solid {q_color_s2}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;">
-                                <div style="font-size: 0.95rem; color: #666; margin-bottom: 5px;">Cuartil Actual (YTD)</div>
-                                <div style="font-size: 2.8rem; font-weight: bold; color: {q_color_s2}; margin-bottom: 5px;">{q_texto_s2}</div>
-                                <div style="font-size: 1.1rem; font-weight: bold; color: #333; margin-bottom: 15px;">{pct_s2:.2f}% de Cumplimiento</div>
-                                
-                                <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
-                                
-                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555; margin-bottom: 8px;">
-                                    <span>Compras Acumuladas:</span>
-                                    <span style="font-weight: bold; color: #111;">${real_s2:,.0f}</span>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555;">
-                                    <span>Objetivo (Julio-Actual):</span>
-                                    <span style="font-weight: bold; color: #111;">${obj_s2:,.0f}</span>
-                                </div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-            
-                    # 5. Acordeón explicativo de los cuartiles
-                    st.write("") 
-                    with st.expander("📊 Ver Tabla Oficial de Cuartiles Stellantis (Compra PR)"):
-                        st.markdown("""
-                        **Escala de cumplimiento de objetivo Compra PR:**
-                        * 🟢 **Q1:** ≥ 98.42%
-                        * 🔵 **Q2:** 78.46% - 98.41%
-                        * 🟡 **Q3:** 51.81% - 78.45%
-                        * 🔴 **Q4:** ≤ 51.80%
-                        """)
+                    # Buscar las columnas exactas (Tu código original)
+                    col_fecha = find_col(df_base, ["FECHA"])
+                    col_obj = find_col(df_base, ["OBJETIVO COMPRA", "OBJETIVO"])
+                    col_compra = find_col(df_base, ["COMPRA PR", "COMPRA"])
+                
+                    if col_fecha and col_obj and col_compra:
+                        # Convertir fecha directamente para asegurar la lectura del mes real
+                        df_base['Fecha_calc'] = pd.to_datetime(df_base[col_fecha], dayfirst=True, errors='coerce')
+                        df_base['Mes_calc'] = df_base['Fecha_calc'].dt.month
+                        df_base['Año_calc'] = df_base['Fecha_calc'].dt.year
+                
+                        # Asegurar formato numérico
+                        df_base[col_obj] = pd.to_numeric(df_base[col_obj], errors='coerce').fillna(0)
+                        df_base[col_compra] = pd.to_numeric(df_base[col_compra], errors='coerce').fillna(0)
+                
+                        # 2. Separar los DataFrames por el año seleccionado
+                        df_año = df_base[df_base['Año_calc'] == año_sel]
                         
-                else:
-                    # Bloque de Diagnóstico
-                    st.warning("⚠️ No se pudieron detectar las columnas correctas de Compras PR.")
-                    st.info("Revisá cómo se llaman exactamente los encabezados en tu Google Sheet usando el botón de abajo:")
-                    with st.expander("🛠️ Ver encabezados detectados en la pestaña REPUESTOS"):
-                        if not df_rep.empty:
-                            st.write("Columnas disponibles:", df_rep.columns.tolist())
-                        else:
-                            st.write("No se encontraron datos en la hoja REPUESTOS.")
+                        # Determinar cuál es el último mes registrado globalmente para saber si está en curso
+                        max_mes_global = df_año['Mes_calc'].max()
+                
+                        # Función para procesar la data de un semestre específico
+                        def procesar_semestre(df_sem):
+                            if df_sem.empty:
+                                return 0, 0, 0, "Q4", "#FF4B4B", 0, 0, 0, "Q4", "#FF4B4B", False
+                            
+                            meses_presentes = sorted(df_sem['Mes_calc'].dropna().unique())
+                            if not meses_presentes:
+                                return 0, 0, 0, "Q4", "#FF4B4B", 0, 0, 0, "Q4", "#FF4B4B", False
+                
+                            # Verificar si este semestre contiene el mes actual "abierto/parcial"
+                            has_open_month = (prog_t < 1.0) and (meses_presentes[-1] == max_mes_global)
+                
+                            # Función base de cálculo
+                            def calc_metrics(df_subset):
+                                if df_subset.empty: return 0, 0, 0
+                                obj_tot = df_subset[df_subset[col_obj] > 0].groupby('Mes_calc')[col_obj].max().sum()
+                                comp_tot = df_subset[df_subset[col_compra] > 0].groupby('Mes_calc')[col_compra].max().sum()
+                                pct = (comp_tot / obj_tot * 100) if obj_tot > 0 else 0
+                                return obj_tot, comp_tot, pct
+                
+                            # PROYECTADO: Calcula tomando todos los meses (incluido el parcial)
+                            obj_proy, comp_proy, pct_proy = calc_metrics(df_sem)
+                
+                            # CERRADO: Calcula excluyendo el mes parcial si lo hay
+                            if has_open_month and len(meses_presentes) > 1:
+                                meses_cerrados = meses_presentes[:-1]
+                                df_cerrado = df_sem[df_sem['Mes_calc'].isin(meses_cerrados)]
+                                obj_cerrado, comp_cerrado, pct_cerrado = calc_metrics(df_cerrado)
+                            elif has_open_month and len(meses_presentes) == 1:
+                                # Solo hay 1 mes y está abierto (Cerrado es 0)
+                                obj_cerrado, comp_cerrado, pct_cerrado = 0, 0, 0
+                            else:
+                                # El semestre entero está cerrado
+                                obj_cerrado, comp_cerrado, pct_cerrado = obj_proy, comp_proy, pct_proy
+                
+                            # Cuartiles Stellantis Oficiales
+                            def get_cuartil(pct):
+                                if pct >= 98.42: return "Q1", "#00CC66"
+                                elif pct >= 78.46: return "Q2", "#00A8E8"
+                                elif pct >= 51.81: return "Q3", "#FFBB00"
+                                else: return "Q4", "#FF4B4B"
+                
+                            q_cerrado, c_cerrado = get_cuartil(pct_cerrado)
+                            q_proy, c_proy = get_cuartil(pct_proy)
+                
+                            return (obj_cerrado, comp_cerrado, pct_cerrado, q_cerrado, c_cerrado,
+                                    obj_proy, comp_proy, pct_proy, q_proy, c_proy, has_open_month)
+                
+                        df_sem1 = df_año[df_año['Mes_calc'] <= 6]
+                        df_sem2 = df_año[df_año['Mes_calc'] >= 7]
+                
+                        # 3. Procesar resultados de ambos semestres
+                        obj1_c, comp1_c, pct1_c, q1_c, c1_c, obj1_p, comp1_p, pct1_p, q1_p, c1_p, open1 = procesar_semestre(df_sem1)
+                        obj2_c, comp2_c, pct2_c, q2_c, c2_c, obj2_p, comp2_p, pct2_p, q2_p, c2_p, open2 = procesar_semestre(df_sem2)
+                
+                        # 4. Renderizado en dos columnas
+                        col_s1, col_s2 = st.columns(2)
+                
+                        # Función para generar el bloque HTML (sin sangría para que Streamlit no lo rompa)
+                        def generar_tarjeta(titulo, obj, comp, pct, q, c, is_open, pct_proy, q_proy, c_proy):
+                            badge_proyectado = ""
+                            if is_open:
+                                badge_proyectado = f"""
+                <div style="font-size: 0.85rem; color: #555; background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 15px; border: 1px dashed #ccc; display: flex; justify-content: space-between; align-items: center;">
+                    <span><b>Proyección (Incluye Mes en Curso):</b></span>
+                    <span style="color: {c_proy}; font-weight: bold; font-size: 1.1rem;">{pct_proy:.2f}% {q_proy}</span>
+                </div>
+                """
+                            return f'''
+                <div style="background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #e0e0e0; border-top: 5px solid {c}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;">
+                    <div style="font-size: 0.95rem; color: #666; margin-bottom: 5px;">Cuartil YTD (Meses Cerrados)</div>
+                    <div style="font-size: 2.8rem; font-weight: bold; color: {c}; margin-bottom: 5px;">{q}</div>
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #333; margin-bottom: 15px;">{pct:.2f}% de Cumplimiento</div>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555; margin-bottom: 8px;">
+                        <span>Compras Cerradas Acum.:</span>
+                        <span style="font-weight: bold; color: #111;">${comp:,.0f}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #555;">
+                        <span>Objetivo Cerrado Acum.:</span>
+                        <span style="font-weight: bold; color: #111;">${obj:,.0f}</span>
+                    </div>
+                    {badge_proyectado}
+                </div>
+                '''
+                
+                        with col_s1:
+                            estado_s1 = " (En Curso)" if open1 else " (Cerrado)"
+                            st.markdown(f"##### 📅 1er Semestre{estado_s1}")
+                            st.markdown(generar_tarjeta("1er Semestre", obj1_c, comp1_c, pct1_c, q1_c, c1_c, open1, pct1_p, q1_p, c1_p), unsafe_allow_html=True)
+                
+                        with col_s2:
+                            estado_s2 = " (En Curso)" if open2 else " (Cerrado)"
+                            st.markdown(f"##### 🔄 2do Semestre{estado_s2}")
+                            st.markdown(generar_tarjeta("2do Semestre", obj2_c, comp2_c, pct2_c, q2_c, c2_c, open2, pct2_p, q2_p, c2_p), unsafe_allow_html=True)
+                
+                        # 5. Desplegable de referencia (Umbrales oficiales de la marca)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        with st.expander("📊 Ver Tabla de Cuartiles Stellantis (Cumplimiento Objetivo Compra PR)"):
+                            st.markdown("""
+                            | Cuartil | Rango Mínimo | Rango Máximo | Estado |
+                            | :--- | :--- | :--- | :--- |
+                            | **Q1** | 98.42% | 197.64% | 🟢 Excelente |
+                            | **Q2** | 78.46% | 98.41% | 🔵 Cumple |
+                            | **Q3** | 51.81% | 78.45% | 🟡 En Riesgo |
+                            | **Q4** | 0.00% | 51.80% | 🔴 Crítico / Penalización |
+                            """)
+                    else:
+                        st.error("⚠️ Faltan columnas clave ('Fecha', 'Objetivo Compra' o 'Compra PR') en la hoja REPUESTOS.")
             
             # ==========================================
             # PESTAÑA 4: CHAPA
