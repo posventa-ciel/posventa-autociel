@@ -2341,13 +2341,22 @@ try:
                     else:
                         return "Q4", "#FF4B4B" # Rojo
             
-                # 2. Búsqueda de columnas en la hoja REPUESTOS
-                col_compra_pr = find_col(data.get("REPUESTOS", pd.DataFrame()), ["COMPRAS", "PR"], exclude_keywords=["OBJ"])
-                col_obj_pr = find_col(data.get("REPUESTOS", pd.DataFrame()), ["OBJ", "COMPRAS", "PR"])
-            
-                # 3. Procesamiento de datos por Semestre
+                # 2. Búsqueda de columnas en la hoja REPUESTOS (Ajustado para ser más flexible)
                 df_rep = data.get("REPUESTOS", pd.DataFrame())
                 
+                col_compra_pr = (
+                    find_col(df_rep, ["COMPRA", "PR"], exclude_keywords=["OBJ"]) or
+                    find_col(df_rep, ["COMPRAS", "PR"], exclude_keywords=["OBJ"]) or
+                    find_col(df_rep, ["REAL", "PR"])
+                )
+                col_obj_pr = (
+                    find_col(df_rep, ["OBJ", "COMPRA", "PR"]) or
+                    find_col(df_rep, ["OBJ", "COMPRAS", "PR"]) or
+                    find_col(df_rep, ["OBJ", "PR"]) or
+                    find_col(df_rep, ["OBJETIVO", "PR"])
+                )
+            
+                # 3. Procesamiento de datos por Semestre
                 if not df_rep.empty and col_compra_pr and col_obj_pr and "Mes" in df_rep.columns:
                     # Filtrar solo el año seleccionado
                     df_rep_anio = df_rep[df_rep["Año"] == año_sel].copy()
@@ -2437,7 +2446,14 @@ try:
                         """)
                         
                 else:
-                    st.info("⚠️ Faltan cargar las columnas de 'COMPRAS PR' u 'OBJ COMPRAS PR' en la hoja de REPUESTOS.")
+                    # Bloque de Diagnóstico
+                    st.warning("⚠️ No se pudieron detectar las columnas correctas de Compras PR.")
+                    st.info("Revisá cómo se llaman exactamente los encabezados en tu Google Sheet usando el botón de abajo:")
+                    with st.expander("🛠️ Ver encabezados detectados en la pestaña REPUESTOS"):
+                        if not df_rep.empty:
+                            st.write("Columnas disponibles:", df_rep.columns.tolist())
+                        else:
+                            st.write("No se encontraron datos en la hoja REPUESTOS.")
             
             # ==========================================
             # PESTAÑA 4: CHAPA
