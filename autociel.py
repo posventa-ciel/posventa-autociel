@@ -1975,25 +1975,25 @@ try:
                 st.markdown("---")
                 st.subheader("🎯 Calidad y Satisfacción: NPS por Marca")
             
-                # Función de protección para evitar el error 'arg must be a list, tuple...'
+                # Función de protección para series
                 def obtener_serie_limpia(df, col_nombre):
                     if not col_nombre or df.empty or col_nombre not in df.columns:
                         return pd.Series(dtype=float)
                     data_col = df[col_nombre]
-                    # Si existen columnas duplicadas con el mismo nombre, toma la primera
                     if isinstance(data_col, pd.DataFrame):
                         data_col = data_col.iloc[:, 0]
                     return pd.to_numeric(data_col, errors="coerce")
             
-                # Búsqueda de columnas tolerante a tildes/variaciones de nombre
+                # Búsqueda de NPS
                 col_nps_peugeot = find_col(data["SERVICIOS"], ["NPS", "PEUGEOT"]) or find_col(data["SERVICIOS"], ["NPS", "P"])
                 col_nps_citroen = find_col(data["SERVICIOS"], ["NPS", "CITROEN"]) or find_col(data["SERVICIOS"], ["NPS", "CITROËN"]) or find_col(data["SERVICIOS"], ["NPS", "C"])
                 
+                # Búsqueda de Finanzas (Se excluye la palabra OBJ para forzar a tomar las columnas reales correctas)
                 col_obj_prima_p = find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "P"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "PEUGEOT"])
-                col_real_prima_p = find_col(data["SERVICIOS"], ["PRIMA", "PEUGEOT"]) or find_col(data["SERVICIOS"], ["PRIMA", "P"])
+                col_real_prima_p = find_col(data["SERVICIOS"], ["PRIMA", "PEUGEOT"], exclude_keywords=["OBJ"]) or find_col(data["SERVICIOS"], ["PRIMA", "P"], exclude_keywords=["OBJ"])
                 
-                col_obj_prima_c = find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "C"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "CITROEN"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "CITROËN"])
-                col_real_prima_c = find_col(data["SERVICIOS"], ["PRIMA", "CITROEN"]) or find_col(data["SERVICIOS"], ["PRIMA", "CITROËN"]) or find_col(data["SERVICIOS"], ["PRIMA", "C"])
+                col_obj_prima_c = find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "C"]) or find_col(data["SERVICIOS"], ["OBJ", "PRIMA", "CITROEN"])
+                col_real_prima_c = find_col(data["SERVICIOS"], ["PRIMA", "CITROEN"], exclude_keywords=["OBJ"]) or find_col(data["SERVICIOS"], ["PRIMA", "C"], exclude_keywords=["OBJ"])
             
                 df_nps_base = (
                     data["SERVICIOS"][data["SERVICIOS"]["Año"] == año_sel].copy()
@@ -2003,12 +2003,11 @@ try:
             
                 def render_bloque_nps(titulo_marca, col_nps, col_obj_p, col_real_p, key_prefix):
                     if col_nps and not df_nps_base.empty and col_nps in df_nps_base.columns:
-                        # 1. Agrupar por mes y tomar el último registro
+                        # 1. Agrupar por mes y tomar el último registro válido
                         df_cols = ["Mes", col_nps]
                         if col_obj_p and col_obj_p in df_nps_base.columns: df_cols.append(col_obj_p)
                         if col_real_p and col_real_p in df_nps_base.columns: df_cols.append(col_real_p)
             
-                        # Elimina columnas duplicadas si las hubiera
                         df_cols = list(dict.fromkeys(df_cols))
             
                         df_nps_monthly = (
@@ -2020,51 +2019,53 @@ try:
             
                         df_nps_monthly["NPS_num"] = obtener_serie_limpia(df_nps_monthly, col_nps)
             
-                        # Escalar a porcentaje si viene en formato decimal (ej: 0.935)
                         if not df_nps_monthly["NPS_num"].dropna().empty and df_nps_monthly["NPS_num"].dropna().max() <= 1.0:
                             df_nps_monthly["NPS_num"] = df_nps_monthly["NPS_num"] * 100
             
                         df_nps_monthly = df_nps_monthly.dropna(subset=["NPS_num"])
             
-                        # 2. Separar meses cerrados de mes parcial
+                        # 2. Separar meses cerrados
                         if prog_t < 1.0 and len(df_nps_monthly) >= 2:
                             df_cerrado = df_nps_monthly.iloc[:-1]
-                            row_parcial = df_nps_monthly.iloc[-1]
                         else:
                             df_cerrado = df_nps_monthly
-                            row_parcial = None
             
-                        # Promedio YTD exclusivo de meses cerrados
+                        # Promedios
                         nps_ytd = float(df_cerrado["NPS_num"].mean()) if not df_cerrado.empty else 0.0
-                        nps_parcial = float(row_parcial["NPS_num"]) if row_parcial is not None else None
+                        nps_proyectado = float(df_nps_monthly["NPS_num"].mean()) if not df_nps_monthly.empty else 0.0
             
                     else:
                         df_nps_monthly = pd.DataFrame()
                         df_cerrado = pd.DataFrame()
                         nps_ytd = 0.0
-                        nps_parcial = None
+                        nps_proyectado = 0.0
             
                     estado_nps, color_nps, emoji_nps = obtener_estado_nps(nps_ytd)
             
-                    # 3. Tarjeta Resumen YTD
-                    html_parcial = ""
-                    if nps_parcial is not None:
-                        _, col_p, emo_p = obtener_estado_nps(nps_parcial)
-                        html_parcial = f"""
-                        <div style="font-size: 0.85rem; color: #555; background: #f8f9fa; padding: 6px 10px; border-radius: 5px; margin-top: 8px; border: 1px dashed #ccc;">
-                            <b>Mes en Curso (Parcial):</b> <span style="color: {col_p}; font-weight: bold;">{nps_parcial:.1f}% {emo_p}</span>
+                    # 3. Tarjeta Resumen YTD + Proyectado
+                    html_proyectado = ""
+                    if not df_nps_monthly.empty:
+                        estado_proy, col_proy, emo_proy = obtener_estado_nps(nps_proyectado)
+                        delta_proy = nps_proyectado - nps_ytd
+                        signo_delta = "+" if delta_proy > 0 else ""
+                        color_delta = "#28a745" if delta_proy >= 0 else "#dc3545"
+                        
+                        html_proyectado = f"""
+                        <div style="font-size: 0.85rem; color: #555; background: #f8f9fa; padding: 8px 10px; border-radius: 5px; margin-top: 8px; border: 1px dashed #ccc; display: flex; justify-content: space-between; align-items: center;">
+                            <span><b>Proyectado Anual:</b> <span style="color: {col_proy}; font-weight: bold;">{nps_proyectado:.1f}% {emo_proy}</span></span>
+                            <span style="color: {color_delta}; font-weight: bold; font-size: 0.85rem;" title="Variación vs YTD Cerrado">{signo_delta}{delta_proy:.1f}%</span>
                         </div>
                         """
             
                     st.markdown(
                         f"""
                         <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; border-left: 8px solid {color_nps}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px;">
-                            <div style="font-size: 0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;">{titulo_marca} - Promedio YTD (Meses Cerrados)</div>
+                            <div style="font-size: 0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;">{titulo_marca} - Promedio YTD (Cerrado)</div>
                             <div style="font-size: 2.2rem; font-weight: bold; color: #00235d; margin-bottom: 2px;">{nps_ytd:.1f}%</div>
-                            <div style="font-size: 0.95rem; font-weight: bold; color: {color_nps};">
+                            <div style="font-size: 0.95rem; font-weight: bold; color: {color_nps}; margin-bottom: 8px;">
                                 {emoji_nps} Estado YTD: {estado_nps}
                             </div>
-                            {html_parcial}
+                            {html_proyectado}
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -2145,7 +2146,7 @@ try:
                     else:
                         st.info(f"Faltan cargar datos mensuales para {titulo_marca}")
             
-                    # 6. Tarjeta Financiera: Cobro vs Potencial
+                    # 6. Tarjeta Financiera: Cobro vs Potencial (Solo en meses cerrados)
                     if col_obj_p and col_real_p and col_obj_p in df_cerrado.columns and col_real_p in df_cerrado.columns:
                         s_obj = obtener_serie_limpia(df_cerrado, col_obj_p)
                         s_real = obtener_serie_limpia(df_cerrado, col_real_p)
@@ -2171,7 +2172,7 @@ try:
                             unsafe_allow_html=True,
                         )
             
-                # Encabezado
+                # Encabezado Escala
                 st.markdown(
                     """
                 <div style='font-size: 0.85rem; color: #666; margin-bottom: 15px;'>
@@ -2181,7 +2182,7 @@ try:
                     unsafe_allow_html=True,
                 )
             
-                # Renderizado en dos columnas
+                # Disposición en columnas
                 col_m1, col_m2 = st.columns(2)
             
                 with col_m1:
