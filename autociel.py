@@ -1976,26 +1976,49 @@ try:
                 st.subheader("🎯 Calidad y Satisfacción: NPS por Marca")
             
                 # Búsqueda de columnas de NPS por marca en la hoja de SERVICIOS
-                col_nps_peugeot = find_col(data["SERVICIOS"], ["NPS", "PEUGEOT"]) if "SERVICIOS" in data else None
-                col_nps_citroen = find_col(data["SERVICIOS"], ["NPS", "CITROEN"]) if "SERVICIOS" in data else None
+                col_nps_peugeot = (
+                    find_col(data["SERVICIOS"], ["NPS", "PEUGEOT"])
+                    if "SERVICIOS" in data
+                    else None
+                )
+                col_nps_citroen = (
+                    find_col(data["SERVICIOS"], ["NPS", "CITROEN"])
+                    if "SERVICIOS" in data
+                    else None
+                )
             
-                # Si por algún motivo solo hay una columna general llamada "NPS", usa esa para la primera marca
+                # Fallback si sólo existe una columna general de NPS
                 if not col_nps_peugeot and not col_nps_citroen:
                     col_nps_peugeot = find_col(data["SERVICIOS"], ["NPS"])
             
-                df_nps_base = data["SERVICIOS"][data["SERVICIOS"]["Año"] == año_sel].copy() if "SERVICIOS" in data else pd.DataFrame()
+                df_nps_base = (
+                    data["SERVICIOS"][data["SERVICIOS"]["Año"] == año_sel].copy()
+                    if "SERVICIOS" in data
+                    else pd.DataFrame()
+                )
             
-                def render_bloque_nps(titulo_marca, nombre_columna):
-                    # 1. Preparación de datos
-                    if nombre_columna and not df_nps_base.empty and nombre_columna in df_nps_base.columns:
+                def render_bloque_nps(titulo_marca, nombre_columna, key_prefix):
+                    # 1. Preparación de datos y cálculo del PROMEDIO YTD
+                    if (
+                        nombre_columna
+                        and not df_nps_base.empty
+                        and nombre_columna in df_nps_base.columns
+                    ):
                         df_nps = df_nps_base[["Mes", nombre_columna]].copy()
-                        df_nps["NPS_num"] = pd.to_numeric(df_nps[nombre_columna], errors="coerce")
+                        df_nps["NPS_num"] = pd.to_numeric(
+                            df_nps[nombre_columna], errors="coerce"
+                        )
             
-                        if not df_nps["NPS_num"].dropna().empty and df_nps["NPS_num"].max() <= 1.0:
+                        # Escalar a porcentaje si viene en formato decimal (ej: 0.935)
+                        if (
+                            not df_nps["NPS_num"].dropna().empty
+                            and df_nps["NPS_num"].dropna().max() <= 1.0
+                        ):
                             df_nps["NPS_num"] = df_nps["NPS_num"] * 100
             
                         nps_series = df_nps["NPS_num"].dropna()
-                        nps_actual = float(nps_series.iloc[-1]) if not nps_series.empty else 0.0
+                        # PROMEDIO ACUMULADO YTD (Promedio de los meses transcurridos con datos)
+                        nps_actual = float(nps_series.mean()) if not nps_series.empty else 0.0
                     else:
                         df_nps = pd.DataFrame(columns=["Mes", "NPS_num"])
                         nps_actual = 0.0
@@ -2006,7 +2029,7 @@ try:
                     st.markdown(
                         f"""
                         <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; border-left: 8px solid {color_nps}; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px;">
-                            <div style="font-size: 0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;">{titulo_marca} - YTD</div>
+                            <div style="font-size: 0.9rem; font-weight: bold; color: #666; margin-bottom: 5px;">{titulo_marca} - Promedio YTD</div>
                             <div style="font-size: 2rem; font-weight: bold; color: #00235d; margin-bottom: 5px;">{nps_actual:.1f}%</div>
                             <div style="font-size: 0.95rem; font-weight: bold; color: {color_nps};">
                                 {emoji_nps} Estado: {estado_nps}
@@ -2016,7 +2039,7 @@ try:
                         unsafe_allow_html=True,
                     )
             
-                    # 3. Gráfico de Velocímetro
+                    # 3. Gráfico de Velocímetro (Gauge)
                     fig_gauge = go.Figure(
                         go.Indicator(
                             mode="gauge+number",
@@ -2038,68 +2061,129 @@ try:
                             },
                         )
                     )
-                    fig_gauge.update_layout(height=180, margin=dict(l=20, r=20, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)")
-                    st.plotly_chart(fig_gauge, use_container_width=True)
+                    fig_gauge.update_layout(
+                        height=180,
+                        margin=dict(l=20, r=20, t=10, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    # Asignamos key único
+                    st.plotly_chart(
+                        fig_gauge, use_container_width=True, key=f"nps_gauge_{key_prefix}"
+                    )
             
-                    # 4. Evolución Mensual (Gráfico de Barras)
-                    st.markdown(f"<div style='text-align: center; font-weight: bold; color: #555; margin-top: 10px;'>📅 Evolución {titulo_marca}</div>", unsafe_allow_html=True)
+                    # 4. Evolución Mensual (Gráfico de Líneas con Puntos)
+                    st.markdown(
+                        f"<div style='text-align: center; font-weight: bold; color: #555; margin-top: 10px;'>📅 Evolución {titulo_marca}</div>",
+                        unsafe_allow_html=True,
+                    )
             
                     if not df_nps.empty and "Mes" in df_nps.columns:
-                        df_nps_mensual = df_nps.sort_values("Mes").dropna(subset=["NPS_num"]).copy()
-                        
-                        if not df_nps_mensual.empty:
-                            df_nps_mensual["NombreMes"] = df_nps_mensual["Mes"].map(meses_nom)
-                            colores_barras = [obtener_estado_nps(val)[1] for val in df_nps_mensual["NPS_num"]]
+                        df_nps_mensual = (
+                            df_nps.sort_values("Mes").dropna(subset=["NPS_num"]).copy()
+                        )
             
-                            fig_nps_mes = go.Figure()
-                            fig_nps_mes.add_trace(
-                                go.Bar(
+                        if not df_nps_mensual.empty:
+                            df_nps_mensual["NombreMes"] = df_nps_mensual["Mes"].map(
+                                meses_nom
+                            )
+            
+                            # Colores para los puntos según el valor de cada mes
+                            colores_puntos = [
+                                obtener_estado_nps(val)[1]
+                                for val in df_nps_mensual["NPS_num"]
+                            ]
+            
+                            fig_nps_line = go.Figure()
+            
+                            # Traza de línea con puntos y valores arriba de cada punto
+                            fig_nps_line.add_trace(
+                                go.Scatter(
                                     x=df_nps_mensual["NombreMes"],
                                     y=df_nps_mensual["NPS_num"],
-                                    marker_color=colores_barras,
-                                    text=[f"{v:.1f}%" for v in df_nps_mensual["NPS_num"]],
-                                    textposition="outside",
-                                    textfont=dict(size=11, color="#333333"),
+                                    mode="lines+markers+text",
                                     name="NPS",
+                                    line=dict(color="#00235d", width=3),
+                                    marker=dict(
+                                        size=12, color=colores_puntos, symbol="circle"
+                                    ),
+                                    text=[f"{v:.1f}%" for v in df_nps_mensual["NPS_num"]],
+                                    textposition="top center",
+                                    textfont=dict(size=11, color="#333333"),
                                 )
                             )
             
-                            # CORRECCIÓN DE ESCALA: Zoom en el eje Y
-                            # Calculamos un mínimo dinámico para que los datos siempre queden a la vista, con un piso usual de 75%
-                            min_y = min(75, df_nps_mensual["NPS_num"].min() - 5)
+                            # Escala dinámica en Y para apreciar mejor los cambios
+                            min_val = df_nps_mensual["NPS_num"].min()
+                            max_val = df_nps_mensual["NPS_num"].max()
+                            min_y = max(70, min_val - 5)
+                            max_y = min(108, max_val + 5)
             
-                            fig_nps_mes.add_shape(type="line", x0=-0.5, x1=len(df_nps_mensual)-0.5, y0=88.3, y1=88.3, line=dict(color="#FFBB00", width=2, dash="dash"))
-                            fig_nps_mes.add_shape(type="line", x0=-0.5, x1=len(df_nps_mensual)-0.5, y0=93.5, y1=93.5, line=dict(color="#00CC66", width=2, dash="dash"))
+                            # Línea objetivo aceptable (88.3%)
+                            fig_nps_line.add_shape(
+                                type="line",
+                                x0=-0.5,
+                                x1=len(df_nps_mensual) - 0.5,
+                                y0=88.3,
+                                y1=88.3,
+                                line=dict(color="#FFBB00", width=2, dash="dash"),
+                            )
             
-                            fig_nps_mes.update_layout(
-                                height=250,
-                                margin=dict(t=10, b=10, l=10, r=10),
-                                yaxis=dict(range=[min_y, 105], title="NPS (%)"), # <--- Eje Y recortado para destacar diferencias
+                            # Línea objetivo sobresaliente (93.5%)
+                            fig_nps_line.add_shape(
+                                type="line",
+                                x0=-0.5,
+                                x1=len(df_nps_mensual) - 0.5,
+                                y0=93.5,
+                                y1=93.5,
+                                line=dict(color="#00CC66", width=2, dash="dash"),
+                            )
+            
+                            fig_nps_line.update_layout(
+                                height=260,
+                                margin=dict(t=25, b=10, l=10, r=10),
+                                yaxis=dict(range=[min_y, max_y], title="NPS (%)"),
+                                xaxis=dict(tickangle=-30),
                                 showlegend=False,
                             )
-                            st.plotly_chart(fig_nps_mes, use_container_width=True)
+            
+                            # Asignamos key único
+                            st.plotly_chart(
+                                fig_nps_line,
+                                use_container_width=True,
+                                key=f"nps_line_{key_prefix}",
+                            )
                         else:
                             st.info(f"Faltan cargar datos mensuales para {titulo_marca}")
                     else:
-                        st.info(f"No hay columna asignada para {titulo_marca} en el Excel/Sheet.")
+                        st.info(
+                            f"No hay columna asignada para {titulo_marca} en la hoja SERVICIOS."
+                        )
             
-                # Trazado en la interfaz dividido en dos mitades (Peugeot a la izq, Citroën a la der)
-                st.markdown("""
+                # Encabezado de escala
+                st.markdown(
+                    """
                 <div style='font-size: 0.85rem; color: #666; margin-bottom: 15px;'>
                     <b>Escala de Evaluación:</b> 🔴 Insuficiente (< 88.3%) | 🟡 Aceptable (88.3% - 93.4%) | 🟢 Sobresaliente (≥ 93.5%)
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
             
+                # Disposición en dos columnas
                 col_m1, col_m2 = st.columns(2)
             
                 with col_m1:
-                    render_bloque_nps("🦁 Peugeot", col_nps_peugeot)
+                    render_bloque_nps("🦁 Peugeot", col_nps_peugeot, key_prefix="peugeot")
             
                 with col_m2:
                     if col_nps_citroen:
-                        render_bloque_nps("⏫ Citroën", col_nps_citroen)
+                        render_bloque_nps(
+                            "⏫ Citroën", col_nps_citroen, key_prefix="citroen"
+                        )
                     else:
-                        st.warning("⚠️ No se encontró la columna 'NPS CITROEN' en la pestaña SERVICIOS.")
+                        st.warning(
+                            "⚠️ No se encontró la columna 'NPS CITROEN' en la pestaña SERVICIOS."
+                        )
             
             # ==========================================
             # PESTAÑA 2: TALLER
