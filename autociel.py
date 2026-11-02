@@ -602,6 +602,57 @@ try:
             with k4: st.markdown(render_kpi_small("Ticket Prom. MO", tp_mo, tgt_tp_mo, None, None, "${:,.0f}"), unsafe_allow_html=True)
             with k5: st.markdown(render_kpi_small("Ticket Prom. Rep", tp_rep, None, None, None, "${:,.0f}"), unsafe_allow_html=True)
 
+            # --- NUEVO GRÁFICO: CURVA DE AVANCE MO (BURN-UP) ---
+            st.markdown("---")
+            st.markdown("#### 📈 Curva de Avance Semanal: Facturación M.O. vs Objetivo")
+
+            # Filtrar historial del mes en curso
+            df_ser_mes = data['SERVICIOS'][(data['SERVICIOS']['Año'] == año_sel) & (data['SERVICIOS']['Mes'] == mes_sel)].sort_values('Fecha_dt').copy()
+
+            if not df_ser_mes.empty:
+                import calendar
+                ultimo_dia = calendar.monthrange(int(año_sel), int(mes_sel))[1]
+                fecha_inicio = pd.to_datetime(f"{año_sel}-{mes_sel}-01")
+                fecha_fin = pd.to_datetime(f"{año_sel}-{mes_sel}-{ultimo_dia}")
+                
+                # Sumar las columnas de MO para tener el acumulado por cada fecha cargada
+                cols_mo = [c for c in [c_cli, c_gar, c_int, c_ter] if c]
+                df_ser_mes['Real_MO'] = df_ser_mes[cols_mo].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+                
+                fig_avance_mo = go.Figure()
+                
+                # Línea del Objetivo Mensual (Horizontal)
+                fig_avance_mo.add_trace(go.Scatter(
+                    x=[fecha_inicio, fecha_fin], y=[float(obj_mo_total), float(obj_mo_total)],
+                    mode='lines', name='Objetivo Mensual',
+                    line=dict(color='gray', width=2, dash='dash')
+                ))
+                
+                # Línea de Ritmo Ideal (Diagonal)
+                fig_avance_mo.add_trace(go.Scatter(
+                    x=[fecha_inicio, fecha_fin], y=[0, float(obj_mo_total)],
+                    mode='lines', name='Ritmo Ideal',
+                    line=dict(color='#ffc107', width=2, dash='dot')
+                ))
+                
+                # Línea Real (Evolución de carga semanal)
+                fig_avance_mo.add_trace(go.Scatter(
+                    x=df_ser_mes['Fecha_dt'], y=df_ser_mes['Real_MO'],
+                    mode='lines+markers+text', name='Facturación Real',
+                    text=df_ser_mes['Real_MO'].apply(lambda x: f"${x/1000000:,.1f}M" if x >= 1000000 else f"${x/1000:,.0f}k"),
+                    textposition="top left",
+                    line=dict(color='#00235d', width=4), marker=dict(size=8)
+                ))
+                
+                fig_avance_mo.update_layout(
+                    height=350, margin=dict(l=0, r=0, t=30, b=0),
+                    xaxis_title="Fecha", yaxis_title="Facturación ($)",
+                    hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_avance_mo, use_container_width=True)
+            else:
+                st.info("No hay datos cargados para este mes para graficar la curva de M.O.")
+
             st.markdown("---")
             st.markdown("### 🏆 Calidad e Incentivos de Marca")
             val_prima_p = s_r.get(find_col(data['SERVICIOS'], ["PRIMA", "PEUGEOT"], exclude_keywords=["OBJ"]), 0)
