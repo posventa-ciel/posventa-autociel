@@ -1015,11 +1015,15 @@ try:
                 fecha_inicio = pd.to_datetime(f"{año_sel}-{mes_sel}-01")
                 fecha_fin = pd.to_datetime(f"{año_sel}-{mes_sel}-{ultimo_dia}")
                 
-                # Encontrar canales y sumar la venta neta por cada fecha cargada
+                # Cálculos de Real, Ideal y Desvío
                 cols_vta_rep = [find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]) for c in canales_repuestos]
                 cols_vta_rep = [c for c in cols_vta_rep if c] 
                 
                 df_rep_mes['Real_Rep'] = df_rep_mes[cols_vta_rep].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+                
+                df_rep_mes['Dia_Mes'] = df_rep_mes['Fecha_dt'].dt.day
+                df_rep_mes['Ideal_Rep'] = (float(obj_rep_total) / ultimo_dia) * df_rep_mes['Dia_Mes']
+                df_rep_mes['Desvio_Rep'] = df_rep_mes['Real_Rep'] - df_rep_mes['Ideal_Rep']
                 
                 fig_avance_rep = go.Figure()
                 
@@ -1037,12 +1041,14 @@ try:
                     line=dict(color='#ffc107', width=2, dash='dot')
                 ))
                 
-                # Línea Real (Evolución de carga semanal)
+                # Línea Real con Desvío en el Tooltip
                 fig_avance_rep.add_trace(go.Scatter(
                     x=df_rep_mes['Fecha_dt'], y=df_rep_mes['Real_Rep'],
                     mode='lines+markers+text', name='Facturación Real',
                     text=df_rep_mes['Real_Rep'].apply(lambda x: f"${x/1000000:,.1f}M"),
                     textposition="top left",
+                    customdata=np.stack((df_rep_mes['Ideal_Rep'], df_rep_mes['Desvio_Rep']), axis=-1),
+                    hovertemplate="<b>%{x|%d-%b}</b><br>Facturado: $%{y:,.0f}<br>Deberíamos llevar: $%{customdata[0]:,.0f}<br><b>Desvío: %{customdata[1]:+,.0f}</b><extra></extra>",
                     line=dict(color='#28a745', width=4), marker=dict(size=8)
                 ))
                 
