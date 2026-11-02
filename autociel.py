@@ -615,9 +615,13 @@ try:
                 fecha_inicio = pd.to_datetime(f"{año_sel}-{mes_sel}-01")
                 fecha_fin = pd.to_datetime(f"{año_sel}-{mes_sel}-{ultimo_dia}")
                 
-                # Sumar las columnas de MO para tener el acumulado por cada fecha cargada
+                # Cálculos de Real, Ideal y Desvío por cada día
                 cols_mo = [c for c in [c_cli, c_gar, c_int, c_ter] if c]
                 df_ser_mes['Real_MO'] = df_ser_mes[cols_mo].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+                
+                df_ser_mes['Dia_Mes'] = df_ser_mes['Fecha_dt'].dt.day
+                df_ser_mes['Ideal_MO'] = (float(obj_mo_total) / ultimo_dia) * df_ser_mes['Dia_Mes']
+                df_ser_mes['Desvio_MO'] = df_ser_mes['Real_MO'] - df_ser_mes['Ideal_MO']
                 
                 fig_avance_mo = go.Figure()
                 
@@ -635,12 +639,14 @@ try:
                     line=dict(color='#ffc107', width=2, dash='dot')
                 ))
                 
-                # Línea Real (Evolución de carga semanal)
+                # Línea Real con Desvío en el Tooltip
                 fig_avance_mo.add_trace(go.Scatter(
                     x=df_ser_mes['Fecha_dt'], y=df_ser_mes['Real_MO'],
                     mode='lines+markers+text', name='Facturación Real',
                     text=df_ser_mes['Real_MO'].apply(lambda x: f"${x/1000000:,.1f}M" if x >= 1000000 else f"${x/1000:,.0f}k"),
                     textposition="top left",
+                    customdata=np.stack((df_ser_mes['Ideal_MO'], df_ser_mes['Desvio_MO']), axis=-1),
+                    hovertemplate="<b>%{x|%d-%b}</b><br>Facturado: $%{y:,.0f}<br>Deberíamos llevar: $%{customdata[0]:,.0f}<br><b>Desvío: %{customdata[1]:+,.0f}</b><extra></extra>",
                     line=dict(color='#00235d', width=4), marker=dict(size=8)
                 ))
                 
