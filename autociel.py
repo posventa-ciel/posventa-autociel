@@ -996,6 +996,59 @@ try:
                 '''
                 st.markdown(html_stock, unsafe_allow_html=True)
 
+            # --- NUEVO GRÁFICO: CURVA DE AVANCE REPUESTOS (BURN-UP) ---
+            st.markdown("---")
+            st.markdown("#### 📈 Curva de Avance Semanal: Facturación Repuestos vs Objetivo")
+            
+            # Filtrar historial del mes en curso
+            df_rep_mes = data['REPUESTOS'][(data['REPUESTOS']['Año'] == año_sel) & (data['REPUESTOS']['Mes'] == mes_sel)].sort_values('Fecha_dt').copy()
+            
+            if not df_rep_mes.empty:
+                import calendar
+                ultimo_dia = calendar.monthrange(int(año_sel), int(mes_sel))[1]
+                fecha_inicio = pd.to_datetime(f"{año_sel}-{mes_sel}-01")
+                fecha_fin = pd.to_datetime(f"{año_sel}-{mes_sel}-{ultimo_dia}")
+                
+                # Encontrar canales y sumar la venta neta por cada fecha cargada
+                cols_vta_rep = [find_col(data['REPUESTOS'], ["VENTA", c], exclude_keywords=["OBJ"]) for c in canales_repuestos]
+                cols_vta_rep = [c for c in cols_vta_rep if c] 
+                
+                df_rep_mes['Real_Rep'] = df_rep_mes[cols_vta_rep].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+                
+                fig_avance_rep = go.Figure()
+                
+                # Línea del Objetivo Mensual (Horizontal)
+                fig_avance_rep.add_trace(go.Scatter(
+                    x=[fecha_inicio, fecha_fin], y=[float(obj_rep_total), float(obj_rep_total)],
+                    mode='lines', name='Objetivo Mensual',
+                    line=dict(color='gray', width=2, dash='dash')
+                ))
+                
+                # Línea de Ritmo Ideal (Diagonal)
+                fig_avance_rep.add_trace(go.Scatter(
+                    x=[fecha_inicio, fecha_fin], y=[0, float(obj_rep_total)],
+                    mode='lines', name='Ritmo Ideal',
+                    line=dict(color='#ffc107', width=2, dash='dot')
+                ))
+                
+                # Línea Real (Evolución de carga semanal)
+                fig_avance_rep.add_trace(go.Scatter(
+                    x=df_rep_mes['Fecha_dt'], y=df_rep_mes['Real_Rep'],
+                    mode='lines+markers+text', name='Facturación Real',
+                    text=df_rep_mes['Real_Rep'].apply(lambda x: f"${x/1000000:,.1f}M"),
+                    textposition="top left",
+                    line=dict(color='#28a745', width=4), marker=dict(size=8)
+                ))
+                
+                fig_avance_rep.update_layout(
+                    height=350, margin=dict(l=0, r=0, t=30, b=0),
+                    xaxis_title="Fecha", yaxis_title="Facturación ($)",
+                    hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig_avance_rep, use_container_width=True)
+            else:
+                st.info("No hay datos cargados para este mes para graficar la curva de Repuestos.")
+
             # --- 3. BANNER DE PRIMAS (DEBAJO DE LOS OBJETIVOS) ---
             st.markdown(f'<div style="background-color: #eef2f7; padding: 10px; border-radius: 5px; border-left: 4px solid #6f42c1; margin-top: 15px; margin-bottom: 15px;"><span style="color:#00235d; font-weight:bold;">💰 Primas/Rappels del Mes:</span> <span style="color:#28a745; font-weight:bold; font-size:1.1rem;">${primas_input:,.0f}</span> <span style="color:#666; font-size:0.8rem;">(Dato leído automáticamente de la planilla)</span></div>', unsafe_allow_html=True)
 
