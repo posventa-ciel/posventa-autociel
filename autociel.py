@@ -2854,6 +2854,21 @@ try:
                         row_ant = df_efi.iloc[idx_cyp - 1] if len(df_efi) >= abs(idx_cyp) + 1 else None
                         nom_mes_cerrado = row_act['NombreMes']
                         
+                        # --- 1. FILTRO GENERAL (Horas y Producción) ---
+                        limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
+                        df_chart = df_efi.iloc[:limit_idx]
+
+                        # --- 2. FILTRO ESPECÍFICO PARA COSTOS Y RENTABILIDAD ---
+                        # Excluimos meses sin costo oficial (>0) o que sean un arrastre idéntico del mes anterior en Excel
+                        df_costos = df_chart[df_chart['Costo_Total'] > 0].copy()
+                        if len(df_costos) >= 2:
+                            if df_costos['Costo_Total'].iloc[-1] == df_costos['Costo_Total'].iloc[-2]:
+                                df_costos = df_costos.iloc[:-1]
+
+                        # Filas específicas para los KPIs de costos
+                        row_act_costo = df_costos.iloc[-1] if not df_costos.empty else None
+                        row_ant_costo = df_costos.iloc[-2] if len(df_costos) >= 2 else None
+                        
                         st.markdown(f"**Indicadores de Gestión a Mes Cerrado ({nom_mes_cerrado})**")
                         c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
                         
@@ -2872,22 +2887,23 @@ try:
                             delta_color="inverse" 
                         )
                         
-                        c_kpi3.metric(
-                            "Costo por Paño", 
-                            f"${row_act['Costo_por_Paño']:,.0f}", 
-                            delta_str(row_act['Costo_por_Paño'], row_ant['Costo_por_Paño'] if row_ant is not None else 0),
-                            delta_color="inverse"
-                        )
-                        
-                        c_kpi4.metric(
-                            "Margen (MO / Costo)", 
-                            f"{row_act['Margen_Ratio']:.2f}x", 
-                            delta_str(row_act['Margen_Ratio'], row_ant['Margen_Ratio'] if row_ant is not None else 0)
-                        )
-                        
-                        # --- FILTRO PARA NO MOSTRAR EL MES INCOMPLETO (Septiembre) ---
-                        limit_idx = len(df_efi) if prog_t == 1.0 else len(df_efi) - 1
-                        df_chart = df_efi.iloc[:limit_idx]
+                        # --- 3. KPIs de Costos con su mes correspondiente (Ej: Septiembre) ---
+                        if row_act_costo is not None:
+                            mes_costo = row_act_costo['NombreMes']
+                            c_kpi3.metric(
+                                f"Costo por Paño ({mes_costo})", 
+                                f"${row_act_costo['Costo_por_Paño']:,.0f}", 
+                                delta_str(row_act_costo['Costo_por_Paño'], row_ant_costo['Costo_por_Paño'] if row_ant_costo is not None else 0),
+                                delta_color="inverse"
+                            )
+                            c_kpi4.metric(
+                                f"Margen ({mes_costo})", 
+                                f"{row_act_costo['Margen_Ratio']:.2f}x", 
+                                delta_str(row_act_costo['Margen_Ratio'], row_ant_costo['Margen_Ratio'] if row_ant_costo is not None else 0)
+                            )
+                        else:
+                            c_kpi3.metric("Costo por Paño", "N/A")
+                            c_kpi4.metric("Margen (MO / Costo)", "N/A")
 
                         # --- GRÁFICOS DE HORAS Y COSTOS ---
                         cg1, cg2 = st.columns(2)
@@ -2910,12 +2926,12 @@ try:
                         with cg2:
                             fig_costo_pano = go.Figure()
                             fig_costo_pano.add_trace(go.Bar(
-                                x=df_chart['NombreMes'], y=df_chart['Costo_por_Paño'], 
+                                x=df_costos['NombreMes'], y=df_costos['Costo_por_Paño'], 
                                 name='Costo/Paño', marker_color='#dc3545',
-                                text=[f"${v:,.0f}" if v > 0 else "" for v in df_chart['Costo_por_Paño']],
+                                text=[f"${v:,.0f}" if v > 0 else "" for v in df_costos['Costo_por_Paño']],
                                 textposition='outside', textfont=dict(color="#444444", size=11)
                             ))
-                            max_y_costo = df_chart['Costo_por_Paño'].max() * 1.25 if not df_chart.empty else 100
+                            max_y_costo = df_costos['Costo_por_Paño'].max() * 1.25 if not df_costos.empty else 100
                             fig_costo_pano.update_layout(
                                 title=f"Evolución Costo por Paño ($)", 
                                 height=280, margin=dict(t=40, b=0, l=0, r=0),
@@ -2928,17 +2944,16 @@ try:
                         fig_margen = go.Figure()
                         
                         fig_margen.add_trace(go.Scatter(
-                            x=df_chart['NombreMes'], 
-                            y=df_chart['Margen_Ratio'], 
+                            x=df_costos['NombreMes'], 
+                            y=df_costos['Margen_Ratio'], 
                             mode='lines+markers+text', 
                             name='Margen',
-                            text=[f"{v:.2f}x" if v > 0 else "" for v in df_chart['Margen_Ratio']],
+                            text=[f"{v:.2f}x" if v > 0 else "" for v in df_costos['Margen_Ratio']],
                             textposition='top center', 
                             line=dict(color='#28a745', width=4),
                             marker=dict(size=9)
                         ))
                         
-                        # Línea visual del Punto de Equilibrio
                         fig_margen.add_hline(
                             y=1.00, 
                             line_dash="dash", 
@@ -2947,7 +2962,7 @@ try:
                             annotation_position="bottom right"
                         )
                         
-                        max_y_margen = df_chart['Margen_Ratio'].max() * 1.20 if not df_chart.empty else 2.0
+                        max_y_margen = df_costos['Margen_Ratio'].max() * 1.20 if not df_costos.empty else 2.0
                         fig_margen.update_layout(
                             title=f"Evolución del Margen (Mano de Obra vs Costos)",
                             height=300, 
