@@ -2870,55 +2870,55 @@ try:
                     nom_mes_prod = row_act_prod['NombreMes'] if row_act_prod is not None else ""
                     st.markdown(f"**Indicadores de Gestión (Producción a {nom_mes_prod} | Costos desfasados un mes)**")
                     
-                    # --- CAMBIO AQUÍ: 5 COLUMNAS EN LUGAR DE 4 ---
-                        c_kpi1, c_kpi2, c_kpi3, c_kpi4, c_kpi5 = st.columns(5)
+                # --- CAMBIO AQUÍ: 5 COLUMNAS EN LUGAR DE 4 ---
+                    c_kpi1, c_kpi2, c_kpi3, c_kpi4, c_kpi5 = st.columns(5)
+                    
+                    def delta_str(act, ant):
+                        if not ant or ant == 0: return None
+                        var = (act / ant - 1) * 100
+                        return f"{var:+.1f}% vs Mes Ant"
+                    
+                    # --- KPIs PRODUCCIÓN (Ej: Octubre) ---
+                    if row_act_prod is not None:
+                        dias_hab = row_act_prod['Dias_Habiles']
+                        c_kpi1.metric(f"Hs Reales ({nom_mes_prod})", f"{row_act_prod['Hs_Reales']:,.0f} hs", f"{dias_hab:.0f} Días x {techs} Téc x 8hs x 90%")
+                        c_kpi2.metric(
+                            f"Horas por Paño ({nom_mes_prod})", 
+                            f"{row_act_prod['Hs_por_Paño']:.2f} hs", 
+                            delta_str(row_act_prod['Hs_por_Paño'], row_ant_prod['Hs_por_Paño'] if row_ant_prod is not None else 0),
+                            delta_color="inverse" 
+                        )
+                    
+                    # --- KPIs COSTOS (Ej: Septiembre) ---
+                    if row_act_costo is not None:
+                        nom_mes_costo = row_act_costo['NombreMes']
+                        c_kpi3.metric(
+                            f"Costo por Paño ({nom_mes_costo})", 
+                            f"${row_act_costo['Costo_por_Paño']:,.0f}", 
+                            delta_str(row_act_costo['Costo_por_Paño'], row_ant_costo['Costo_por_Paño'] if row_ant_costo is not None else 0),
+                            delta_color="inverse"
+                        )
+                        c_kpi4.metric(
+                            f"Margen ({nom_mes_costo})", 
+                            f"{row_act_costo['Margen_Ratio']:.2f}x", 
+                            delta_str(row_act_costo['Margen_Ratio'], row_ant_costo['Margen_Ratio'] if row_ant_costo is not None else 0)
+                        )
                         
-                        def delta_str(act, ant):
-                            if not ant or ant == 0: return None
-                            var = (act / ant - 1) * 100
-                            return f"{var:+.1f}% vs Mes Ant"
+                        # --- NUEVA TARJETA: MARGEN PROMEDIO TRIMESTRAL ---
+                        # Toma automáticamente los últimos 'n' meses disponibles (máximo 3)
+                        margen_3m = df_costos['Margen_Ratio'].tail(3).mean()
+                        cant_meses = len(df_costos['Margen_Ratio'].tail(3))
                         
-                        # --- KPIs PRODUCCIÓN (Ej: Octubre) ---
-                        if row_act_prod is not None:
-                            dias_hab = row_act_prod['Dias_Habiles']
-                            c_kpi1.metric(f"Hs Reales ({nom_mes_prod})", f"{row_act_prod['Hs_Reales']:,.0f} hs", f"{dias_hab:.0f} Días x {techs} Téc x 8hs x 90%")
-                            c_kpi2.metric(
-                                f"Horas por Paño ({nom_mes_prod})", 
-                                f"{row_act_prod['Hs_por_Paño']:.2f} hs", 
-                                delta_str(row_act_prod['Hs_por_Paño'], row_ant_prod['Hs_por_Paño'] if row_ant_prod is not None else 0),
-                                delta_color="inverse" 
-                            )
-                        
-                        # --- KPIs COSTOS (Ej: Septiembre) ---
-                        if row_act_costo is not None:
-                            nom_mes_costo = row_act_costo['NombreMes']
-                            c_kpi3.metric(
-                                f"Costo por Paño ({nom_mes_costo})", 
-                                f"${row_act_costo['Costo_por_Paño']:,.0f}", 
-                                delta_str(row_act_costo['Costo_por_Paño'], row_ant_costo['Costo_por_Paño'] if row_ant_costo is not None else 0),
-                                delta_color="inverse"
-                            )
-                            c_kpi4.metric(
-                                f"Margen ({nom_mes_costo})", 
-                                f"{row_act_costo['Margen_Ratio']:.2f}x", 
-                                delta_str(row_act_costo['Margen_Ratio'], row_ant_costo['Margen_Ratio'] if row_ant_costo is not None else 0)
-                            )
-                            
-                            # --- NUEVA TARJETA: MARGEN PROMEDIO TRIMESTRAL ---
-                            # Toma automáticamente los últimos 'n' meses disponibles (máximo 3)
-                            margen_3m = df_costos['Margen_Ratio'].tail(3).mean()
-                            cant_meses = len(df_costos['Margen_Ratio'].tail(3))
-                            
-                            c_kpi5.metric(
-                                f"Margen Prom. ({cant_meses}m)", 
-                                f"{margen_3m:.2f}x", 
-                                "Trimestre Móvil",
-                                delta_color="off"
-                            )
-                        else:
-                            c_kpi3.metric("Costo por Paño", "N/A")
-                            c_kpi4.metric("Margen (MO / Costo)", "N/A")
-                            c_kpi5.metric("Margen Prom. (3m)", "N/A")
+                        c_kpi5.metric(
+                            f"Margen Prom. ({cant_meses}m)", 
+                            f"{margen_3m:.2f}x", 
+                            "Trimestre Móvil",
+                            delta_color="off"
+                        )
+                    else:
+                        c_kpi3.metric("Costo por Paño", "N/A")
+                        c_kpi4.metric("Margen (MO / Costo)", "N/A")
+                        c_kpi5.metric("Margen Prom. (3m)", "N/A")
 
                     # --- NUEVO GRÁFICO DE MARGEN A LO ANCHO ---
                     st.markdown("<br>", unsafe_allow_html=True)
