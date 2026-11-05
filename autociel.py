@@ -2870,7 +2870,7 @@ try:
                     nom_mes_prod = row_act_prod['NombreMes'] if row_act_prod is not None else ""
                     st.markdown(f"**Indicadores de Gestión (Producción a {nom_mes_prod} | Costos desfasados un mes)**")
                     
-                # --- CAMBIO AQUÍ: 5 COLUMNAS EN LUGAR DE 4 ---
+                    # --- 5 COLUMNAS DE KPIs ---
                     c_kpi1, c_kpi2, c_kpi3, c_kpi4, c_kpi5 = st.columns(5)
                     
                     def delta_str(act, ant):
@@ -2904,8 +2904,7 @@ try:
                             delta_str(row_act_costo['Margen_Ratio'], row_ant_costo['Margen_Ratio'] if row_ant_costo is not None else 0)
                         )
                         
-                        # --- NUEVA TARJETA: MARGEN PROMEDIO TRIMESTRAL ---
-                        # Toma automáticamente los últimos 'n' meses disponibles (máximo 3)
+                        # --- TARJETA: MARGEN PROMEDIO TRIMESTRAL ---
                         margen_3m = df_costos['Margen_Ratio'].tail(3).mean()
                         cant_meses = len(df_costos['Margen_Ratio'].tail(3))
                         
@@ -2919,6 +2918,40 @@ try:
                         c_kpi3.metric("Costo por Paño", "N/A")
                         c_kpi4.metric("Margen (MO / Costo)", "N/A")
                         c_kpi5.metric("Margen Prom. (3m)", "N/A")
+
+                    # --- GRÁFICOS DE HORAS Y COSTOS (RECUPERADOS) ---
+                    cg1, cg2 = st.columns(2)
+                    with cg1:
+                        fig_hs_pano = go.Figure()
+                        fig_hs_pano.add_trace(go.Scatter(
+                            x=df_chart['NombreMes'], y=df_chart['Hs_por_Paño'], 
+                            mode='lines+markers+text', name='Hs/Paño',
+                            text=[f"{v:.1f}h" if v > 0 else "" for v in df_chart['Hs_por_Paño']],
+                            textposition='top center', line=dict(color='#ffc107', width=3)
+                        ))
+                        max_y_hs = df_chart['Hs_por_Paño'].max() * 1.25 if not df_chart.empty else 10
+                        fig_hs_pano.update_layout(
+                            title=f"Evolución Horas Invertidas por Paño", 
+                            height=280, margin=dict(t=40, b=0, l=0, r=0),
+                            yaxis=dict(range=[0, max_y_hs])
+                        )
+                        st.plotly_chart(fig_hs_pano, use_container_width=True, key=f"fig_hs_{sucursal_name}")
+                        
+                    with cg2:
+                        fig_costo_pano = go.Figure()
+                        fig_costo_pano.add_trace(go.Bar(
+                            x=df_costos['NombreMes'], y=df_costos['Costo_por_Paño'], 
+                            name='Costo/Paño', marker_color='#dc3545',
+                            text=[f"${v:,.0f}" if v > 0 else "" for v in df_costos['Costo_por_Paño']],
+                            textposition='outside', textfont=dict(color="#444444", size=11)
+                        ))
+                        max_y_costo = df_costos['Costo_por_Paño'].max() * 1.25 if not df_costos.empty else 100
+                        fig_costo_pano.update_layout(
+                            title=f"Evolución Costo por Paño ($)", 
+                            height=280, margin=dict(t=40, b=0, l=0, r=0),
+                            yaxis=dict(range=[0, max_y_costo])
+                        )
+                        st.plotly_chart(fig_costo_pano, use_container_width=True, key=f"fig_costo_{sucursal_name}")
 
                     # --- NUEVO GRÁFICO DE MARGEN A LO ANCHO ---
                     st.markdown("<br>", unsafe_allow_html=True)
